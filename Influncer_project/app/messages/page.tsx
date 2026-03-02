@@ -2,12 +2,11 @@
 
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { io, Socket } from "socket.io-client";   // ✅ ADDED
+import { io, Socket } from "socket.io-client"; // ✅ ADDED
 
 const API = "http://54.252.201.93:5000/api";
 const SOCKET_URL = "http://54.252.201.93:5000"; // ✅ ADDED
 
-// ✅ Safe fetch
 const safeFetch = async (url: string, opts: RequestInit = {}) => {
   try {
     const res = await fetch(url, opts);
@@ -21,13 +20,11 @@ const safeFetch = async (url: string, opts: RequestInit = {}) => {
 };
 
 function MessagesInner() {
-
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const targetUserId = searchParams.get("userId");
   const targetUserName = searchParams.get("name") || "Creator";
-  const targetCampaignId = searchParams.get("campaignId");
 
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState("");
@@ -45,98 +42,134 @@ function MessagesInner() {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem("cb_user");
     if (!stored) { router.push("/login"); return; }
-
     const parsed = JSON.parse(stored);
     const t = parsed.token || localStorage.getItem("token");
     if (!t) { router.push("/login"); return; }
-
     setUser(parsed);
     setToken(t);
   }, []);
 
   /* ===== SOCKET CONNECT ===== */
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token) return;
 
     socketRef.current = io(SOCKET_URL, {
-      auth: { token },
+      auth: { token }
     });
 
     socketRef.current.on("connect", () => {
-      console.log("Socket connected:", socketRef.current?.id);
-
-      const myId =
-        user?.user?._id ||
-        user?.user?.id ||
-        user?._id ||
-        user?.id;
-
-      if (myId) {
-        socketRef.current?.emit("joinRoom", myId);
-      }
+      console.log("✅ Socket Connected");
     });
 
     socketRef.current.on("newMessage", (msg: any) => {
-      console.log("Realtime message:", msg);
-
-      if (activeConv && msg.conversationId === activeConv._id) {
+      if (msg.conversationId === activeConv?._id) {
         setMessages(prev => [...prev, msg]);
-        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+        setTimeout(() => {
+          bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
       }
     });
 
-    return () => socketRef.current?.disconnect();
-  }, [token, user, activeConv]);
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, [token, activeConv]);
+
+  /* ===== FETCH CONVERSATIONS ===== */
+  useEffect(() => {
+    if (!token) return;
+    fetchConversations();
+  }, [token]);
+
+  const fetchConversations = async () => {
+    const { ok, data } = await safeFetch(`${API}/conversations/my`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const list = data?.data || data?.conversations || [];
+    setConversations(list);
+  };
+
+  /* ===== FETCH MESSAGES ===== */
+  const fetchMessages = async (convId: string) => {
+    const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const msgs =
+      Array.isArray(data?.data) ? data.data :
+      Array.isArray(data?.messages) ? data.messages :
+      data?.conversation?.messages || [];
+
+    setMessages(msgs);
+
+    // ✅ Join socket room
+    socketRef.current?.emit("joinConversation", convId);
+  };
+
+  const openConversation = (conv: any) => {
+    setActiveConv(conv);
+    fetchMessages(conv._id);
+  };
 
   /* ===== SEND MESSAGE ===== */
-  const sendMessage = async () => {
-    if (!newMsg.trim() || sending) return;
+  const sendMessage = () => {
+    if (!newMsg.trim() || !activeConv) return;
 
-    try {
-      setSending(true);
+    socketRef.current?.emit("sendMessage", {
+      conversationId: activeConv._id,
+      text: newMsg.trim(),
+    });
 
-      const convId = activeConv?._id;
-      if (!convId) return;
-
-      await safeFetch(`${API}/conversations/send/${convId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text: newMsg.trim() }),
-      });
-
-      // ✅ REALTIME SEND
-      socketRef.current?.emit("sendMessage", {
-        conversationId: convId,
-        text: newMsg.trim(),
-      });
-
-      setNewMsg("");
-    } finally {
-      setSending(false);
-    }
+    setNewMsg("");
   };
 
   return (
-    <div style={{padding:40}}>
-      <h2>Messages</h2>
+    <div style={{ display: "flex", height: "100vh" }}>
 
-      <div style={{height:300,overflowY:"auto",border:"1px solid #ddd",padding:10}}>
-        {messages.map((m,i)=>(
-          <div key={i}>{m.text}</div>
+      {/* SIDEBAR */}
+      <div style={{ width: 300, borderRight: "1px solid #ddd", padding: 20 }}>
+        <h3>Messages</h3>
+
+        {conversations.map((c) => (
+          <div
+            key={c._id}
+            style={{ padding: 10, cursor: "pointer" }}
+            onClick={() => openConversation(c)}
+          >
+            {c.participants?.[0]?.name || "User"}
+          </div>
         ))}
-        <div ref={bottomRef}/>
       </div>
 
-      <input
-        value={newMsg}
-        onChange={e=>setNewMsg(e.target.value)}
-        placeholder="Type..."
-      />
+      {/* CHAT */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
-      <button onClick={sendMessage}>Send</button>
+        <div style={{ padding: 20, borderBottom: "1px solid #ddd" }}>
+          {activeConv ? "Conversation" : "Select chat"}
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+          {messages.map((m, i) => (
+            <div key={i} style={{ marginBottom: 10 }}>
+              {m.text}
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+
+        {activeConv && (
+          <div style={{ padding: 20, borderTop: "1px solid #ddd" }}>
+            <input
+              value={newMsg}
+              onChange={(e) => setNewMsg(e.target.value)}
+              style={{ width: "80%", padding: 10 }}
+            />
+            <button onClick={sendMessage} style={{ padding: 10 }}>
+              Send
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
