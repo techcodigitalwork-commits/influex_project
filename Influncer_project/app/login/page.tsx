@@ -3,8 +3,10 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { io } from "socket.io-client";
 
 const API = "http://54.252.201.93:5000/api";
+const SOCKET_URL = "http://54.252.201.93:5000";
 
 enum UserRole {
   INFLUENCER = "INFLUENCER",
@@ -42,32 +44,53 @@ export default function LoginPage() {
       });
 
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.message || "Login failed");
-      if (!data.token || !data.user) throw new Error("Invalid server response");
+      if (!data.token || !data.user)
+        throw new Error("Invalid server response");
 
       const token = data.token;
 
-      // ✅ Login ke baad profile check karo — backend hasProfile galat bhejta hai
+      // ✅ Profile check
       const profileRes = await fetch(`${API}/profile/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const profileData = await profileRes.json();
-      const hasProfile = profileData.success && !!profileData.profile;
 
-      // ✅ cb_user mein sahi hasProfile save karo
+      const profileData = await profileRes.json();
+      const hasProfile =
+        profileData.success && !!profileData.profile;
+
       const userData = {
         ...data.user,
         token,
         hasProfile,
       };
 
+      // ✅ Save user data
       if (typeof window !== "undefined") {
         localStorage.setItem("cb_user", JSON.stringify(userData));
         localStorage.setItem("token", token);
       }
 
-      // ✅ Navigation — hasProfile false sirf 1st time hoga
+      // ✅ SOCKET CONNECTION AFTER LOGIN
+      const socket = io(SOCKET_URL, {
+        auth: {
+          token: token, // optional but recommended
+        },
+      });
+
+      socket.on("connect", () => {
+        console.log("Socket connected:", socket.id);
+
+        // Join user room
+        socket.emit("joinRoom", data.user._id);
+      });
+
+      // Optional: Save socket id if needed
+      socket.on("disconnect", () => {
+        console.log("Socket disconnected");
+      });
+
+      // ✅ Navigation
       if (!hasProfile) {
         router.push("/my-profile");
         return;
@@ -83,7 +106,6 @@ export default function LoginPage() {
       }
 
       router.refresh();
-
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -99,8 +121,12 @@ export default function LoginPage() {
           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4 shadow-lg shadow-indigo-200">
             CB
           </div>
-          <h2 className="text-3xl font-extrabold text-slate-900">Welcome Back</h2>
-          <p className="text-slate-500 mt-2">Log in to manage your brand or profile</p>
+          <h2 className="text-3xl font-extrabold text-slate-900">
+            Welcome Back
+          </h2>
+          <p className="text-slate-500 mt-2">
+            Log in to manage your brand or profile
+          </p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -111,11 +137,13 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Email Address</label>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              Email Address
+            </label>
             <input
               type="email"
               required
-              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl"
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -123,11 +151,13 @@ export default function LoginPage() {
           </div>
 
           <div className="relative">
-            <label className="block text-sm font-bold text-slate-700 mb-2">Password</label>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              Password
+            </label>
             <input
               type={showPassword ? "text" : "password"}
               required
-              className="w-full px-5 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              className="w-full px-5 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -143,13 +173,13 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 mt-4 disabled:opacity-50"
+            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg mt-4 disabled:opacity-50"
           >
             {loading ? "Signing In..." : "Sign In"}
           </button>
         </form>
 
-        <div className="mt-8 pt-8 border-t border-slate-50 text-center">
+        <div className="mt-8 pt-8 border-t text-center">
           <p className="text-slate-500 font-medium">
             Don't have an account?{" "}
             <Link href="/join" className="text-indigo-600 font-bold hover:underline">
@@ -157,11 +187,178 @@ export default function LoginPage() {
             </Link>
           </p>
         </div>
-
       </div>
     </div>
   );
 }
+
+
+
+
+// "use client";
+
+// import { useState, type FormEvent } from "react";
+// import Link from "next/link";
+// import { useRouter } from "next/navigation";
+
+// const API = "http://54.252.201.93:5000/api";
+
+// enum UserRole {
+//   INFLUENCER = "INFLUENCER",
+//   MODEL = "MODEL",
+//   PHOTOGRAPHER = "PHOTOGRAPHER",
+//   BRAND = "BRAND",
+//   ADMIN = "ADMIN",
+// }
+
+// export default function LoginPage() {
+//   const router = useRouter();
+
+//   const [email, setEmail] = useState("");
+//   const [password, setPassword] = useState("");
+//   const [showPassword, setShowPassword] = useState(false);
+//   const [error, setError] = useState("");
+//   const [loading, setLoading] = useState(false);
+
+//   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
+//     e.preventDefault();
+//     setError("");
+
+//     if (!email || !password) {
+//       setError("Please enter email and password");
+//       return;
+//     }
+
+//     try {
+//       setLoading(true);
+
+//       const res = await fetch(`${API}/auth/login`, {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify({ email, password }),
+//       });
+
+//       const data = await res.json();
+
+//       if (!res.ok) throw new Error(data.message || "Login failed");
+//       if (!data.token || !data.user) throw new Error("Invalid server response");
+
+//       const token = data.token;
+
+//       // ✅ Login ke baad profile check karo — backend hasProfile galat bhejta hai
+//       const profileRes = await fetch(`${API}/profile/me`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       const profileData = await profileRes.json();
+//       const hasProfile = profileData.success && !!profileData.profile;
+
+//       // ✅ cb_user mein sahi hasProfile save karo
+//       const userData = {
+//         ...data.user,
+//         token,
+//         hasProfile,
+//       };
+
+//       if (typeof window !== "undefined") {
+//         localStorage.setItem("cb_user", JSON.stringify(userData));
+//         localStorage.setItem("token", token);
+//       }
+
+//       // ✅ Navigation — hasProfile false sirf 1st time hoga
+//       if (!hasProfile) {
+//         router.push("/my-profile");
+//         return;
+//       }
+
+//       if (
+//         userData.role === UserRole.BRAND ||
+//         userData.role === UserRole.ADMIN
+//       ) {
+//         router.push("/campaigns");
+//       } else {
+//         router.push("/discovery");
+//       }
+
+//       router.refresh();
+
+//     } catch (err: any) {
+//       setError(err.message || "Something went wrong");
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   return (
+//     <div className="min-h-[80vh] flex items-center justify-center px-6 py-12">
+//       <div className="max-w-md w-full bg-white rounded-[40px] p-10 shadow-2xl shadow-indigo-100 border border-slate-100">
+
+//         <div className="text-center mb-10">
+//           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4 shadow-lg shadow-indigo-200">
+//             CB
+//           </div>
+//           <h2 className="text-3xl font-extrabold text-slate-900">Welcome Back</h2>
+//           <p className="text-slate-500 mt-2">Log in to manage your brand or profile</p>
+//         </div>
+
+//         <form onSubmit={handleLogin} className="space-y-6">
+//           {error && (
+//             <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold">
+//               {error}
+//             </div>
+//           )}
+
+//           <div>
+//             <label className="block text-sm font-bold text-slate-700 mb-2">Email Address</label>
+//             <input
+//               type="email"
+//               required
+//               className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+//               placeholder="name@example.com"
+//               value={email}
+//               onChange={(e) => setEmail(e.target.value)}
+//             />
+//           </div>
+
+//           <div className="relative">
+//             <label className="block text-sm font-bold text-slate-700 mb-2">Password</label>
+//             <input
+//               type={showPassword ? "text" : "password"}
+//               required
+//               className="w-full px-5 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+//               placeholder="••••••••"
+//               value={password}
+//               onChange={(e) => setPassword(e.target.value)}
+//             />
+//             <img
+//               src="https://www.pngitem.com/pimgs/m/495-4950508_show-password-show-password-icon-png-transparent-png.png"
+//               alt="show password"
+//               onClick={() => setShowPassword(!showPassword)}
+//               className="absolute right-4 top-[58%] w-6 h-6 cursor-pointer opacity-70"
+//             />
+//           </div>
+
+//           <button
+//             type="submit"
+//             disabled={loading}
+//             className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 mt-4 disabled:opacity-50"
+//           >
+//             {loading ? "Signing In..." : "Sign In"}
+//           </button>
+//         </form>
+
+//         <div className="mt-8 pt-8 border-t border-slate-50 text-center">
+//           <p className="text-slate-500 font-medium">
+//             Don't have an account?{" "}
+//             <Link href="/join" className="text-indigo-600 font-bold hover:underline">
+//               Join Platform
+//             </Link>
+//           </p>
+//         </div>
+
+//       </div>
+//     </div>
+//   );
+// }
 
 
 
