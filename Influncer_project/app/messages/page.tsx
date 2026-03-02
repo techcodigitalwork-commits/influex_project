@@ -1,184 +1,195 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { io, Socket } from "socket.io-client"; // ✅ ADDED
+import { useEffect, useState, useRef } from "react";
+import { io, Socket } from "socket.io-client";
 
 const API = "http://54.252.201.93:5000/api";
-const SOCKET_URL = "http://54.252.201.93:5000"; // ✅ ADDED
+const SOCKET_URL = "http://54.252.201.93:5000";
 
-const safeFetch = async (url: string, opts: RequestInit = {}) => {
-  try {
-    const res = await fetch(url, opts);
-    const text = await res.text();
-    if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
-    const data = JSON.parse(text);
-    return { ok: res.ok, data };
-  } catch {
-    return { ok: false, data: null };
-  }
-};
-
-function MessagesInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  const targetUserId = searchParams.get("userId");
-  const targetUserName = searchParams.get("name") || "Creator";
-
+export default function MessagesInner() {
+  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
-  const [token, setToken] = useState("");
+  const [socket, setSocket] = useState<Socket | null>(null);
+
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConv, setActiveConv] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
 
-  const socketRef = useRef<Socket | null>(null); // ✅ ADDED
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   /* ===== AUTH ===== */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = localStorage.getItem("cb_user");
-    if (!stored) { router.push("/login"); return; }
-    const parsed = JSON.parse(stored);
-    const t = parsed.token || localStorage.getItem("token");
-    if (!t) { router.push("/login"); return; }
-    setUser(parsed);
-    setToken(t);
+    const t = localStorage.getItem("token");
+    const u = localStorage.getItem("user");
+
+    if (t) setToken(t);
+    if (u) setUser(JSON.parse(u));
   }, []);
+
+  const myId =
+    user?.user?._id ||
+    user?.user?.id ||
+    user?._id ||
+    user?.id;
 
   /* ===== SOCKET CONNECT ===== */
   useEffect(() => {
-    if (!token) return;
+    if (!token || !myId) return;
 
-    socketRef.current = io(SOCKET_URL, {
-      auth: { token }
+    const newSocket = io(SOCKET_URL, {
+      transports: ["websocket"],
     });
 
-    socketRef.current.on("connect", () => {
-      console.log("✅ Socket Connected");
+    setSocket(newSocket);
+
+    newSocket.on("connect", () => {
+      console.log("✅ Socket connected:", newSocket.id);
+      newSocket.emit("joinRoom", myId);
     });
 
-    socketRef.current.on("newMessage", (msg: any) => {
-      if (msg.conversationId === activeConv?._id) {
-        setMessages(prev => [...prev, msg]);
-        setTimeout(() => {
-          bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 100);
+    newSocket.on("receiveMessage", (msg: any) => {
+      if (activeConv && msg.conversationId === activeConv._id) {
+        setMessages((prev) => [...prev, msg]);
       }
     });
 
-    return () => {
-      socketRef.current?.disconnect();
-    };
-  }, [token, activeConv]);
+    return () => newSocket.disconnect();
+  }, [token, myId, activeConv]);
 
-  /* ===== FETCH CONVERSATIONS ===== */
+  /* ===== LOAD CONVERSATIONS ===== */
   useEffect(() => {
     if (!token) return;
-    fetchConversations();
+
+    fetch(`${API}/conversations/my`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then(setConversations)
+      .catch(console.error);
   }, [token]);
 
-  const fetchConversations = async () => {
-    const { ok, data } = await safeFetch(`${API}/conversations/my`, {
+  /* ===== LOAD MESSAGES ===== */
+  useEffect(() => {
+    if (!token || !activeConv) return;
+
+    fetch(`${API}/messages/${activeConv._id}`, {
       headers: { Authorization: `Bearer ${token}` },
-    });
-    const list = data?.data || data?.conversations || [];
-    setConversations(list);
-  };
+    })
+      .then((r) => r.json())
+      .then(setMessages)
+      .catch(console.error);
+  }, [activeConv, token]);
 
-  /* ===== FETCH MESSAGES ===== */
-  const fetchMessages = async (convId: string) => {
-    const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  /* ===== AUTO SCROLL ===== */
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-    const msgs =
-      Array.isArray(data?.data) ? data.data :
-      Array.isArray(data?.messages) ? data.messages :
-      data?.conversation?.messages || [];
+  /* ===== CREATE CONVERSATION ===== */
+  const createConversation = async (targetUserId: string) => {
+    try {
+      const res = await fetch(`${API}/conversations/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId: targetUserId }),
+      });
 
-    setMessages(msgs);
-
-    // ✅ Join socket room
-    socketRef.current?.emit("joinConversation", convId);
-  };
-
-  const openConversation = (conv: any) => {
-    setActiveConv(conv);
-    fetchMessages(conv._id);
+      const data = await res.json();
+      setActiveConv(data);
+      return data._id;
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
   };
 
   /* ===== SEND MESSAGE ===== */
-  const sendMessage = () => {
-    if (!newMsg.trim() || !activeConv) return;
+  const sendMessage = async () => {
+    if (!newMsg.trim() || sending || !activeConv) return;
 
-    socketRef.current?.emit("sendMessage", {
-      conversationId: activeConv._id,
-      text: newMsg.trim(),
-    });
+    try {
+      setSending(true);
 
-    setNewMsg("");
+      if (socket) {
+        socket.emit("sendMessage", {
+          conversationId: activeConv._id,
+          senderId: myId,
+          text: newMsg.trim(),
+        });
+      }
+
+      setNewMsg("");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
+    <div className="flex h-screen bg-gray-100">
 
-      {/* SIDEBAR */}
-      <div style={{ width: 300, borderRight: "1px solid #ddd", padding: 20 }}>
-        <h3>Messages</h3>
+      {/* LEFT CONVERSATIONS */}
+      <div className="w-1/3 bg-white border-r overflow-y-auto">
+        <h2 className="p-4 font-bold text-lg">Chats</h2>
 
         {conversations.map((c) => (
           <div
             key={c._id}
-            style={{ padding: 10, cursor: "pointer" }}
-            onClick={() => openConversation(c)}
+            onClick={() => setActiveConv(c)}
+            className="p-3 border-b cursor-pointer hover:bg-gray-100"
           >
-            {c.participants?.[0]?.name || "User"}
+            {c.users?.map((u:any)=>u.name).join(", ")}
           </div>
         ))}
       </div>
 
-      {/* CHAT */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* RIGHT CHAT */}
+      <div className="flex flex-col flex-1">
 
-        <div style={{ padding: 20, borderBottom: "1px solid #ddd" }}>
-          {activeConv ? "Conversation" : "Select chat"}
-        </div>
-
-        <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4">
           {messages.map((m, i) => (
-            <div key={i} style={{ marginBottom: 10 }}>
+            <div
+              key={i}
+              className={`mb-2 p-2 rounded w-fit max-w-xs ${
+                m.sender === myId
+                  ? "bg-blue-200 ml-auto"
+                  : "bg-gray-200"
+              }`}
+            >
               {m.text}
+              <div className="text-xs text-gray-500">
+                {new Date(m.createdAt).toLocaleTimeString()}
+              </div>
             </div>
           ))}
-          <div ref={bottomRef} />
+          <div ref={messagesEndRef} />
         </div>
 
-        {activeConv && (
-          <div style={{ padding: 20, borderTop: "1px solid #ddd" }}>
-            <input
-              value={newMsg}
-              onChange={(e) => setNewMsg(e.target.value)}
-              style={{ width: "80%", padding: 10 }}
-            />
-            <button onClick={sendMessage} style={{ padding: 10 }}>
-              Send
-            </button>
-          </div>
-        )}
+        {/* Input */}
+        <div className="flex border-t">
+          <input
+            value={newMsg}
+            onChange={(e) => setNewMsg(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            className="flex-1 p-3 outline-none"
+            placeholder="Type message..."
+          />
+          <button
+            onClick={sendMessage}
+            className="bg-blue-500 text-white px-6"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
-  );
-}
-
-export default function MessagesPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <MessagesInner />
-    </Suspense>
   );
 }
 
