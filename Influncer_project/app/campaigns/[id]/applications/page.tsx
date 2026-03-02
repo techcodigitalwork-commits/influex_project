@@ -77,18 +77,22 @@ export default function ApplicationsPage() {
                   email: infData.email || "No Email",
                 };
               } else {
-                app.influencerId = {
-                  _id: app.influencerId,
-                  title: "Unknown",
-                  email: "No Email",
-                };
+                const influencerIdString = app.influencerId as string;
+
+app.influencerId = {
+  _id: influencerIdString,
+  title: "Unknown",
+  email: "No Email",
+};
               }
             } catch {
-              app.influencerId = {
-                _id: app.influencerId,
-                title: "Unknown",
-                email: "No Email",
-              };
+              const influencerIdString = app.influencerId as string;
+
+app.influencerId = {
+  _id: influencerIdString,
+  title: "Unknown",
+  email: "No Email",
+};
             }
           }
           return app;
