@@ -107,24 +107,60 @@ export default function NotificationsPage() {
   };
 
   // ── Brand: Accept/Reject campaign application ──
-  const acceptCreator = async (applicationId: string, notifId: string) => {
-    try {
-      setActionLoading(notifId + "_accept");
-      const res = await fetch(`${API}/application/${applicationId}/decision`, {
+  const acceptConnect = async (n: any) => {
+  try {
+    setActionLoading(n._id + "_accept");
+
+    const senderId = n.from?._id || n.fromId || n.senderId || n.from;
+    const campaignId = n.campaignId || null; // frontend me campaignId add karo
+
+    if (senderId) {
+      // Create conversation so both can chat
+      const res = await fetch(`${API}/conversations/create`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
-        body: JSON.stringify({ decision: "accepted" }),
+        headers: { Authorization: `Bearer ${user.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          participantId: senderId,
+          campaignId // backend me required ho to bhej rahe
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      saveDecidedStatus(applicationId, "accepted");
-      setNotifications(prev => prev.map(n => n._id === notifId ? { ...n, applicationStatus: "accepted" } : n));
-      if (selectedProfile?.notifId === notifId) setSelectedProfile((p: any) => ({ ...p, status: "accepted" }));
-    } catch (err: any) {
-      alert(err.message || "Accept failed");
-    } finally {
-      setActionLoading("");
+      console.log("Conversation created:", data);
     }
+
+    saveConnectDecision(n._id, "accepted");
+    setNotifications(prev => prev.map(notif =>
+      notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
+    ));
+  } catch (err) {
+    console.error("Accept connect error:", err);
+    // still mark accepted locally
+    saveConnectDecision(n._id, "accepted");
+    setNotifications(prev => prev.map(notif =>
+      notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
+    ));
+  } finally {
+    setActionLoading("");
+  }
+};
+  // const acceptCreator = async (applicationId: string, notifId: string) => {
+  //   try {
+  //     setActionLoading(notifId + "_accept");
+  //     const res = await fetch(`${API}/application/${applicationId}/decision`, {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
+  //       body: JSON.stringify({ decision: "accepted" }),
+  //     });
+  //     const data = await res.json();
+  //     if (!res.ok) throw new Error(data.message);
+  //     saveDecidedStatus(applicationId, "accepted");
+  //     setNotifications(prev => prev.map(n => n._id === notifId ? { ...n, applicationStatus: "accepted" } : n));
+  //     if (selectedProfile?.notifId === notifId) setSelectedProfile((p: any) => ({ ...p, status: "accepted" }));
+  //   } catch (err: any) {
+  //     alert(err.message || "Accept failed");
+  //   } finally {
+  //     setActionLoading("");
+  //   }
   };
 
   const rejectCreator = async (applicationId: string, notifId: string) => {
