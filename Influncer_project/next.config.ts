@@ -1,19 +1,24 @@
-import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  typescript: {
-    ignoreBuildErrors: true, // temporary, baad me hata dena
-  },
 
+const nextConfig = {
   images: {
-    domains: [
-      "influex-profile-images.s3.ap-southeast-2.amazonaws.com",
-      "api.dicebear.com",
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "influex-profile-images.s3.ap-southeast-2.amazonaws.com",
+      },
+      {
+        protocol: "https",
+        hostname: "api.dicebear.com",
+      },
     ],
   },
 };
 
 export default nextConfig;
+
+
+
 
 // /** @type {import('next').NextConfig} */
 // const nextConfig = {
