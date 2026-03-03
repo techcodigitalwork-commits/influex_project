@@ -4,10 +4,9 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
-
 const API = "http://54.252.201.93:5000/api";
 const SOCKET_URL = "http://54.252.201.93:5000";
-
+const SOCKET_URL = "http://54.252.201.93:5000";
 
 // ✅ Safe fetch
 const safeFetch = async (url: string, opts: RequestInit = {}) => {
@@ -77,6 +76,8 @@ function MessagesInner() {
     const parsed = JSON.parse(stored);
     const t = parsed.token || localStorage.getItem("token");
     if (!t) { router.push("/login"); return; }
+    console.log("🔐 AUTH user:", parsed);
+    console.log("🔐 myId will be:", parsed?.id || parsed?.user?._id || parsed?.user?.id || parsed?._id);
     setUser(parsed);
     setToken(t);
   }, []);
@@ -96,8 +97,9 @@ function MessagesInner() {
 
     socket.on("connect", () => {
       console.log("✅ Socket connected:", socket.id);
-      // Join apni room
+      console.log("✅ Socket joining room with myId:", myId);
       if (myId) socket.emit("join", myId);
+      else console.warn("⚠️ myId missing — socket room join nahi hua!");
     });
 
     socket.on("disconnect", () => {
@@ -152,53 +154,7 @@ function MessagesInner() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token, user]);
-
-  /* ===== SOCKET.IO SETUP ===== */
-  useEffect(() => {
-    if (!token || !user) return;
-
-    const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
-
-    const socket = io(SOCKET_URL, {
-      transports: ["websocket"],
-      auth: { token },
-      autoConnect: true,
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log("✅ Socket connected:", socket.id);
-      if (myId) socket.emit("join", myId);
-    });
-
-    socket.on("disconnect", () => console.log("❌ Socket disconnected"));
-
-    // ✅ Real-time new message
-    socket.on("newMessage", (msg: any) => {
-      console.log("📨 Socket newMessage:", msg);
-      const currentConv = activeConvRef.current;
-      if (!currentConv) return;
-      const msgConvId = msg.conversationId || msg.conversation;
-      const isCurrentConv = msgConvId === currentConv._id || msgConvId?.toString() === currentConv._id?.toString();
-      if (isCurrentConv) {
-        setMessages(prev => {
-          if (prev.some(m => m._id === msg._id)) return prev;
-          return [...prev, msg];
-        });
-        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-      }
-      // Sidebar last message update
-      setConversations(prev =>
-        prev.map(c => c._id === msgConvId ? { ...c, lastMessage: msg.text, lastMessageAt: msg.createdAt } : c)
-      );
-    });
-
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [token, user]);
+  }, [token]); // ✅ Sirf token — user change pe double connect nahi hoga
 
   /* ===== FETCH CONVERSATIONS ===== */
   useEffect(() => {
@@ -265,6 +221,7 @@ function MessagesInner() {
   };
 
   const openConversation = (conv: any) => {
+    console.log("💬 Opening conv:", conv._id, "| participants:", conv.participants);
     setActiveConv(conv);
     fetchMessages(conv._id);
 
@@ -285,11 +242,12 @@ function MessagesInner() {
       const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log("MESSAGES raw:", data);
-      if (!ok || !data) return;
+      console.log("📩 MESSAGES raw:", data);
+      if (!ok || !data) { console.warn("⚠️ Messages fetch failed"); return; }
       const msgs = Array.isArray(data.data) ? data.data
         : Array.isArray(data.messages) ? data.messages
         : data.conversation?.messages || [];
+      console.log("📩 MESSAGES count:", msgs.length, "| First msg:", msgs[0]);
       setMessages(msgs);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
     } catch (err) {
@@ -356,12 +314,13 @@ function MessagesInner() {
         }
       }
 
+      console.log("📤 SENDING to convId:", convId, "| text:", msgText);
       const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ text: msgText }),
       });
-      console.log("SEND:", data);
+      console.log("📤 SEND response ok:", ok, "| data:", data);
 
       if (!ok) {
         setMessages(prev => prev.filter(m => m._id !== tempMsg._id));
@@ -662,6 +621,7 @@ function MessagesInner() {
                   messages.map((msg, idx) => {
                     const senderId = msg.sender?._id || msg.sender;
                     const isMe = myId && senderId && senderId.toString() === myId.toString();
+                    if (idx === 0) console.log("🔍 myId:", myId, "| msg[0] senderId:", senderId, "| isMe:", isMe);
                     const prevMsg = messages[idx - 1];
                     const showDate = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
                     return (
