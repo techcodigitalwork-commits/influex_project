@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
 const API = "http://54.252.201.93:5000/api";
 const SOCKET_URL = "http://54.252.201.93:5000";
 
 export default function MessagesInner() {
+  const searchParams = useSearchParams();
+
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [myId, setMyId] = useState<string | null>(null);
@@ -16,29 +19,37 @@ export default function MessagesInner() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
+  const [loadingConvs, setLoadingConvs] = useState(true);
 
   const socketRef = useRef<Socket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvRef = useRef<any>(null);
 
-  /* ================= AUTH ================= */
+  /* ================= AUTH — read from cb_user ================= */
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Support both storage formats
+    const cbUser = localStorage.getItem("cb_user");
+    if (cbUser) {
+      const parsed = JSON.parse(cbUser);
+      setUser(parsed);
+      // cb_user stores token inside the object
+      const tok = parsed.token || parsed.accessToken;
+      if (tok) setToken(tok);
+      return;
+    }
+
+    // Fallback: separate keys
     const t = localStorage.getItem("token");
     const u = localStorage.getItem("user");
-
     if (t) setToken(t);
     if (u) setUser(JSON.parse(u));
   }, []);
 
   useEffect(() => {
     if (!user) return;
-
-    const id =
-      user?.id ||
-      user?.user?._id ||
-      user?.user?.id ||
-      user?._id;
-
+    const id = user?.id || user?._id || user?.user?._id || user?.user?.id;
     if (id) setMyId(id.toString());
   }, [user]);
 
@@ -70,7 +81,6 @@ export default function MessagesInner() {
         );
       }
 
-      // Update sidebar last message
       setConversations(prev =>
         prev.map(c =>
           c._id?.toString() === msgConvId
@@ -89,21 +99,35 @@ export default function MessagesInner() {
   /* ================= LOAD CONVERSATIONS ================= */
   useEffect(() => {
     if (!token) return;
+    setLoadingConvs(true);
 
     fetch(`${API}/conversations/my`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(data => {
-        setConversations(data?.data || []);
+        const convs = data?.data || [];
+        setConversations(convs);
+
+        // Auto-open conversation if userId param is present
+        const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
+        if (targetUserId && convs.length > 0) {
+          const matched = convs.find((c: any) =>
+            c.participants?.some((p: any) => {
+              const pid = (p?._id || p)?.toString();
+              return pid === targetUserId;
+            })
+          );
+          if (matched) setActiveConv(matched);
+        }
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setLoadingConvs(false));
   }, [token]);
 
   /* ================= LOAD MESSAGES ================= */
   useEffect(() => {
     if (!token || !activeConv) return;
-
     activeConvRef.current = activeConv;
 
     fetch(`${API}/conversations/messages/${activeConv._id}`, {
@@ -124,23 +148,33 @@ export default function MessagesInner() {
   /* ================= HELPERS ================= */
   const getOtherParticipant = (conv: any) => {
     if (!conv?.participants || !myId) return null;
-
     return conv.participants.find((p: any) => {
       const pid = (p?._id || p)?.toString();
       return pid !== myId;
     });
   };
 
+  // Robust name extraction — handles populated objects and plain IDs
   const getName = (p: any): string => {
     if (!p) return "Unknown";
     if (typeof p === "string") return "User";
-
     return (
       p.name ||
       p.username ||
+      p.fullName ||
       p.email?.split("@")[0] ||
       "User"
     );
+  };
+
+  const getAvatar = (p: any): string => {
+    if (!p || typeof p === "string") return "";
+    return p.profileImage || p.avatar || p.photo || "";
+  };
+
+  const getInitial = (p: any): string => {
+    const name = getName(p);
+    return name.charAt(0).toUpperCase();
   };
 
   /* ================= SEND MESSAGE ================= */
@@ -163,7 +197,6 @@ export default function MessagesInner() {
       );
 
       const data = await res.json();
-
       if (data?.success) {
         setNewMsg("");
       }
@@ -174,90 +207,445 @@ export default function MessagesInner() {
     }
   };
 
+  const activeOther = activeConv ? getOtherParticipant(activeConv) : null;
+
   /* ================= UI ================= */
   return (
-    <div className="flex h-screen bg-gray-100">
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .msg-root { display: flex; height: 100vh; font-family: 'Plus Jakarta Sans', sans-serif; background: #f5f5f0; }
 
-      {/* SIDEBAR */}
-      <div className="w-1/3 bg-white border-r overflow-y-auto">
-        <h2 className="p-4 font-bold text-lg">Chats</h2>
+        /* SIDEBAR */
+        .msg-sidebar { width: 320px; min-width: 280px; background: #fff; border-right: 1.5px solid #ebebeb; display: flex; flex-direction: column; }
+        .msg-sidebar-header { padding: 20px 20px 14px; border-bottom: 1px solid #f0f0f0; }
+        .msg-sidebar-title { font-size: 18px; font-weight: 800; color: #111; }
+        .msg-conv-list { flex: 1; overflow-y: auto; }
+        .msg-conv-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; border-bottom: 1px solid #f7f7f7; transition: background 0.15s; }
+        .msg-conv-item:hover { background: #f7f7ff; }
+        .msg-conv-item.active { background: #eef2ff; }
+        .msg-conv-av { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #4f46e5, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; color: #fff; flex-shrink: 0; overflow: hidden; }
+        .msg-conv-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .msg-conv-info { flex: 1; min-width: 0; }
+        .msg-conv-name { font-size: 14px; font-weight: 700; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .msg-conv-last { font-size: 12px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+        .msg-conv-empty { padding: 40px 20px; text-align: center; color: #bbb; font-size: 13px; }
 
-        {conversations.map((conv) => {
-          const other = getOtherParticipant(conv);
+        /* CHAT AREA */
+        .msg-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .msg-chat-header { background: #fff; border-bottom: 1.5px solid #ebebeb; padding: 16px 20px; display: flex; align-items: center; gap: 12px; }
+        .msg-chat-av { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #4f46e5, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; color: #fff; flex-shrink: 0; overflow: hidden; }
+        .msg-chat-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .msg-chat-name { font-size: 15px; font-weight: 800; color: #111; }
+        .msg-chat-role { font-size: 12px; color: #aaa; margin-top: 1px; }
 
-          return (
-            <div
-              key={conv._id}
-              onClick={() => setActiveConv(conv)}
-              className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${
-                activeConv?._id === conv._id ? "bg-gray-200" : ""
-              }`}
-            >
-              <div className="font-medium">
-                {getName(other)}
+        /* Messages */
+        .msg-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; background: #f9f9f6; }
+        .msg-bubble-wrap { display: flex; }
+        .msg-bubble-wrap.me { justify-content: flex-end; }
+        .msg-bubble { max-width: 65%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; }
+        .msg-bubble.me { background: #4f46e5; color: #fff; border-bottom-right-radius: 4px; }
+        .msg-bubble.them { background: #fff; color: #222; border: 1.5px solid #ebebeb; border-bottom-left-radius: 4px; }
+        .msg-bubble-time { font-size: 10px; margin-top: 4px; opacity: 0.6; text-align: right; }
+
+        /* Input */
+        .msg-input-bar { background: #fff; border-top: 1.5px solid #ebebeb; padding: 14px 16px; display: flex; gap: 10px; align-items: center; }
+        .msg-input { flex: 1; border: 1.5px solid #e0e0e0; border-radius: 12px; padding: 10px 14px; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; transition: border 0.2s; }
+        .msg-input:focus { border-color: #4f46e5; }
+        .msg-send-btn { background: #4f46e5; color: #fff; border: none; border-radius: 12px; padding: 10px 20px; font-size: 14px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+        .msg-send-btn:hover:not(:disabled) { background: #4338ca; }
+        .msg-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Empty chat state */
+        .msg-no-conv { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bbb; gap: 10px; }
+        .msg-no-conv-icon { font-size: 48px; }
+        .msg-no-conv-text { font-size: 15px; font-weight: 600; }
+
+        @media(max-width: 640px) {
+          .msg-sidebar { width: 80px; min-width: 64px; }
+          .msg-sidebar-header { padding: 14px 10px; }
+          .msg-sidebar-title { display: none; }
+          .msg-conv-info { display: none; }
+          .msg-conv-item { justify-content: center; padding: 12px 8px; }
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner-sm { width: 20px; height: 20px; border: 2px solid #e0e0e0; border-top-color: #4f46e5; border-radius: 50%; animation: spin 0.8s linear infinite; }
+      `}</style>
+
+      <div className="msg-root">
+        {/* SIDEBAR */}
+        <div className="msg-sidebar">
+          <div className="msg-sidebar-header">
+            <div className="msg-sidebar-title">Messages</div>
+          </div>
+
+          <div className="msg-conv-list">
+            {loadingConvs ? (
+              <div style={{ padding: "30px", display: "flex", justifyContent: "center" }}>
+                <div className="spinner-sm" />
               </div>
+            ) : conversations.length === 0 ? (
+              <div className="msg-conv-empty">No conversations yet</div>
+            ) : (
+              conversations.map((conv) => {
+                const other = getOtherParticipant(conv);
+                const avatarUrl = getAvatar(other);
+                const name = getName(other);
+                const initial = getInitial(other);
 
-              {conv.lastMessage && (
-                <div className="text-sm text-gray-500 truncate">
-                  {conv.lastMessage}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* CHAT AREA */}
-      <div className="flex flex-col flex-1">
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {messages.map((msg, i) => {
-            const senderId = (msg.sender?._id || msg.sender)?.toString();
-            const isMe = myId && senderId === myId;
-
-            return (
-              <div
-                key={i}
-                className={`mb-2 p-2 rounded w-fit max-w-xs ${
-                  isMe
-                    ? "bg-blue-200 ml-auto"
-                    : "bg-gray-200"
-                }`}
-              >
-                {msg.text}
-                <div className="text-xs text-gray-500">
-                  {new Date(msg.createdAt).toLocaleTimeString()}
-                </div>
-              </div>
-            );
-          })}
-          <div ref={messagesEndRef} />
+                return (
+                  <div
+                    key={conv._id}
+                    className={`msg-conv-item ${activeConv?._id === conv._id ? "active" : ""}`}
+                    onClick={() => setActiveConv(conv)}
+                  >
+                    <div className="msg-conv-av">
+                      {avatarUrl ? <img src={avatarUrl} alt={name} /> : initial}
+                    </div>
+                    <div className="msg-conv-info">
+                      <div className="msg-conv-name">{name}</div>
+                      {conv.lastMessage && (
+                        <div className="msg-conv-last">{conv.lastMessage}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
-        {/* Input */}
-        {activeConv && (
-          <div className="flex border-t">
-            <input
-              value={newMsg}
-              onChange={(e) => setNewMsg(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              className="flex-1 p-3 outline-none"
-              placeholder="Type message..."
-            />
-            <button
-              onClick={sendMessage}
-              disabled={sending}
-              className="bg-blue-500 text-white px-6 disabled:opacity-50"
-            >
-              Send
-            </button>
-          </div>
-        )}
+        {/* CHAT AREA */}
+        <div className="msg-chat">
+          {activeConv ? (
+            <>
+              {/* Header */}
+              <div className="msg-chat-header">
+                <div className="msg-chat-av">
+                  {getAvatar(activeOther)
+                    ? <img src={getAvatar(activeOther)} alt="avatar" />
+                    : getInitial(activeOther)}
+                </div>
+                <div>
+                  <div className="msg-chat-name">{getName(activeOther)}</div>
+                  <div className="msg-chat-role">{activeOther?.role || ""}</div>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="msg-messages">
+                {messages.map((msg, i) => {
+                  const senderId = (msg.sender?._id || msg.sender)?.toString();
+                  const isMe = myId && senderId === myId;
+
+                  return (
+                    <div key={i} className={`msg-bubble-wrap ${isMe ? "me" : ""}`}>
+                      <div className={`msg-bubble ${isMe ? "me" : "them"}`}>
+                        {msg.text}
+                        <div className="msg-bubble-time">
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="msg-input-bar">
+                <input
+                  className="msg-input"
+                  value={newMsg}
+                  onChange={(e) => setNewMsg(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                  placeholder={`Message ${getName(activeOther)}...`}
+                />
+                <button
+                  className="msg-send-btn"
+                  onClick={sendMessage}
+                  disabled={sending || !newMsg.trim()}
+                >
+                  {sending ? "..." : "Send"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="msg-no-conv">
+              <div className="msg-no-conv-icon">💬</div>
+              <div className="msg-no-conv-text">Select a conversation to start chatting</div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
+
+
+
+//"use client";
+
+// import { useEffect, useState, useRef } from "react";
+// import { io, Socket } from "socket.io-client";
+
+// const API = "http://54.252.201.93:5000/api";
+// const SOCKET_URL = "http://54.252.201.93:5000";
+
+// export default function MessagesInner() {
+//   const [token, setToken] = useState<string | null>(null);
+//   const [user, setUser] = useState<any>(null);
+//   const [myId, setMyId] = useState<string | null>(null);
+
+//   const [conversations, setConversations] = useState<any[]>([]);
+//   const [activeConv, setActiveConv] = useState<any>(null);
+//   const [messages, setMessages] = useState<any[]>([]);
+//   const [newMsg, setNewMsg] = useState("");
+//   const [sending, setSending] = useState(false);
+
+//   const socketRef = useRef<Socket | null>(null);
+//   const messagesEndRef = useRef<HTMLDivElement>(null);
+//   const activeConvRef = useRef<any>(null);
+
+//   /* ================= AUTH ================= */
+//   useEffect(() => {
+//     const t = localStorage.getItem("token");
+//     const u = localStorage.getItem("user");
+
+//     if (t) setToken(t);
+//     if (u) setUser(JSON.parse(u));
+//   }, []);
+
+//   useEffect(() => {
+//     if (!user) return;
+
+//     const id =
+//       user?.id ||
+//       user?.user?._id ||
+//       user?.user?.id ||
+//       user?._id;
+
+//     if (id) setMyId(id.toString());
+//   }, [user]);
+
+//   /* ================= SOCKET ================= */
+//   useEffect(() => {
+//     if (!token || !myId) return;
+//     if (socketRef.current) return;
+
+//     const socket = io(SOCKET_URL, {
+//       transports: ["websocket"],
+//       auth: { token },
+//     });
+
+//     socketRef.current = socket;
+
+//     socket.on("connect", () => {
+//       socket.emit("join", myId);
+//     });
+
+//     socket.on("newMessage", (msg: any) => {
+//       const conv = activeConvRef.current;
+//       if (!conv) return;
+
+//       const msgConvId = (msg.conversationId || msg.conversation)?.toString();
+
+//       if (msgConvId === conv._id?.toString()) {
+//         setMessages(prev =>
+//           prev.some(m => m._id === msg._id) ? prev : [...prev, msg]
+//         );
+//       }
+
+//       // Update sidebar last message
+//       setConversations(prev =>
+//         prev.map(c =>
+//           c._id?.toString() === msgConvId
+//             ? { ...c, lastMessage: msg.text, updatedAt: msg.createdAt }
+//             : c
+//         )
+//       );
+//     });
+
+//     return () => {
+//       socket.disconnect();
+//       socketRef.current = null;
+//     };
+//   }, [token, myId]);
+
+//   /* ================= LOAD CONVERSATIONS ================= */
+//   useEffect(() => {
+//     if (!token) return;
+
+//     fetch(`${API}/conversations/my`, {
+//       headers: { Authorization: `Bearer ${token}` },
+//     })
+//       .then(r => r.json())
+//       .then(data => {
+//         setConversations(data?.data || []);
+//       })
+//       .catch(console.error);
+//   }, [token]);
+
+//   /* ================= LOAD MESSAGES ================= */
+//   useEffect(() => {
+//     if (!token || !activeConv) return;
+
+//     activeConvRef.current = activeConv;
+
+//     fetch(`${API}/conversations/messages/${activeConv._id}`, {
+//       headers: { Authorization: `Bearer ${token}` },
+//     })
+//       .then(r => r.json())
+//       .then(data => {
+//         setMessages(data?.data || []);
+//       })
+//       .catch(console.error);
+//   }, [activeConv, token]);
+
+//   /* ================= AUTO SCROLL ================= */
+//   useEffect(() => {
+//     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+//   }, [messages]);
+
+//   /* ================= HELPERS ================= */
+//   const getOtherParticipant = (conv: any) => {
+//     if (!conv?.participants || !myId) return null;
+
+//     return conv.participants.find((p: any) => {
+//       const pid = (p?._id || p)?.toString();
+//       return pid !== myId;
+//     });
+//   };
+
+//   const getName = (p: any): string => {
+//     if (!p) return "Unknown";
+//     if (typeof p === "string") return "User";
+
+//     return (
+//       p.name ||
+//       p.username ||
+//       p.email?.split("@")[0] ||
+//       "User"
+//     );
+//   };
+
+//   /* ================= SEND MESSAGE ================= */
+//   const sendMessage = async () => {
+//     if (!newMsg.trim() || sending || !activeConv) return;
+
+//     try {
+//       setSending(true);
+
+//       const res = await fetch(
+//         `${API}/conversations/send/${activeConv._id}`,
+//         {
+//           method: "POST",
+//           headers: {
+//             "Content-Type": "application/json",
+//             Authorization: `Bearer ${token}`,
+//           },
+//           body: JSON.stringify({ text: newMsg.trim() }),
+//         }
+//       );
+
+//       const data = await res.json();
+
+//       if (data?.success) {
+//         setNewMsg("");
+//       }
+//     } catch (err) {
+//       console.error(err);
+//     } finally {
+//       setSending(false);
+//     }
+//   };
+
+//   /* ================= UI ================= */
+//   return (
+//     <div className="flex h-screen bg-gray-100">
+
+//       {/* SIDEBAR */}
+//       <div className="w-1/3 bg-white border-r overflow-y-auto">
+//         <h2 className="p-4 font-bold text-lg">Chats</h2>
+
+//         {conversations.map((conv) => {
+//           const other = getOtherParticipant(conv);
+
+//           return (
+//             <div
+//               key={conv._id}
+//               onClick={() => setActiveConv(conv)}
+//               className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${
+//                 activeConv?._id === conv._id ? "bg-gray-200" : ""
+//               }`}
+//             >
+//               <div className="font-medium">
+//                 {getName(other)}
+//               </div>
+
+//               {conv.lastMessage && (
+//                 <div className="text-sm text-gray-500 truncate">
+//                   {conv.lastMessage}
+//                 </div>
+//               )}
+//             </div>
+//           );
+//         })}
+//       </div>
+
+//       {/* CHAT AREA */}
+//       <div className="flex flex-col flex-1">
+
+//         {/* Messages */}
+//         <div className="flex-1 overflow-y-auto p-4">
+//           {messages.map((msg, i) => {
+//             const senderId = (msg.sender?._id || msg.sender)?.toString();
+//             const isMe = myId && senderId === myId;
+
+//             return (
+//               <div
+//                 key={i}
+//                 className={`mb-2 p-2 rounded w-fit max-w-xs ${
+//                   isMe
+//                     ? "bg-blue-200 ml-auto"
+//                     : "bg-gray-200"
+//                 }`}
+//               >
+//                 {msg.text}
+//                 <div className="text-xs text-gray-500">
+//                   {new Date(msg.createdAt).toLocaleTimeString()}
+//                 </div>
+//               </div>
+//             );
+//           })}
+//           <div ref={messagesEndRef} />
+//         </div>
+
+//         {/* Input */}
+//         {activeConv && (
+//           <div className="flex border-t">
+//             <input
+//               value={newMsg}
+//               onChange={(e) => setNewMsg(e.target.value)}
+//               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+//               className="flex-1 p-3 outline-none"
+//               placeholder="Type message..."
+//             />
+//             <button
+//               onClick={sendMessage}
+//               disabled={sending}
+//               className="bg-blue-500 text-white px-6 disabled:opacity-50"
+//             >
+//               Send
+//             </button>
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   );
+// }
 
 
 
