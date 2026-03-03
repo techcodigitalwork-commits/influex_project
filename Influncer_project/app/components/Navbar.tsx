@@ -362,7 +362,7 @@ export default function Navbar() {
             ) : (
               <>
                 <Link href="/login" className="nav-login">Login</Link>
-                <Link href="/join" className="nav-join">Join Free</Link>
+                <Link href="/join" className="nav-join">Join</Link>
               </>
             )}
           </div>

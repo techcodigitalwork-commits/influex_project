@@ -1,107 +1,323 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
+// import { io, Socket } from "socket.io-client";
 
 const API = "http://54.252.201.93:5000/api";
 const SOCKET_URL = "http://54.252.201.93:5000";
+// const SOCKET_URL = "http://54.252.201.93:5000";
 
-export default function MessagesInner() {
-  const [token, setToken] = useState<string | null>(null);
+// ✅ Safe fetch
+const safeFetch = async (url: string, opts: RequestInit = {}) => {
+  try {
+    const res = await fetch(url, opts);
+    const text = await res.text();
+    if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
+    const data = JSON.parse(text);
+    return { ok: res.ok, data };
+  } catch {
+    return { ok: false, data: null };
+  }
+};
+
+function MessagesInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetUserId = searchParams.get("userId") || searchParams.get("with");
+  const targetUserName = searchParams.get("name") || "Creator";
+  const targetCampaignId = searchParams.get("campaignId");
+
   const [user, setUser] = useState<any>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
-
+  const [token, setToken] = useState("");
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConv, setActiveConv] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [profileModal, setProfileModal] = useState<any>(null);
+  const [profileFetching, setProfileFetching] = useState(false);
+  const [profileCache, setProfileCache] = useState<Record<string, any>>({});
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<any>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const activeConvRef = useRef<any>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // activeConv ref sync
+  useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
+  const socketRef = useRef<Socket | null>(null);
+  const activeConvRef = useRef<any>(null);
+
+  // Keep ref in sync
+  useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
+
+  // Mobile check
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // Scroll to bottom
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   /* ===== AUTH ===== */
   useEffect(() => {
-    const t = localStorage.getItem("token");
-    const u = localStorage.getItem("user");
-
-    if (t) setToken(t);
-    if (u) setUser(JSON.parse(u));
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("cb_user");
+    if (!stored) { router.push("/login"); return; }
+    const parsed = JSON.parse(stored);
+    const t = parsed.token || localStorage.getItem("token");
+    if (!t) { router.push("/login"); return; }
+    setUser(parsed);
+    setToken(t);
   }, []);
 
-  const myId =
-    user?.user?._id ||
-    user?.user?.id ||
-    user?._id ||
-    user?.id;
-
-  /* ===== SOCKET CONNECT ===== */
+  /* ===== SOCKET SETUP ===== */
   useEffect(() => {
-    if (!token || !myId) return;
+    if (!token || !user) return;
 
-    const newSocket = io(SOCKET_URL, {
+    const myId = user?.id || user?.user?._id || user?.user?.id || user?._id;
+
+    const socket = io(SOCKET_URL, {
       transports: ["websocket"],
+      auth: { token },
+      autoConnect: true,
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("✅ Socket connected:", socket.id);
+      // Join apni room
+      if (myId) socket.emit("join", myId);
     });
 
-    setSocket(newSocket);
-
-    newSocket.on("connect", () => {
-      console.log("✅ Socket connected:", newSocket.id);
-      newSocket.emit("joinRoom", myId);
+    socket.on("disconnect", () => {
+      console.log("❌ Socket disconnected");
     });
 
-    newSocket.on("receiveMessage", (msg: any) => {
-      if (activeConv && msg.conversationId === activeConv._id) {
-        setMessages((prev) => [...prev, msg]);
+    // ✅ Naya message aaya — real-time update
+    socket.on("newMessage", (msg: any) => {
+      console.log("📨 Socket newMessage:", msg);
+      const currentConv = activeConvRef.current;
+      if (!currentConv) return;
+
+      const msgConvId = msg.conversationId || msg.conversation;
+      const isCurrentConv =
+        msgConvId === currentConv._id ||
+        msgConvId?.toString() === currentConv._id?.toString();
+
+      if (isCurrentConv) {
+        setMessages(prev => {
+          // Duplicate check
+          const exists = prev.some(m => m._id === msg._id);
+          if (exists) return prev;
+          return [...prev, msg];
+        });
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       }
+
+      // Conversation list mein last message update karo
+      setConversations(prev =>
+        prev.map(c =>
+          c._id === msgConvId
+            ? { ...c, lastMessage: msg.text, lastMessageAt: msg.createdAt }
+            : c
+        )
+      );
     });
 
-    return () => newSocket.disconnect();
-  }, [token, myId, activeConv]);
+    // ✅ Online/offline tracking
+    socket.on("onlineUsers", (users: string[]) => {
+      setOnlineUsers(users);
+    });
 
-  /* ===== LOAD CONVERSATIONS ===== */
+    socket.on("userOnline", (userId: string) => {
+      setOnlineUsers(prev => [...new Set([...prev, userId])]);
+    });
+
+    socket.on("userOffline", (userId: string) => {
+      setOnlineUsers(prev => prev.filter(id => id !== userId));
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token, user]);
+
+  /* ===== SOCKET.IO SETUP ===== */
+  useEffect(() => {
+    if (!token || !user) return;
+
+    const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
+
+    const socket = io(SOCKET_URL, {
+      transports: ["websocket"],
+      auth: { token },
+      autoConnect: true,
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("✅ Socket connected:", socket.id);
+      if (myId) socket.emit("join", myId);
+    });
+
+    socket.on("disconnect", () => console.log("❌ Socket disconnected"));
+
+    // ✅ Real-time new message
+    socket.on("newMessage", (msg: any) => {
+      console.log("📨 Socket newMessage:", msg);
+      const currentConv = activeConvRef.current;
+      if (!currentConv) return;
+      const msgConvId = msg.conversationId || msg.conversation;
+      const isCurrentConv = msgConvId === currentConv._id || msgConvId?.toString() === currentConv._id?.toString();
+      if (isCurrentConv) {
+        setMessages(prev => {
+          if (prev.some(m => m._id === msg._id)) return prev;
+          return [...prev, msg];
+        });
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      }
+      // Sidebar last message update
+      setConversations(prev =>
+        prev.map(c => c._id === msgConvId ? { ...c, lastMessage: msg.text, lastMessageAt: msg.createdAt } : c)
+      );
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token, user]);
+
+  /* ===== FETCH CONVERSATIONS ===== */
   useEffect(() => {
     if (!token) return;
-
-    fetch(`${API}/conversations/my`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then(setConversations)
-      .catch(console.error);
+    fetchConversations();
   }, [token]);
 
-  /* ===== LOAD MESSAGES ===== */
+  /* ===== AUTO-OPEN if userId in URL ===== */
   useEffect(() => {
-    if (!token || !activeConv) return;
+    if (!token || !targetUserId || conversations.length === 0) return;
+    const existing = conversations.find((c: any) =>
+      c.participants?.some((p: any) => (p._id || p) === targetUserId)
+    );
+    if (existing) openConversation(existing);
+  }, [conversations, targetUserId]);
 
-    fetch(`${API}/messages/${activeConv._id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then(setMessages)
-      .catch(console.error);
-  }, [activeConv, token]);
+  const fetchConversations = async () => {
+    try {
+      setLoading(true);
+      const { ok, data } = await safeFetch(`${API}/conversations/my`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("CONVS raw:", data);
+      const list = data?.data || data?.conversations || [];
+      console.log("CONVS list:", list.length, "items");
+      if (list.length > 0) console.log("FIRST CONV PARTICIPANTS:", list[0].participants);
+      setConversations(list);
+      if (list.length > 0 && !targetUserId) openConversation(list[0]);
 
-  /* ===== AUTO SCROLL ===== */
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+      // Participants profiles fetch
+      const allIds: string[] = [];
+      list.forEach((conv: any) => {
+        (conv.participants || []).forEach((p: any) => {
+          const id = p._id?.toString() || (typeof p === "string" ? p : "");
+          if (id) allIds.push(id);
+        });
+      });
+      fetchParticipantProfiles([...new Set(allIds)], token);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchParticipantProfiles = async (userIds: string[], tok: string) => {
+    const cache: Record<string, any> = {};
+    await Promise.all(
+      userIds.map(async (uid) => {
+        try {
+          const { ok, data } = await safeFetch(`${API}/profile/user/${uid}`, {
+            headers: { Authorization: `Bearer ${tok}` },
+          });
+          if (ok && data) {
+            const p = data.profile || data.data || (data._id ? data : null);
+            if (p) cache[uid] = p;
+          }
+        } catch { }
+      })
+    );
+    if (Object.keys(cache).length > 0) {
+      setProfileCache(prev => ({ ...prev, ...cache }));
+    }
+  };
+
+  const openConversation = (conv: any) => {
+    setActiveConv(conv);
+    fetchMessages(conv._id);
+
+    // ✅ Socket room join karo
+    if (socketRef.current) {
+      socketRef.current.emit("joinConversation", conv._id);
+    }
+
+    // Polling stop karo — socket handle karega
+    if (pollRef.current) clearInterval(pollRef.current);
+    // Fallback polling — socket nahi mila toh
+    pollRef.current = setInterval(() => fetchMessages(conv._id), 8000);
+  };
+
+  const fetchMessages = async (convId: string) => {
+    try {
+      setMsgLoading(true);
+      const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("MESSAGES raw:", data);
+      if (!ok || !data) return;
+      const msgs = Array.isArray(data.data) ? data.data
+        : Array.isArray(data.messages) ? data.messages
+        : data.conversation?.messages || [];
+      setMessages(msgs);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setMsgLoading(false);
+    }
+  };
 
   /* ===== CREATE CONVERSATION ===== */
-  const createConversation = async (targetUserId: string) => {
+  const createConversation = async (): Promise<string | null> => {
+    if (!targetUserId) return null;
     try {
-      const res = await fetch(`${API}/conversations/create`, {
+      const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+      if (!campaignId) { console.error("No campaignId"); return null; }
+      const { ok, data } = await safeFetch(`${API}/conversations/create`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ userId: targetUserId }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ campaignId, participantId: targetUserId }),
       });
-
-      const data = await res.json();
-      setActiveConv(data);
-      return data._id;
+      const conv = data?.conversation || data?.data;
+      if (ok && conv) {
+        setActiveConv(conv);
+        setConversations(prev => [conv, ...prev]);
+        if (socketRef.current) socketRef.current.emit("joinConversation", conv._id);
+        return conv._id;
+      }
+      return null;
     } catch (err) {
       console.error(err);
       return null;
@@ -110,88 +326,629 @@ export default function MessagesInner() {
 
   /* ===== SEND MESSAGE ===== */
   const sendMessage = async () => {
-    if (!newMsg.trim() || sending || !activeConv) return;
+    if (!newMsg.trim() || sending) return;
+
+    const msgText = newMsg.trim();
+    setNewMsg("");
+
+    // Optimistic UI
+    const myId = user?.id || user?.user?._id || user?.user?.id || user?._id;
+    const tempMsg = {
+      _id: "temp_" + Date.now(),
+      text: msgText,
+      sender: myId,
+      createdAt: new Date().toISOString(),
+      temp: true,
+    };
+    setMessages(prev => [...prev, tempMsg]);
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
 
     try {
       setSending(true);
+      let convId = activeConv?._id;
+      if (!convId && targetUserId) {
+        convId = await createConversation();
+        if (!convId) {
+          setMessages(prev => prev.filter(m => m._id !== tempMsg._id));
+          setNewMsg(msgText);
+          alert("Could not start conversation");
+          return;
+        }
+      }
 
-      if (socket) {
-        socket.emit("sendMessage", {
-          conversationId: activeConv._id,
-          senderId: myId,
-          text: newMsg.trim(),
+      const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: msgText }),
+      });
+      console.log("SEND:", data);
+
+      if (!ok) {
+        setMessages(prev => prev.filter(m => m._id !== tempMsg._id));
+        setNewMsg(msgText);
+        alert(data?.message || "Send failed");
+        return;
+      }
+
+      // ✅ Socket se dusre user ko notify karo
+      if (socketRef.current && data?.data) {
+        socketRef.current.emit("sendMessage", {
+          ...data.data,
+          conversationId: convId,
         });
       }
 
-      setNewMsg("");
+      // Server se fresh messages fetch karo
+      await fetchMessages(convId);
+
     } catch (err) {
       console.error(err);
+      setMessages(prev => prev.filter(m => m._id !== tempMsg._id));
+      setNewMsg(msgText);
     } finally {
       setSending(false);
     }
   };
 
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  const myId = user?.id || user?.user?._id || user?.user?.id || user?._id;
+
+  const getOtherParticipant = (conv: any) => {
+    if (!conv?.participants || !myId) return null;
+    return conv.participants.find((p: any) => {
+      const pid = p?._id?.toString() || p?.toString();
+      return pid !== myId.toString();
+    }) || null;
+  };
+
+  const getAvatarColor = (name: string): string => {
+    const colors = ["#ef4444","#f97316","#eab308","#22c55e","#14b8a6","#3b82f6","#8b5cf6","#ec4899","#06b6d4","#a855f7","#f43f5e","#10b981"];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const getParticipantName = (p: any): string => {
+    if (!p) return "User";
+    return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
+  };
+
+  const getParticipantImage = (p: any): string | null => {
+    if (!p) return null;
+    const direct = p.profileImage || p.profile?.profileImage || p.avatar || null;
+    if (direct) return direct;
+    const uid = p._id?.toString() || (typeof p === "string" ? p : "");
+    const cached = uid ? profileCache[uid] : null;
+    return cached?.profileImage || cached?.avatar || null;
+  };
+
+  const isUserOnline = (p: any): boolean => {
+    const uid = p?._id?.toString() || (typeof p === "string" ? p : "");
+    return uid ? onlineUsers.includes(uid) : false;
+  };
+
+  const openProfileModal = async (other: any) => {
+    if (!other || typeof other === "string") return;
+    const basicInfo = {
+      name: getParticipantName(other),
+      profileImage: getParticipantImage(other),
+      bio: other.profile?.bio || other.bio || "",
+      followers: other.profile?.followers || other.followers || "",
+      categories: other.profile?.categories || other.categories || [],
+      platform: other.profile?.platform || other.platform || "",
+      location: other.profile?.location || other.location || "",
+    };
+    setProfileModal({ ...basicInfo, _loading: true });
+    const userId = other._id?.toString() || other.id?.toString();
+    if (userId) {
+      setProfileFetching(true);
+      try {
+        const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (ok && data) {
+          const p = data.profile || data.data || (data._id ? data : null);
+          if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
+        }
+      } catch { }
+      setProfileFetching(false);
+    }
+    setProfileModal({ ...basicInfo, _loading: false });
+  };
+
+  const formatTime = (date: string) => {
+    if (!date) return "";
+    return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const formatDate = (date: string) => {
+    if (!date) return "";
+    const d = new Date(date);
+    const today = new Date();
+    const diff = today.getDate() - d.getDate();
+    if (diff === 0) return "Today";
+    if (diff === 1) return "Yesterday";
+    return d.toLocaleDateString();
+  };
+
   return (
-    <div className="flex h-screen bg-gray-100">
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0}
+        .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
 
-      {/* LEFT CONVERSATIONS */}
-      <div className="w-1/3 bg-white border-r overflow-y-auto">
-        <h2 className="p-4 font-bold text-lg">Chats</h2>
+        .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+        @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+        .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+        .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+        .mp-conv-list{flex:1;overflow-y:auto}
+        .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa;position:relative}
+        .mp-conv-item:hover{background:#f9f9f9}
+        .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+        .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden;position:relative}
+        .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+        .mp-online-dot{position:absolute;bottom:1px;right:1px;width:10px;height:10px;border-radius:50%;background:#22c55e;border:2px solid #fff}
+        .mp-conv-info{flex:1;min-width:0}
+        .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+        .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+        .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
 
-        {conversations.map((c) => (
-          <div
-            key={c._id}
-            onClick={() => setActiveConv(c)}
-            className="p-3 border-b cursor-pointer hover:bg-gray-100"
-          >
-            {c.users?.map((u:any)=>u.name).join(", ")}
+        .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+        @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+        .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+        .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+        @media(max-width:768px){.mp-back-btn{display:block}}
+        .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s;position:relative}
+        .mp-header-avatar:hover{opacity:0.8}
+        .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+        .mp-header-info{flex:1}
+        .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
+        .mp-header-name-btn:hover{color:#4f46e5}
+        .mp-header-status{font-size:12px;margin-top:1px}
+        .mp-header-status.online{color:#22c55e;font-weight:600}
+        .mp-header-status.offline{color:#aaa}
+
+        .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+        .mp-date-label{text-align:center;margin:12px 0}
+        .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+        .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+        .mp-bubble-wrap.me{align-items:flex-end}
+        .mp-bubble-wrap.them{align-items:flex-start}
+        .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+        .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+        .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+        .mp-bubble.temp{opacity:0.6}
+        .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+        .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+        .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+        .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
+        .mp-input:focus{border-color:#4f46e5;background:#fff}
+        .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+        .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+        .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+        .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+        .mp-empty-icon{font-size:52px}
+        .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+        .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+        .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
+
+        /* PROFILE MODAL */
+        .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
+        @media(min-width:500px){.mp-pm-overlay{align-items:center}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
+        @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
+        @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+        .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
+        .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+        .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
+        .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+        .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
+        .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
+        .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
+        .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
+        .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
+        .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+        .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
+        .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
+        .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+        .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
+        .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
+        .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
+        .mp-pm-link:hover{background:#f0f0f0}
+      `}</style>
+
+      <div className="mp">
+        {/* SIDEBAR */}
+        <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
+          <div className="mp-sidebar-header">
+            <div className="mp-sidebar-title">Messages</div>
           </div>
-        ))}
+
+          {targetUserId && !conversations.find(c =>
+            c.participants?.some((p: any) => (p._id || p) === targetUserId)
+          ) && (
+            <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
+          )}
+
+          <div className="mp-conv-list">
+            {loading ? (
+              <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>Loading...</div>
+            ) : conversations.length === 0 && !targetUserId ? (
+              <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>No conversations yet</div>
+            ) : (
+              conversations.map((conv) => {
+                const other = getOtherParticipant(conv);
+                const name = getParticipantName(other);
+                const img = getParticipantImage(other);
+                const isActive = activeConv?._id === conv._id;
+                const online = isUserOnline(other);
+                return (
+                  <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`} onClick={() => openConversation(conv)}>
+                    <div className="mp-conv-avatar" style={{background: img ? "#e8e8e8" : getAvatarColor(name)}}>
+                      {img ? <img src={img} alt={name} onError={(e) => {(e.target as HTMLImageElement).style.display="none"}} /> : name.charAt(0).toUpperCase()}
+                      {online && <div className="mp-online-dot" />}
+                    </div>
+                    <div className="mp-conv-info">
+                      <div className="mp-conv-name">{name}</div>
+                      <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+                    </div>
+                    {conv.lastMessageAt && <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* CHAT AREA */}
+        <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
+          {!activeConv && !targetUserId ? (
+            <div className="mp-empty">
+              <div className="mp-empty-icon">💬</div>
+              <div className="mp-empty-title">Your Messages</div>
+              <div className="mp-empty-sub">Select a conversation to start chatting</div>
+            </div>
+          ) : (
+            <>
+              <div className="mp-chat-header">
+                <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
+                {activeConv ? (() => {
+                  const other = getOtherParticipant(activeConv);
+                  const name = getParticipantName(other);
+                  const img = getParticipantImage(other);
+                  const online = isUserOnline(other);
+                  return (
+                    <>
+                      <div className="mp-header-avatar" onClick={() => openProfileModal(other)} style={{background: img ? "#e8e8e8" : getAvatarColor(name)}}>
+                        {img ? <img src={img} alt={name} onError={(e) => {(e.target as HTMLImageElement).style.display="none"}} /> : name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="mp-header-info">
+                        <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>{name}</button>
+                        <div className={`mp-header-status ${online ? "online" : "offline"}`}>
+                          {online ? "● Online" : "○ Offline"}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })() : (
+                  <>
+                    <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+                    <div className="mp-header-info">
+                      <div className="mp-header-name-btn">{targetUserName}</div>
+                      <div className="mp-header-status offline">Send a message to start</div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="mp-messages">
+                {msgLoading && messages.length === 0 ? (
+                  <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>Loading messages...</div>
+                ) : messages.length === 0 ? (
+                  <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>No messages yet — say hello! 👋</div>
+                ) : (
+                  messages.map((msg, idx) => {
+                    const senderId = msg.sender?._id || msg.sender;
+                    const isMe = myId && senderId && senderId.toString() === myId.toString();
+                    const prevMsg = messages[idx - 1];
+                    const showDate = !prevMsg || new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+                    return (
+                      <div key={msg._id || idx}>
+                        {showDate && (
+                          <div className="mp-date-label">
+                            <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+                          </div>
+                        )}
+                        <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+                          <div className={`mp-bubble ${isMe ? "me" : "them"} ${msg.temp ? "temp" : ""}`}>{msg.text}</div>
+                          <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={bottomRef} />
+              </div>
+
+              <div className="mp-input-area">
+                <input
+                  className="mp-input"
+                  placeholder="Type a message..."
+                  value={newMsg}
+                  onChange={(e) => setNewMsg(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                />
+                <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+                    <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* RIGHT CHAT */}
-      <div className="flex flex-col flex-1">
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`mb-2 p-2 rounded w-fit max-w-xs ${
-                m.sender === myId
-                  ? "bg-blue-200 ml-auto"
-                  : "bg-gray-200"
-              }`}
-            >
-              {m.text}
-              <div className="text-xs text-gray-500">
-                {new Date(m.createdAt).toLocaleTimeString()}
+      {/* PROFILE MODAL */}
+      {profileModal && (
+        <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
+          <div className="mp-pm-sheet">
+            <div className="mp-pm-top">
+              <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
+              <div className="mp-pm-avatar" style={{background: profileModal.profileImage ? "rgba(255,255,255,0.15)" : getAvatarColor(profileModal.name || "U")}}>
+                {profileModal.profileImage
+                  ? <img src={profileModal.profileImage} alt="avatar" onError={(e) => {(e.target as HTMLImageElement).style.display="none"}} />
+                  : (profileModal.name || "U").charAt(0).toUpperCase()}
+              </div>
+              <div className="mp-pm-name">{profileModal.name || "User"}</div>
+              {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
+              <div className="mp-pm-tags">
+                {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
+                  .filter(Boolean).map((c: string, i: number) => <span key={i} className="mp-pm-tag">{c}</span>)}
               </div>
             </div>
-          ))}
-          <div ref={messagesEndRef} />
+            <div className="mp-pm-body">
+              {profileFetching && <div style={{textAlign:"center",padding:"8px 0"}}><span className="mp-spinner" /></div>}
+              <div className="mp-pm-stats">
+                <div className="mp-pm-stat">
+                  <div className="mp-pm-stat-num">{profileModal.followers ? (Number(profileModal.followers) >= 1000 ? Math.floor(Number(profileModal.followers)/1000)+"K" : profileModal.followers) : "—"}</div>
+                  <div className="mp-pm-stat-label">Followers</div>
+                </div>
+                <div className="mp-pm-stat">
+                  <div className="mp-pm-stat-num">{Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}</div>
+                  <div className="mp-pm-stat-label">Niches</div>
+                </div>
+                <div className="mp-pm-stat">
+                  <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
+                  <div className="mp-pm-stat-label">Platform</div>
+                </div>
+              </div>
+              {profileModal.bio && <div><div className="mp-pm-lbl">About</div><div className="mp-pm-bio">{profileModal.bio}</div></div>}
+              {profileModal.platform && <div><div className="mp-pm-lbl">Platform</div><a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">📸 {profileModal.platform}</a></div>}
+            </div>
+          </div>
         </div>
-
-        {/* Input */}
-        <div className="flex border-t">
-          <input
-            value={newMsg}
-            onChange={(e) => setNewMsg(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            className="flex-1 p-3 outline-none"
-            placeholder="Type message..."
-          />
-          <button
-            onClick={sendMessage}
-            className="bg-blue-500 text-white px-6"
-          >
-            Send
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
+
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#aaa"}}>Loading...</div>}>
+      <MessagesInner />
+    </Suspense>
+  );
+}
+
+
+
+// "use client";
+
+// import { useEffect, useState, useRef } from "react";
+// import { io, Socket } from "socket.io-client";
+
+// const API = "http://54.252.201.93:5000/api";
+// const SOCKET_URL = "http://54.252.201.93:5000";
+
+// export default function MessagesInner() {
+//   const [token, setToken] = useState<string | null>(null);
+//   const [user, setUser] = useState<any>(null);
+//   const [socket, setSocket] = useState<Socket | null>(null);
+
+//   const [conversations, setConversations] = useState<any[]>([]);
+//   const [activeConv, setActiveConv] = useState<any>(null);
+//   const [messages, setMessages] = useState<any[]>([]);
+//   const [newMsg, setNewMsg] = useState("");
+//   const [sending, setSending] = useState(false);
+
+//   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+//   /* ===== AUTH ===== */
+//   useEffect(() => {
+//     const t = localStorage.getItem("token");
+//     const u = localStorage.getItem("user");
+
+//     if (t) setToken(t);
+//     if (u) setUser(JSON.parse(u));
+//   }, []);
+
+//   const myId =
+//     user?.user?._id ||
+//     user?.user?.id ||
+//     user?._id ||
+//     user?.id;
+
+//   /* ===== SOCKET CONNECT ===== */
+//   useEffect(() => {
+//     if (!token || !myId) return;
+
+//     const newSocket = io(SOCKET_URL, {
+//       transports: ["websocket"],
+//     });
+
+//     setSocket(newSocket);
+
+//     newSocket.on("connect", () => {
+//       console.log("✅ Socket connected:", newSocket.id);
+//       newSocket.emit("joinRoom", myId);
+//     });
+
+//     newSocket.on("receiveMessage", (msg: any) => {
+//       if (activeConv && msg.conversationId === activeConv._id) {
+//         setMessages((prev) => [...prev, msg]);
+//       }
+//     });
+
+//     return () => newSocket.disconnect();
+//   }, [token, myId, activeConv]);
+
+//   /* ===== LOAD CONVERSATIONS ===== */
+//   useEffect(() => {
+//     if (!token) return;
+
+//     fetch(`${API}/conversations/my`, {
+//       headers: { Authorization: `Bearer ${token}` },
+//     })
+//       .then((r) => r.json())
+//       .then(setConversations)
+//       .catch(console.error);
+//   }, [token]);
+
+//   /* ===== LOAD MESSAGES ===== */
+//   useEffect(() => {
+//     if (!token || !activeConv) return;
+
+//     fetch(`${API}/messages/${activeConv._id}`, {
+//       headers: { Authorization: `Bearer ${token}` },
+//     })
+//       .then((r) => r.json())
+//       .then(setMessages)
+//       .catch(console.error);
+//   }, [activeConv, token]);
+
+//   /* ===== AUTO SCROLL ===== */
+//   useEffect(() => {
+//     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+//   }, [messages]);
+
+//   /* ===== CREATE CONVERSATION ===== */
+//   const createConversation = async (targetUserId: string) => {
+//     try {
+//       const res = await fetch(`${API}/conversations/create`, {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//           Authorization: `Bearer ${token}`,
+//         },
+//         body: JSON.stringify({ userId: targetUserId }),
+//       });
+
+//       const data = await res.json();
+//       setActiveConv(data);
+//       return data._id;
+//     } catch (err) {
+//       console.error(err);
+//       return null;
+//     }
+//   };
+
+//   /* ===== SEND MESSAGE ===== */
+//   const sendMessage = async () => {
+//     if (!newMsg.trim() || sending || !activeConv) return;
+
+//     try {
+//       setSending(true);
+
+//       if (socket) {
+//         socket.emit("sendMessage", {
+//           conversationId: activeConv._id,
+//           senderId: myId,
+//           text: newMsg.trim(),
+//         });
+//       }
+
+//       setNewMsg("");
+//     } catch (err) {
+//       console.error(err);
+//     } finally {
+//       setSending(false);
+//     }
+//   };
+
+//   return (
+//     <div className="flex h-screen bg-gray-100">
+
+//       {/* LEFT CONVERSATIONS */}
+//       <div className="w-1/3 bg-white border-r overflow-y-auto">
+//         <h2 className="p-4 font-bold text-lg">Chats</h2>
+
+//         {conversations.map((c) => (
+//           <div
+//             key={c._id}
+//             onClick={() => setActiveConv(c)}
+//             className="p-3 border-b cursor-pointer hover:bg-gray-100"
+//           >
+//             {c.users?.map((u:any)=>u.name).join(", ")}
+//           </div>
+//         ))}
+//       </div>
+
+//       {/* RIGHT CHAT */}
+//       <div className="flex flex-col flex-1">
+
+//         {/* Messages */}
+//         <div className="flex-1 overflow-y-auto p-4">
+//           {messages.map((m, i) => (
+//             <div
+//               key={i}
+//               className={`mb-2 p-2 rounded w-fit max-w-xs ${
+//                 m.sender === myId
+//                   ? "bg-blue-200 ml-auto"
+//                   : "bg-gray-200"
+//               }`}
+//             >
+//               {m.text}
+//               <div className="text-xs text-gray-500">
+//                 {new Date(m.createdAt).toLocaleTimeString()}
+//               </div>
+//             </div>
+//           ))}
+//           <div ref={messagesEndRef} />
+//         </div>
+
+//         {/* Input */}
+//         <div className="flex border-t">
+//           <input
+//             value={newMsg}
+//             onChange={(e) => setNewMsg(e.target.value)}
+//             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+//             className="flex-1 p-3 outline-none"
+//             placeholder="Type message..."
+//           />
+//           <button
+//             onClick={sendMessage}
+//             className="bg-blue-500 text-white px-6"
+//           >
+//             Send
+//           </button>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
 
 
 
