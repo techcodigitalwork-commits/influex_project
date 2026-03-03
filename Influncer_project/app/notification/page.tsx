@@ -107,38 +107,35 @@ export default function NotificationsPage() {
   };
 
   // ── Brand: Accept/Reject campaign application ──
-  const acceptConnect = async (n: any) => {
+const acceptConnect = async (n: any) => {
   try {
     setActionLoading(n._id + "_accept");
 
     const senderId = n.from?._id || n.fromId || n.senderId || n.from;
-    const campaignId = n.campaignId || null; // frontend me campaignId add karo
+    const campaignId = n.campaignId || null;
 
     if (senderId) {
-      // Create conversation so both can chat
-      const res = await fetch(`${API}/conversations/create`, {
+      await fetch(`${API}/conversations/create`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${user.token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        headers: {
+          Authorization: `Bearer ${user.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           participantId: senderId,
-          campaignId // backend me required ho to bhej rahe
+          campaignId,
         }),
       });
-      const data = await res.json();
-      console.log("Conversation created:", data);
     }
 
     saveConnectDecision(n._id, "accepted");
-    setNotifications(prev => prev.map(notif =>
-      notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
-    ));
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
+      )
+    );
   } catch (err) {
     console.error("Accept connect error:", err);
-    // still mark accepted locally
-    saveConnectDecision(n._id, "accepted");
-    setNotifications(prev => prev.map(notif =>
-      notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
-    ));
   } finally {
     setActionLoading("");
   }
@@ -161,7 +158,7 @@ export default function NotificationsPage() {
   //   } finally {
   //     setActionLoading("");
   //   }
-  };
+  // };
 
   const rejectCreator = async (applicationId: string, notifId: string) => {
     try {
@@ -184,35 +181,35 @@ export default function NotificationsPage() {
   };
 
   // ── Creator: Accept connect request from brand ──
-  const acceptConnect = async (n: any) => {
-    try {
-      setActionLoading(n._id + "_accept");
-      const senderId = n.from?._id || n.fromId || n.senderId || n.from;
-      if (senderId) {
-        // Create conversation so both can chat
-        const res = await fetch(`${API}/conversations/create`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${user.token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ participantId: senderId }),
-        });
-        const data = await res.json();
-        console.log("Conversation created:", data);
-      }
-      saveConnectDecision(n._id, "accepted");
-      setNotifications(prev => prev.map(notif =>
-        notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
-      ));
-    } catch (err) {
-      console.error("Accept connect error:", err);
-      // Still mark accepted locally even if API fails
-      saveConnectDecision(n._id, "accepted");
-      setNotifications(prev => prev.map(notif =>
-        notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
-      ));
-    } finally {
-      setActionLoading("");
-    }
-  };
+  // const acceptConnect = async (n: any) => {
+  //   try {
+  //     setActionLoading(n._id + "_accept");
+  //     const senderId = n.from?._id || n.fromId || n.senderId || n.from;
+  //     if (senderId) {
+  //       // Create conversation so both can chat
+  //       const res = await fetch(`${API}/conversations/create`, {
+  //         method: "POST",
+  //         headers: { Authorization: `Bearer ${user.token}`, "Content-Type": "application/json" },
+  //         body: JSON.stringify({ participantId: senderId }),
+  //       });
+  //       const data = await res.json();
+  //       console.log("Conversation created:", data);
+  //     }
+  //     saveConnectDecision(n._id, "accepted");
+  //     setNotifications(prev => prev.map(notif =>
+  //       notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
+  //     ));
+  //   } catch (err) {
+  //     console.error("Accept connect error:", err);
+  //     // Still mark accepted locally even if API fails
+  //     saveConnectDecision(n._id, "accepted");
+  //     setNotifications(prev => prev.map(notif =>
+  //       notif._id === n._id ? { ...notif, connectStatus: "accepted" } : notif
+  //     ));
+  //   } finally {
+  //     setActionLoading("");
+  //   }
+  // };
 
   // ── Creator: Decline connect request ──
   const declineConnect = (n: any) => {
