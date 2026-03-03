@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
@@ -28,11 +28,12 @@ export default function MessagesInner() {
     if (u) setUser(JSON.parse(u));
   }, []);
 
-  const myId =
+  const myId = (
     user?.user?._id ||
     user?.user?.id ||
     user?._id ||
-    user?.id;
+    user?.id
+  )?.toString();
 
   /* ===== SOCKET CONNECT ===== */
   useEffect(() => {
@@ -50,13 +51,16 @@ export default function MessagesInner() {
     });
 
     newSocket.on("receiveMessage", (msg: any) => {
-      if (activeConv && msg.conversationId === activeConv._id) {
+      if (
+        activeConv &&
+        msg.conversationId?.toString() === activeConv._id?.toString()
+      ) {
         setMessages((prev) => [...prev, msg]);
       }
     });
 
     return () => newSocket.disconnect();
-  }, [token, myId, activeConv]);
+  }, [token, myId]);
 
   /* ===== LOAD CONVERSATIONS ===== */
   useEffect(() => {
@@ -66,7 +70,9 @@ export default function MessagesInner() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
-      .then(setConversations)
+      .then((data) => {
+        setConversations(data?.data || []);
+      })
       .catch(console.error);
   }, [token]);
 
@@ -74,11 +80,13 @@ export default function MessagesInner() {
   useEffect(() => {
     if (!token || !activeConv) return;
 
-    fetch(`${API}/messages/${activeConv._id}`, {
+    fetch(`${API}/conversations/messages/${activeConv._id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
-      .then(setMessages)
+      .then((data) => {
+        setMessages(data?.data || []);
+      })
       .catch(console.error);
   }, [activeConv, token]);
 
@@ -87,27 +95,6 @@ export default function MessagesInner() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  /* ===== CREATE CONVERSATION ===== */
-  const createConversation = async (targetUserId: string) => {
-    try {
-      const res = await fetch(`${API}/conversations/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ userId: targetUserId }),
-      });
-
-      const data = await res.json();
-      setActiveConv(data);
-      return data._id;
-    } catch (err) {
-      console.error(err);
-      return null;
-    }
-  };
-
   /* ===== SEND MESSAGE ===== */
   const sendMessage = async () => {
     if (!newMsg.trim() || sending || !activeConv) return;
@@ -115,15 +102,23 @@ export default function MessagesInner() {
     try {
       setSending(true);
 
-      if (socket) {
-        socket.emit("sendMessage", {
-          conversationId: activeConv._id,
-          senderId: myId,
-          text: newMsg.trim(),
-        });
-      }
+      const res = await fetch(
+        `${API}/conversations/send/${activeConv._id}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ text: newMsg.trim() }),
+        }
+      );
 
-      setNewMsg("");
+      const data = await res.json();
+
+      if (data?.success) {
+        setNewMsg("");
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -134,19 +129,25 @@ export default function MessagesInner() {
   return (
     <div className="flex h-screen bg-gray-100">
 
-      {/* LEFT CONVERSATIONS */}
+      {/* LEFT SIDEBAR */}
       <div className="w-1/3 bg-white border-r overflow-y-auto">
         <h2 className="p-4 font-bold text-lg">Chats</h2>
 
-        {conversations.map((c) => (
-          <div
-            key={c._id}
-            onClick={() => setActiveConv(c)}
-            className="p-3 border-b cursor-pointer hover:bg-gray-100"
-          >
-            {c.users?.map((u:any)=>u.name).join(", ")}
-          </div>
-        ))}
+        {conversations.map((c) => {
+          const otherUser = c.participants?.find(
+            (u: any) => u?._id?.toString() !== myId
+          );
+
+          return (
+            <div
+              key={c._id}
+              onClick={() => setActiveConv(c)}
+              className="p-3 border-b cursor-pointer hover:bg-gray-100"
+            >
+              {otherUser?.name || otherUser?.email || "User"}
+            </div>
+          );
+        })}
       </div>
 
       {/* RIGHT CHAT */}
@@ -158,7 +159,8 @@ export default function MessagesInner() {
             <div
               key={i}
               className={`mb-2 p-2 rounded w-fit max-w-xs ${
-                m.sender === myId
+                m.sender?._id?.toString() === myId ||
+                m.sender?.toString() === myId
                   ? "bg-blue-200 ml-auto"
                   : "bg-gray-200"
               }`}
@@ -192,7 +194,6 @@ export default function MessagesInner() {
     </div>
   );
 }
-
 
 
 
