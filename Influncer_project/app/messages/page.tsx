@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
 const API = "http://54.252.201.93:5000/api";
 const SOCKET_URL = "http://54.252.201.93:5000";
 
-export default function MessagesInner() {
+function MessagesInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
-  const [myId, setMyId] = useState<string | null>(null);
-
+  const [token, setToken] = useState<string>("");
+  const [myId, setMyId] = useState<string>("");
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConv, setActiveConv] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -25,98 +24,69 @@ export default function MessagesInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvRef = useRef<any>(null);
 
-  /* ================= AUTH — read from cb_user ================= */
+  /* ── AUTH ── */
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    // Support both storage formats
     const cbUser = localStorage.getItem("cb_user");
     if (cbUser) {
       const parsed = JSON.parse(cbUser);
-      setUser(parsed);
-      // cb_user stores token inside the object
-      const tok = parsed.token || parsed.accessToken;
-      if (tok) setToken(tok);
+      const tok = parsed.token || parsed.accessToken || "";
+      setToken(tok);
+      const id = parsed._id || parsed.id || parsed.user?._id || parsed.user?.id || "";
+      setMyId(id.toString());
       return;
     }
-
-    // Fallback: separate keys
-    const t = localStorage.getItem("token");
+    const t = localStorage.getItem("token") || "";
     const u = localStorage.getItem("user");
-    if (t) setToken(t);
-    if (u) setUser(JSON.parse(u));
+    setToken(t);
+    if (u) {
+      const parsed = JSON.parse(u);
+      const id = parsed._id || parsed.id || parsed.user?._id || "";
+      setMyId(id.toString());
+    }
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    const id = user?.id || user?._id || user?.user?._id || user?.user?.id;
-    if (id) setMyId(id.toString());
-  }, [user]);
-
-  /* ================= SOCKET ================= */
+  /* ── SOCKET ── */
   useEffect(() => {
     if (!token || !myId) return;
     if (socketRef.current) return;
 
-    const socket = io(SOCKET_URL, {
-      transports: ["websocket"],
-      auth: { token },
-    });
-
+    const socket = io(SOCKET_URL, { transports: ["websocket"], auth: { token } });
     socketRef.current = socket;
 
-    socket.on("connect", () => {
-      socket.emit("join", myId);
-    });
+    socket.on("connect", () => socket.emit("join", myId));
 
     socket.on("newMessage", (msg: any) => {
       const conv = activeConvRef.current;
       if (!conv) return;
-
       const msgConvId = (msg.conversationId || msg.conversation)?.toString();
-
       if (msgConvId === conv._id?.toString()) {
-        setMessages(prev =>
-          prev.some(m => m._id === msg._id) ? prev : [...prev, msg]
-        );
+        setMessages(prev => prev.some(m => m._id === msg._id) ? prev : [...prev, msg]);
       }
-
       setConversations(prev =>
-        prev.map(c =>
-          c._id?.toString() === msgConvId
-            ? { ...c, lastMessage: msg.text, updatedAt: msg.createdAt }
-            : c
+        prev.map(c => c._id?.toString() === msgConvId
+          ? { ...c, lastMessage: msg.text, updatedAt: msg.createdAt }
+          : c
         )
       );
     });
 
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
-    };
+    return () => { socket.disconnect(); socketRef.current = null; };
   }, [token, myId]);
 
-  /* ================= LOAD CONVERSATIONS ================= */
+  /* ── LOAD CONVERSATIONS ── */
   useEffect(() => {
     if (!token) return;
     setLoadingConvs(true);
-
-    fetch(`${API}/conversations/my`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch(`${API}/conversations/my`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
         const convs = data?.data || [];
         setConversations(convs);
-
-        // Auto-open conversation if userId param is present
         const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
         if (targetUserId && convs.length > 0) {
           const matched = convs.find((c: any) =>
-            c.participants?.some((p: any) => {
-              const pid = (p?._id || p)?.toString();
-              return pid === targetUserId;
-            })
+            c.participants?.some((p: any) => (p?._id || p)?.toString() === targetUserId)
           );
           if (matched) setActiveConv(matched);
         }
@@ -125,46 +95,30 @@ export default function MessagesInner() {
       .finally(() => setLoadingConvs(false));
   }, [token]);
 
-  /* ================= LOAD MESSAGES ================= */
+  /* ── LOAD MESSAGES ── */
   useEffect(() => {
     if (!token || !activeConv) return;
     activeConvRef.current = activeConv;
-
-    fetch(`${API}/conversations/messages/${activeConv._id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    fetch(`${API}/conversations/messages/${activeConv._id}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(data => {
-        setMessages(data?.data || []);
-      })
+      .then(data => setMessages(data?.data || []))
       .catch(console.error);
   }, [activeConv, token]);
 
-  /* ================= AUTO SCROLL ================= */
+  /* ── AUTO SCROLL ── */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  /* ================= HELPERS ================= */
+  /* ── HELPERS ── */
   const getOtherParticipant = (conv: any) => {
     if (!conv?.participants || !myId) return null;
-    return conv.participants.find((p: any) => {
-      const pid = (p?._id || p)?.toString();
-      return pid !== myId;
-    });
+    return conv.participants.find((p: any) => (p?._id || p)?.toString() !== myId);
   };
 
-  // Robust name extraction — handles populated objects and plain IDs
   const getName = (p: any): string => {
-    if (!p) return "Unknown";
-    if (typeof p === "string") return "User";
-    return (
-      p.name ||
-      p.username ||
-      p.fullName ||
-      p.email?.split("@")[0] ||
-      "User"
-    );
+    if (!p || typeof p === "string") return "User";
+    return p.name || p.username || p.fullName || p.email?.split("@")[0] || "User";
   };
 
   const getAvatar = (p: any): string => {
@@ -172,34 +126,18 @@ export default function MessagesInner() {
     return p.profileImage || p.avatar || p.photo || "";
   };
 
-  const getInitial = (p: any): string => {
-    const name = getName(p);
-    return name.charAt(0).toUpperCase();
-  };
-
-  /* ================= SEND MESSAGE ================= */
+  /* ── SEND ── */
   const sendMessage = async () => {
     if (!newMsg.trim() || sending || !activeConv) return;
-
     try {
       setSending(true);
-
-      const res = await fetch(
-        `${API}/conversations/send/${activeConv._id}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ text: newMsg.trim() }),
-        }
-      );
-
+      const res = await fetch(`${API}/conversations/send/${activeConv._id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text: newMsg.trim() }),
+      });
       const data = await res.json();
-      if (data?.success) {
-        setNewMsg("");
-      }
+      if (data?.success) setNewMsg("");
     } catch (err) {
       console.error(err);
     } finally {
@@ -209,15 +147,12 @@ export default function MessagesInner() {
 
   const activeOther = activeConv ? getOtherParticipant(activeConv) : null;
 
-  /* ================= UI ================= */
   return (
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .msg-root { display: flex; height: 100vh; font-family: 'Plus Jakarta Sans', sans-serif; background: #f5f5f0; }
-
-        /* SIDEBAR */
         .msg-sidebar { width: 320px; min-width: 280px; background: #fff; border-right: 1.5px solid #ebebeb; display: flex; flex-direction: column; }
         .msg-sidebar-header { padding: 20px 20px 14px; border-bottom: 1px solid #f0f0f0; }
         .msg-sidebar-title { font-size: 18px; font-weight: 800; color: #111; }
@@ -231,16 +166,12 @@ export default function MessagesInner() {
         .msg-conv-name { font-size: 14px; font-weight: 700; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .msg-conv-last { font-size: 12px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
         .msg-conv-empty { padding: 40px 20px; text-align: center; color: #bbb; font-size: 13px; }
-
-        /* CHAT AREA */
         .msg-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
         .msg-chat-header { background: #fff; border-bottom: 1.5px solid #ebebeb; padding: 16px 20px; display: flex; align-items: center; gap: 12px; }
         .msg-chat-av { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #4f46e5, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; color: #fff; flex-shrink: 0; overflow: hidden; }
         .msg-chat-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
         .msg-chat-name { font-size: 15px; font-weight: 800; color: #111; }
         .msg-chat-role { font-size: 12px; color: #aaa; margin-top: 1px; }
-
-        /* Messages */
         .msg-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; background: #f9f9f6; }
         .msg-bubble-wrap { display: flex; }
         .msg-bubble-wrap.me { justify-content: flex-end; }
@@ -248,28 +179,21 @@ export default function MessagesInner() {
         .msg-bubble.me { background: #4f46e5; color: #fff; border-bottom-right-radius: 4px; }
         .msg-bubble.them { background: #fff; color: #222; border: 1.5px solid #ebebeb; border-bottom-left-radius: 4px; }
         .msg-bubble-time { font-size: 10px; margin-top: 4px; opacity: 0.6; text-align: right; }
-
-        /* Input */
         .msg-input-bar { background: #fff; border-top: 1.5px solid #ebebeb; padding: 14px 16px; display: flex; gap: 10px; align-items: center; }
         .msg-input { flex: 1; border: 1.5px solid #e0e0e0; border-radius: 12px; padding: 10px 14px; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; transition: border 0.2s; }
         .msg-input:focus { border-color: #4f46e5; }
         .msg-send-btn { background: #4f46e5; color: #fff; border: none; border-radius: 12px; padding: 10px 20px; font-size: 14px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
         .msg-send-btn:hover:not(:disabled) { background: #4338ca; }
         .msg-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* Empty chat state */
         .msg-no-conv { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bbb; gap: 10px; }
         .msg-no-conv-icon { font-size: 48px; }
         .msg-no-conv-text { font-size: 15px; font-weight: 600; }
-
         @media(max-width: 640px) {
-          .msg-sidebar { width: 80px; min-width: 64px; }
-          .msg-sidebar-header { padding: 14px 10px; }
+          .msg-sidebar { width: 72px; min-width: 72px; }
           .msg-sidebar-title { display: none; }
           .msg-conv-info { display: none; }
           .msg-conv-item { justify-content: center; padding: 12px 8px; }
         }
-
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner-sm { width: 20px; height: 20px; border: 2px solid #e0e0e0; border-top-color: #4f46e5; border-radius: 50%; animation: spin 0.8s linear infinite; }
       `}</style>
@@ -280,7 +204,6 @@ export default function MessagesInner() {
           <div className="msg-sidebar-header">
             <div className="msg-sidebar-title">Messages</div>
           </div>
-
           <div className="msg-conv-list">
             {loadingConvs ? (
               <div style={{ padding: "30px", display: "flex", justifyContent: "center" }}>
@@ -293,8 +216,6 @@ export default function MessagesInner() {
                 const other = getOtherParticipant(conv);
                 const avatarUrl = getAvatar(other);
                 const name = getName(other);
-                const initial = getInitial(other);
-
                 return (
                   <div
                     key={conv._id}
@@ -302,7 +223,7 @@ export default function MessagesInner() {
                     onClick={() => setActiveConv(conv)}
                   >
                     <div className="msg-conv-av">
-                      {avatarUrl ? <img src={avatarUrl} alt={name} /> : initial}
+                      {avatarUrl ? <img src={avatarUrl} alt={name} /> : name.charAt(0).toUpperCase()}
                     </div>
                     <div className="msg-conv-info">
                       <div className="msg-conv-name">{name}</div>
@@ -321,12 +242,11 @@ export default function MessagesInner() {
         <div className="msg-chat">
           {activeConv ? (
             <>
-              {/* Header */}
               <div className="msg-chat-header">
                 <div className="msg-chat-av">
                   {getAvatar(activeOther)
                     ? <img src={getAvatar(activeOther)} alt="avatar" />
-                    : getInitial(activeOther)}
+                    : getName(activeOther).charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <div className="msg-chat-name">{getName(activeOther)}</div>
@@ -334,12 +254,10 @@ export default function MessagesInner() {
                 </div>
               </div>
 
-              {/* Messages */}
               <div className="msg-messages">
                 {messages.map((msg, i) => {
                   const senderId = (msg.sender?._id || msg.sender)?.toString();
                   const isMe = myId && senderId === myId;
-
                   return (
                     <div key={i} className={`msg-bubble-wrap ${isMe ? "me" : ""}`}>
                       <div className={`msg-bubble ${isMe ? "me" : "them"}`}>
@@ -354,7 +272,6 @@ export default function MessagesInner() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
               <div className="msg-input-bar">
                 <input
                   className="msg-input"
@@ -363,11 +280,7 @@ export default function MessagesInner() {
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                   placeholder={`Message ${getName(activeOther)}...`}
                 />
-                <button
-                  className="msg-send-btn"
-                  onClick={sendMessage}
-                  disabled={sending || !newMsg.trim()}
-                >
+                <button className="msg-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
                   {sending ? "..." : "Send"}
                 </button>
               </div>
@@ -381,6 +294,15 @@ export default function MessagesInner() {
         </div>
       </div>
     </>
+  );
+}
+
+import { Suspense } from "react";
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, textAlign: "center" }}>Loading...</div>}>
+      <MessagesInner />
+    </Suspense>
   );
 }
 
@@ -770,17 +692,18 @@ export default function MessagesInner() {
 //   );
 // }
 
-
-
-// //"use client";
+// // "use client";
 
 // // import { useEffect, useState, useRef } from "react";
+// // import { useSearchParams } from "next/navigation";
 // // import { io, Socket } from "socket.io-client";
 
 // // const API = "http://54.252.201.93:5000/api";
 // // const SOCKET_URL = "http://54.252.201.93:5000";
 
 // // export default function MessagesInner() {
+// //   const searchParams = useSearchParams();
+
 // //   const [token, setToken] = useState<string | null>(null);
 // //   const [user, setUser] = useState<any>(null);
 // //   const [myId, setMyId] = useState<string | null>(null);
@@ -790,29 +713,37 @@ export default function MessagesInner() {
 // //   const [messages, setMessages] = useState<any[]>([]);
 // //   const [newMsg, setNewMsg] = useState("");
 // //   const [sending, setSending] = useState(false);
+// //   const [loadingConvs, setLoadingConvs] = useState(true);
 
 // //   const socketRef = useRef<Socket | null>(null);
 // //   const messagesEndRef = useRef<HTMLDivElement>(null);
 // //   const activeConvRef = useRef<any>(null);
 
-// //   /* ================= AUTH ================= */
+// //   /* ================= AUTH — read from cb_user ================= */
 // //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+
+// //     // Support both storage formats
+// //     const cbUser = localStorage.getItem("cb_user");
+// //     if (cbUser) {
+// //       const parsed = JSON.parse(cbUser);
+// //       setUser(parsed);
+// //       // cb_user stores token inside the object
+// //       const tok = parsed.token || parsed.accessToken;
+// //       if (tok) setToken(tok);
+// //       return;
+// //     }
+
+// //     // Fallback: separate keys
 // //     const t = localStorage.getItem("token");
 // //     const u = localStorage.getItem("user");
-
 // //     if (t) setToken(t);
 // //     if (u) setUser(JSON.parse(u));
 // //   }, []);
 
 // //   useEffect(() => {
 // //     if (!user) return;
-
-// //     const id =
-// //       user?.id ||
-// //       user?.user?._id ||
-// //       user?.user?.id ||
-// //       user?._id;
-
+// //     const id = user?.id || user?._id || user?.user?._id || user?.user?.id;
 // //     if (id) setMyId(id.toString());
 // //   }, [user]);
 
@@ -844,7 +775,6 @@ export default function MessagesInner() {
 // //         );
 // //       }
 
-// //       // Update sidebar last message
 // //       setConversations(prev =>
 // //         prev.map(c =>
 // //           c._id?.toString() === msgConvId
@@ -863,21 +793,35 @@ export default function MessagesInner() {
 // //   /* ================= LOAD CONVERSATIONS ================= */
 // //   useEffect(() => {
 // //     if (!token) return;
+// //     setLoadingConvs(true);
 
 // //     fetch(`${API}/conversations/my`, {
 // //       headers: { Authorization: `Bearer ${token}` },
 // //     })
 // //       .then(r => r.json())
 // //       .then(data => {
-// //         setConversations(data?.data || []);
+// //         const convs = data?.data || [];
+// //         setConversations(convs);
+
+// //         // Auto-open conversation if userId param is present
+// //         const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
+// //         if (targetUserId && convs.length > 0) {
+// //           const matched = convs.find((c: any) =>
+// //             c.participants?.some((p: any) => {
+// //               const pid = (p?._id || p)?.toString();
+// //               return pid === targetUserId;
+// //             })
+// //           );
+// //           if (matched) setActiveConv(matched);
+// //         }
 // //       })
-// //       .catch(console.error);
+// //       .catch(console.error)
+// //       .finally(() => setLoadingConvs(false));
 // //   }, [token]);
 
 // //   /* ================= LOAD MESSAGES ================= */
 // //   useEffect(() => {
 // //     if (!token || !activeConv) return;
-
 // //     activeConvRef.current = activeConv;
 
 // //     fetch(`${API}/conversations/messages/${activeConv._id}`, {
@@ -898,23 +842,33 @@ export default function MessagesInner() {
 // //   /* ================= HELPERS ================= */
 // //   const getOtherParticipant = (conv: any) => {
 // //     if (!conv?.participants || !myId) return null;
-
 // //     return conv.participants.find((p: any) => {
 // //       const pid = (p?._id || p)?.toString();
 // //       return pid !== myId;
 // //     });
 // //   };
 
+// //   // Robust name extraction — handles populated objects and plain IDs
 // //   const getName = (p: any): string => {
 // //     if (!p) return "Unknown";
 // //     if (typeof p === "string") return "User";
-
 // //     return (
 // //       p.name ||
 // //       p.username ||
+// //       p.fullName ||
 // //       p.email?.split("@")[0] ||
 // //       "User"
 // //     );
+// //   };
+
+// //   const getAvatar = (p: any): string => {
+// //     if (!p || typeof p === "string") return "";
+// //     return p.profileImage || p.avatar || p.photo || "";
+// //   };
+
+// //   const getInitial = (p: any): string => {
+// //     const name = getName(p);
+// //     return name.charAt(0).toUpperCase();
 // //   };
 
 // //   /* ================= SEND MESSAGE ================= */
@@ -922,5069 +876,5423 @@ export default function MessagesInner() {
 // //     if (!newMsg.trim() || sending || !activeConv) return;
 
 // //     try {
-//       setSending(true);
-
-//       const res = await fetch(
-//         `${API}/conversations/send/${activeConv._id}`,
-//         {
-//           method: "POST",
-//           headers: {
-//             "Content-Type": "application/json",
-//             Authorization: `Bearer ${token}`,
-//           },
-//           body: JSON.stringify({ text: newMsg.trim() }),
-//         }
-//       );
-
-//       const data = await res.json();
-
-//       if (data?.success) {
-//         setNewMsg("");
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   /* ================= UI ================= */
-//   return (
-//     <div className="flex h-screen bg-gray-100">
-
-//       {/* SIDEBAR */}
-//       <div className="w-1/3 bg-white border-r overflow-y-auto">
-//         <h2 className="p-4 font-bold text-lg">Chats</h2>
-
-//         {conversations.map((conv) => {
-//           const other = getOtherParticipant(conv);
-
-//           return (
-//             <div
-//               key={conv._id}
-//               onClick={() => setActiveConv(conv)}
-//               className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${
-//                 activeConv?._id === conv._id ? "bg-gray-200" : ""
-//               }`}
-//             >
-//               <div className="font-medium">
-//                 {getName(other)}
-//               </div>
-
-//               {conv.lastMessage && (
-//                 <div className="text-sm text-gray-500 truncate">
-//                   {conv.lastMessage}
-//                 </div>
-//               )}
-//             </div>
-//           );
-//         })}
-//       </div>
-
-//       {/* CHAT AREA */}
-//       <div className="flex flex-col flex-1">
-
-//         {/* Messages */}
-//         <div className="flex-1 overflow-y-auto p-4">
-//           {messages.map((msg, i) => {
-//             const senderId = (msg.sender?._id || msg.sender)?.toString();
-//             const isMe = myId && senderId === myId;
-
-//             return (
-//               <div
-//                 key={i}
-//                 className={`mb-2 p-2 rounded w-fit max-w-xs ${
-//                   isMe
-//                     ? "bg-blue-200 ml-auto"
-//                     : "bg-gray-200"
-//                 }`}
-//               >
-//                 {msg.text}
-//                 <div className="text-xs text-gray-500">
-//                   {new Date(msg.createdAt).toLocaleTimeString()}
-//                 </div>
-//               </div>
-//             );
-//           })}
-//           <div ref={messagesEndRef} />
-//         </div>
-
-//         {/* Input */}
-//         {activeConv && (
-//           <div className="flex border-t">
-//             <input
-//               value={newMsg}
-//               onChange={(e) => setNewMsg(e.target.value)}
-//               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-//               className="flex-1 p-3 outline-none"
-//               placeholder="Type message..."
-//             />
-//             <button
-//               onClick={sendMessage}
-//               disabled={sending}
-//               className="bg-blue-500 text-white px-6 disabled:opacity-50"
-//             >
-//               Send
-//             </button>
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
-// "use client";
-
-// import { useEffect, useState, useRef } from "react";
-// import { io, Socket } from "socket.io-client";
-
-// const API = "http://54.252.201.93:5000/api";
-// const SOCKET_URL = "http://54.252.201.93:5000";
-
-// export default function MessagesInner() {
-//   const [token, setToken] = useState<string | null>(null);
-//   const [user, setUser] = useState<any>(null);
-//   const [socket, setSocket] = useState<Socket | null>(null);
-
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-
-//   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     const t = localStorage.getItem("token");
-//     const u = localStorage.getItem("user");
-
-//     if (t) setToken(t);
-//     if (u) setUser(JSON.parse(u));
-//   }, []);
-
-//   const myId = (
-//     user?.user?._id ||
-//     user?.user?.id ||
-//     user?._id ||
-//     user?.id
-//   )?.toString();
-
-//   /* ===== SOCKET CONNECT ===== */
-//   useEffect(() => {
-//     if (!token || !myId) return;
-
-//     const newSocket = io(SOCKET_URL, {
-//       transports: ["websocket"],
-//     });
-
-//     setSocket(newSocket);
-
-//     newSocket.on("connect", () => {
-//       console.log("✅ Socket connected:", newSocket.id);
-//       newSocket.emit("joinRoom", myId);
-//     });
-
-//     newSocket.on("receiveMessage", (msg: any) => {
-//       if (
-//         activeConv &&
-//         msg.conversationId?.toString() === activeConv._id?.toString()
-//       ) {
-//         setMessages((prev) => [...prev, msg]);
-//       }
-//     });
-
-//     return () => newSocket.disconnect();
-//   }, [token, myId]);
-
-//   /* ===== LOAD CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-
-//     fetch(`${API}/conversations/my`, {
-//       headers: { Authorization: `Bearer ${token}` },
-//     })
-//       .then((r) => r.json())
-//       .then((data) => {
-//         setConversations(data?.data || []);
-//       })
-//       .catch(console.error);
-//   }, [token]);
-
-//   /* ===== LOAD MESSAGES ===== */
-//   useEffect(() => {
-//     if (!token || !activeConv) return;
-
-//     fetch(`${API}/conversations/messages/${activeConv._id}`, {
-//       headers: { Authorization: `Bearer ${token}` },
-//     })
-//       .then((r) => r.json())
-//       .then((data) => {
-//         setMessages(data?.data || []);
-//       })
-//       .catch(console.error);
-//   }, [activeConv, token]);
-
-//   /* ===== AUTO SCROLL ===== */
-//   useEffect(() => {
-//     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages]);
-
-//   /* ===== SEND MESSAGE ===== */
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending || !activeConv) return;
-
-//     try {
-//       setSending(true);
-
-//       const res = await fetch(
-//         `${API}/conversations/send/${activeConv._id}`,
-//         {
-//           method: "POST",
-//           headers: {
-//             "Content-Type": "application/json",
-//             Authorization: `Bearer ${token}`,
-//           },
-//           body: JSON.stringify({ text: newMsg.trim() }),
-//         }
-//       );
-
-//       const data = await res.json();
-
-//       if (data?.success) {
-//         setNewMsg("");
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   return (
-//     <div className="flex h-screen bg-gray-100">
-
-//       {/* LEFT SIDEBAR */}
-//       <div className="w-1/3 bg-white border-r overflow-y-auto">
-//         <h2 className="p-4 font-bold text-lg">Chats</h2>
-
-//         {conversations.map((c) => {
-//           const otherUser = c.participants?.find(
-//             (u: any) => u?._id?.toString() !== myId
-//           );
-
-//           return (
-//             <div
-//               key={c._id}
-//               onClick={() => setActiveConv(c)}
-//               className="p-3 border-b cursor-pointer hover:bg-gray-100"
-//             >
-//               {otherUser?.name || otherUser?.email || "User"}
-//             </div>
-//           );
-//         })}
-//       </div>
-
-//       {/* RIGHT CHAT */}
-//       <div className="flex flex-col flex-1">
-
-//         {/* Messages */}
-//         <div className="flex-1 overflow-y-auto p-4">
-//           {messages.map((m, i) => (
-//             <div
-//               key={i}
-//               className={`mb-2 p-2 rounded w-fit max-w-xs ${
-//                 m.sender?._id?.toString() === myId ||
-//                 m.sender?.toString() === myId
-//                   ? "bg-blue-200 ml-auto"
-//                   : "bg-gray-200"
-//               }`}
-//             >
-//               {m.text}
-//               <div className="text-xs text-gray-500">
-//                 {new Date(m.createdAt).toLocaleTimeString()}
-//               </div>
-//             </div>
-//           ))}
-//           <div ref={messagesEndRef} />
-//         </div>
-
-//         {/* Input */}
-//         <div className="flex border-t">
-//           <input
-//             value={newMsg}
-//             onChange={(e) => setNewMsg(e.target.value)}
-//             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-//             className="flex-1 p-3 outline-none"
-//             placeholder="Type message..."
-//           />
-//           <button
-//             onClick={sendMessage}
-//             className="bg-blue-500 text-white px-6"
-//           >
-//             Send
-//           </button>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
-// "use client";
-
-// import { useEffect, useState, useRef, Suspense } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// // ✅ Safe fetch — HTML response pe crash nahi karega
-// const safeFetch = async (url: string, opts: RequestInit = {}) => {
-//   try {
-//     const res = await fetch(url, opts);
-//     const text = await res.text();
-//     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
-//     const data = JSON.parse(text);
-//     return { ok: res.ok, data };
-//   } catch {
-//     return { ok: false, data: null };
-//   }
-// };
-
-// function MessagesInner() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const [isMobile, setIsMobile] = useState(false);
-//   const [profileModal, setProfileModal] = useState<any>(null);
-//   const [profileFetching, setProfileFetching] = useState(false);
-//   const [profileCache, setProfileCache] = useState<Record<string, any>>({});
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-
-//   // SSR-safe mobile check
-//   useEffect(() => {
-//     const check = () => setIsMobile(window.innerWidth <= 768);
-//     check();
-//     window.addEventListener("resize", check);
-//     return () => window.removeEventListener("resize", check);
-//   }, []);
-
-//   // Scroll to bottom on new messages
-//   useEffect(() => {
-//     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages]);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token");
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ===== FETCH CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ===== AUTO-OPEN if userId in URL ===== */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//     );
-//     if (existing) openConversation(existing);
-//   }, [conversations, targetUserId]);
-
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       // ✅ OLD working route from old code
-//       const { ok, data } = await safeFetch(`${API}/conversations/my`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("CONVS:", data);
-//       const list = data?.data || data?.conversations || [];
-//       setConversations(list);
-//       if (list.length > 0 && !targetUserId) openConversation(list[0]);
-
-//       // ✅ Har conversation ke participants ka profile fetch karo (profileImage ke liye)
-//       const allParticipantIds: string[] = [];
-//       list.forEach((conv: any) => {
-//         (conv.participants || []).forEach((p: any) => {
-//           const id = p._id?.toString() || (typeof p === "string" ? p : "");
-//           if (id) allParticipantIds.push(id);
-//         });
-//       });
-//       // Unique IDs
-//       const uniqueIds = [...new Set(allParticipantIds)];
-//       fetchParticipantProfiles(uniqueIds, token);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // ✅ Participants ka profile fetch karke cache mein store karo
-//   // Backend /profile/user/:id route se profileImage milegi
-//   const fetchParticipantProfiles = async (userIds: string[], tok: string) => {
-//     const cache: Record<string, any> = {};
-//     await Promise.all(
-//       userIds.map(async (uid) => {
-//         try {
-//           const { ok, data } = await safeFetch(`${API}/profile/user/${uid}`, {
-//             headers: { Authorization: `Bearer ${tok}` },
-//           });
-//           if (ok && data) {
-//             const p = data.profile || data.data || (data._id ? data : null);
-//             if (p) cache[uid] = p;
-//           }
-//         } catch { }
-//       })
-//     );
-//     if (Object.keys(cache).length > 0) {
-//       setProfileCache(prev => ({ ...prev, ...cache }));
-//     }
-//   };
-
-//   const openConversation = (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("MESSAGES:", data);
-//       if (!ok || !data) return;
-//       const msgs = Array.isArray(data.data) ? data.data
-//         : Array.isArray(data.messages) ? data.messages
-//         : data.conversation?.messages || [];
-//       console.log("MSGS COUNT:", msgs.length);
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   /* ===== CREATE CONVERSATION ===== */
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) { console.error("No campaignId"); return null; }
-//       const { ok, data } = await safeFetch(`${API}/conversations/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       console.log("CREATE CONV:", data);
-//       const conv = data?.conversation || data?.data;
-//       if (ok && conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   /* ===== SEND MESSAGE ===== */
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
-//       }
-//       const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-//       console.log("SEND:", data);
-//       if (!ok) { alert(data?.message || "Send failed"); return; }
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   // ✅ OLD working myId extraction
-//   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
-
-//   // ✅ OLD working getOtherParticipant
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants || !myId) return null;
-//     return conv.participants.find((p: any) => {
-//       const pid = p?._id?.toString() || p?.toString();
-//       return pid !== myId.toString();
-//     }) || null;
-//   };
-
-//   // ✅ Name se consistent color generate karo (WhatsApp style)
-//   const getAvatarColor = (name: string): string => {
-//     const colors = [
-//       "#ef4444", "#f97316", "#eab308", "#22c55e",
-//       "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899",
-//       "#06b6d4", "#a855f7", "#f43f5e", "#10b981"
-//     ];
-//     let hash = 0;
-//     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-//     return colors[Math.abs(hash) % colors.length];
-//   };
-
-//   // ✅ OLD working name/image helpers
-//   const getParticipantName = (p: any): string => {
-//     if (!p) return "User";
-//     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
-//   };
-
-//   const getParticipantImage = (p: any): string | null => {
-//     if (!p) return null;
-//     // Direct fields se try karo
-//     const direct = p.profileImage || p.profile?.profileImage || p.avatar || null;
-//     if (direct) return direct;
-//     // ✅ profileCache se try karo (separately fetched profiles)
-//     const uid = p._id?.toString() || (typeof p === "string" ? p : "");
-//     const cached = uid ? profileCache[uid] : null;
-//     return cached?.profileImage || cached?.avatar || cached?.image || null;
-//   };
-
-//   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
-//   const openProfileModal = async (other: any) => {
-//     if (!other || typeof other === "string") return;
-//     const basicInfo = {
-//       name: getParticipantName(other),
-//       profileImage: getParticipantImage(other),
-//       bio: other.profile?.bio || other.bio || "",
-//       followers: other.profile?.followers || other.followers || "",
-//       categories: other.profile?.categories || other.categories || [],
-//       platform: other.profile?.platform || other.platform || "",
-//       location: other.profile?.location || other.location || "",
-//     };
-//     setProfileModal({ ...basicInfo, _loading: true });
-
-//     const userId = other._id?.toString() || other.id?.toString();
-//     if (userId) {
-//       setProfileFetching(true);
-//       try {
-//         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-//         if (ok && data) {
-//           const p = data.profile || data.data || (data._id ? data : null);
-//           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
-//         }
-//       } catch { }
-//       setProfileFetching(false);
-//     }
-//     setProfileModal({ ...basicInfo, _loading: false });
-//   };
-
-//   const formatTime = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     const today = new Date();
-//     const diff = today.getDate() - d.getDate();
-//     if (diff === 0) return "Today";
-//     if (diff === 1) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   /* ===== UI ===== */
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
-//         .mp-header-avatar:hover{opacity:0.8}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
-//         .mp-header-name-btn:hover{color:#4f46e5}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
-
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-
-//         @keyframes spin{to{transform:rotate(360deg)}}
-//         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
-
-//         /* ── PROFILE MODAL ── */
-//         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
-//         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
-//         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-//         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
-//         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
-//         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
-//         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
-//         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
-//         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
-//         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
-//         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
-//         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
-//         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
-//         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
-//         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
-//         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-//         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
-//         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
-//         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
-//         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
-//         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
-//         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
-//         .mp-pm-link:hover{background:#f0f0f0}
-//         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
-//       `}</style>
-
-//       <div className="mp">
-//         {/* ── SIDEBAR ── */}
-//         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {targetUserId && !conversations.find(c =>
-//             c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//           ) && (
-//             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = getParticipantName(other);
-//                 const img = getParticipantImage(other);
-//                 const isActive = activeConv?._id === conv._id;
-//                 return (
-//                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}>
-//                     <div className="mp-conv-avatar" style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff", fontSize: "18px", fontWeight: 800 }}>
-//                       {img
-//                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-//                         : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* ── CHAT AREA ── */}
-//         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER — avatar/naam click → profile modal */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
-
-//                 {activeConv ? (() => {
-//                   const other = getOtherParticipant(activeConv);
-//                   const name = getParticipantName(other);
-//                   const img = getParticipantImage(other);
-//                   return (
-//                     <>
-//                       {/* ✅ Avatar click → profile */}
-//                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)} style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff" }}>
-//                         {img
-//                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-//                           : name.charAt(0).toUpperCase()}
-//                       </div>
-//                       <div className="mp-header-info">
-//                         {/* ✅ Naam click → profile */}
-//                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
-//                           {name}
-//                         </button>
-//                         <div className="mp-header-campaign">
-//                           {activeConv.campaignId?.title || "Campaign conversation"}
-//                         </div>
-//                       </div>
-//                     </>
-//                   );
-//                 })() : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name-btn">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
-//                 ) : messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const senderId = msg.sender?._id || msg.sender;
-//                     const isMe = myId && senderId && senderId.toString() === myId.toString();
-//                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-
-//       {/* ── PROFILE MODAL ── */}
-//       {profileModal && (
-//         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
-//           <div className="mp-pm-sheet">
-//             <div className="mp-pm-top">
-//               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
-//               <div className="mp-pm-avatar" style={{
-//                 background: profileModal.profileImage ? "rgba(255,255,255,0.15)" : getAvatarColor(profileModal.name || "U")
-//               }}>
-//                 {profileModal.profileImage
-//                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" onError={(e) => { (e.target as HTMLImageElement).style.display="none"; }} />
-//                   : (profileModal.name || "U").charAt(0).toUpperCase()}
-//               </div>
-//               <div className="mp-pm-name">{profileModal.name || "User"}</div>
-//               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
-//               <div className="mp-pm-tags">
-//                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
-//                   .filter(Boolean).map((c: string, i: number) => (
-//                     <span key={i} className="mp-pm-tag">{c}</span>
-//                   ))}
-//               </div>
-//             </div>
-
-//             <div className="mp-pm-body">
-//               {profileFetching && (
-//                 <div style={{ textAlign: "center", padding: "8px 0" }}>
-//                   <span className="mp-spinner" />
-//                 </div>
-//               )}
-
-//               <div className="mp-pm-stats">
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {profileModal.followers
-//                       ? Number(profileModal.followers) >= 1000
-//                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
-//                         : profileModal.followers
-//                       : "—"}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Followers</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Niches</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
-//                   <div className="mp-pm-stat-label">Platform</div>
-//                 </div>
-//               </div>
-
-//               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
-//                 <div className="mp-pm-empty">
-//                   Profile details not available yet.<br />
-//                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
-//                 </div>
-//               )}
-
-//               {profileModal.bio && (
-//                 <div>
-//                   <div className="mp-pm-lbl">About</div>
-//                   <div className="mp-pm-bio">{profileModal.bio}</div>
-//                 </div>
-//               )}
-//               {profileModal.platform && (
-//                 <div>
-//                   <div className="mp-pm-lbl">Platform</div>
-//                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
-//                     📸 {profileModal.platform}
-//                   </a>
-//                 </div>
-//               )}
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </>
-//   );
-// }
-
-// export default function MessagesPage() {
-//   return (
-//     <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#aaa"}}>Loading...</div>}>
-//       <MessagesInner />
-//     </Suspense>
-//   );
-// }
-
-
-// "use client";
-
-// import { useEffect, useState, useRef, Suspense } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// // ✅ Safe fetch — HTML response pe crash nahi karega
-// const safeFetch = async (url: string, opts: RequestInit = {}) => {
-//   try {
-//     const res = await fetch(url, opts);
-//     const text = await res.text();
-//     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
-//     const data = JSON.parse(text);
-//     return { ok: res.ok, data };
-//   } catch {
-//     return { ok: false, data: null };
-//   }
-// };
-
-// function MessagesInner() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const [isMobile, setIsMobile] = useState(false);
-//   const [profileModal, setProfileModal] = useState<any>(null);
-//   const [profileFetching, setProfileFetching] = useState(false);
-//   const [profileCache, setProfileCache] = useState<Record<string, any>>({});
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-
-//   // SSR-safe mobile check
-//   useEffect(() => {
-//     const check = () => setIsMobile(window.innerWidth <= 768);
-//     check();
-//     window.addEventListener("resize", check);
-//     return () => window.removeEventListener("resize", check);
-//   }, []);
-
-//   // Scroll to bottom on new messages
-//   useEffect(() => {
-//     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages]);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token");
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ===== FETCH CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ===== AUTO-OPEN if userId in URL ===== */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//     );
-//     if (existing) openConversation(existing);
-//   }, [conversations, targetUserId]);
-
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       // ✅ OLD working route from old code
-//       const { ok, data } = await safeFetch(`${API}/conversation/my`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("CONVS:", data);
-//       const list = data?.data || data?.conversations || [];
-//       setConversations(list);
-//       if (list.length > 0 && !targetUserId) openConversation(list[0]);
-
-//       // ✅ Har conversation ke participants ka profile fetch karo (profileImage ke liye)
-//       const allParticipantIds: string[] = [];
-//       list.forEach((conv: any) => {
-//         (conv.participants || []).forEach((p: any) => {
-//           const id = p._id?.toString() || (typeof p === "string" ? p : "");
-//           if (id) allParticipantIds.push(id);
-//         });
-//       });
-//       // Unique IDs
-//       const uniqueIds = [...new Set(allParticipantIds)];
-//       fetchParticipantProfiles(uniqueIds, token);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // ✅ Participants ka profile fetch karke cache mein store karo
-//   // Backend /profile/user/:id route se profileImage milegi
-//   const fetchParticipantProfiles = async (userIds: string[], tok: string) => {
-//     const cache: Record<string, any> = {};
-//     await Promise.all(
-//       userIds.map(async (uid) => {
-//         try {
-//           const { ok, data } = await safeFetch(`${API}/profile/user/${uid}`, {
-//             headers: { Authorization: `Bearer ${tok}` },
-//           });
-//           if (ok && data) {
-//             const p = data.profile || data.data || (data._id ? data : null);
-//             if (p) cache[uid] = p;
-//           }
-//         } catch { }
-//       })
-//     );
-//     if (Object.keys(cache).length > 0) {
-//       setProfileCache(prev => ({ ...prev, ...cache }));
-//     }
-//   };
-
-//   const openConversation = (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const { ok, data } = await safeFetch(`${API}/conversation/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("MESSAGES:", data);
-//       if (!ok || !data) return;
-//       const msgs = Array.isArray(data.data) ? data.data
-//         : Array.isArray(data.messages) ? data.messages
-//         : data.conversation?.messages || [];
-//       console.log("MSGS COUNT:", msgs.length);
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   /* ===== CREATE CONVERSATION ===== */
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) { console.error("No campaignId"); return null; }
-//       const { ok, data } = await safeFetch(`${API}/conversation/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       console.log("CREATE CONV:", data);
-//       const conv = data?.conversation || data?.data;
-//       if (ok && conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   /* ===== SEND MESSAGE ===== */
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
-//       }
-//       const { ok, data } = await safeFetch(`${API}/conversation/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-//       console.log("SEND:", data);
-//       if (!ok) { alert(data?.message || "Send failed"); return; }
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   // ✅ OLD working myId extraction
-//   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
-
-//   // ✅ OLD working getOtherParticipant
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants || !myId) return null;
-//     return conv.participants.find((p: any) => {
-//       const pid = p?._id?.toString() || p?.toString();
-//       return pid !== myId.toString();
-//     }) || null;
-//   };
-
-//   // ✅ Name se consistent color generate karo (WhatsApp style)
-//   const getAvatarColor = (name: string): string => {
-//     const colors = [
-//       "#ef4444", "#f97316", "#eab308", "#22c55e",
-//       "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899",
-//       "#06b6d4", "#a855f7", "#f43f5e", "#10b981"
-//     ];
-//     let hash = 0;
-//     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-//     return colors[Math.abs(hash) % colors.length];
-//   };
-
-//   // ✅ OLD working name/image helpers
-//   const getParticipantName = (p: any): string => {
-//     if (!p) return "User";
-//     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
-//   };
-
-//   const getParticipantImage = (p: any): string | null => {
-//     if (!p) return null;
-//     // Direct fields se try karo
-//     const direct = p.profileImage || p.profile?.profileImage || p.avatar || null;
-//     if (direct) return direct;
-//     // ✅ profileCache se try karo (separately fetched profiles)
-//     const uid = p._id?.toString() || (typeof p === "string" ? p : "");
-//     const cached = uid ? profileCache[uid] : null;
-//     return cached?.profileImage || cached?.avatar || cached?.image || null;
-//   };
-
-//   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
-//   const openProfileModal = async (other: any) => {
-//     if (!other || typeof other === "string") return;
-//     const basicInfo = {
-//       name: getParticipantName(other),
-//       profileImage: getParticipantImage(other),
-//       bio: other.profile?.bio || other.bio || "",
-//       followers: other.profile?.followers || other.followers || "",
-//       categories: other.profile?.categories || other.categories || [],
-//       platform: other.profile?.platform || other.platform || "",
-//       location: other.profile?.location || other.location || "",
-//     };
-//     setProfileModal({ ...basicInfo, _loading: true });
-
-//     const userId = other._id?.toString() || other.id?.toString();
-//     if (userId) {
-//       setProfileFetching(true);
-//       try {
-//         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-//         if (ok && data) {
-//           const p = data.profile || data.data || (data._id ? data : null);
-//           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
-//         }
-//       } catch { }
-//       setProfileFetching(false);
-//     }
-//     setProfileModal({ ...basicInfo, _loading: false });
-//   };
-
-//   const formatTime = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     const today = new Date();
-//     const diff = today.getDate() - d.getDate();
-//     if (diff === 0) return "Today";
-//     if (diff === 1) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   /* ===== UI ===== */
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
-//         .mp-header-avatar:hover{opacity:0.8}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
-//         .mp-header-name-btn:hover{color:#4f46e5}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
-
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-
-//         @keyframes spin{to{transform:rotate(360deg)}}
-//         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
-
-//         /* ── PROFILE MODAL ── */
-//         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
-//         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
-//         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-//         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
-//         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
-//         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
-//         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
-//         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
-//         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
-//         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
-//         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
-//         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
-//         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
-//         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
-//         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
-//         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-//         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
-//         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
-//         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
-//         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
-//         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
-//         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
-//         .mp-pm-link:hover{background:#f0f0f0}
-//         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
-//       `}</style>
-
-//       <div className="mp">
-//         {/* ── SIDEBAR ── */}
-//         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {targetUserId && !conversations.find(c =>
-//             c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//           ) && (
-//             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = getParticipantName(other);
-//                 const img = getParticipantImage(other);
-//                 const isActive = activeConv?._id === conv._id;
-//                 return (
-//                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}>
-//                     <div className="mp-conv-avatar" style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff", fontSize: "18px", fontWeight: 800 }}>
-//                       {img
-//                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-//                         : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* ── CHAT AREA ── */}
-//         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER — avatar/naam click → profile modal */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
-
-//                 {activeConv ? (() => {
-//                   const other = getOtherParticipant(activeConv);
-//                   const name = getParticipantName(other);
-//                   const img = getParticipantImage(other);
-//                   return (
-//                     <>
-//                       {/* ✅ Avatar click → profile */}
-//                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)} style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff" }}>
-//                         {img
-//                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-//                           : name.charAt(0).toUpperCase()}
-//                       </div>
-//                       <div className="mp-header-info">
-//                         {/* ✅ Naam click → profile */}
-//                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
-//                           {name}
-//                         </button>
-//                         <div className="mp-header-campaign">
-//                           {activeConv.campaignId?.title || "Campaign conversation"}
-//                         </div>
-//                       </div>
-//                     </>
-//                   );
-//                 })() : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name-btn">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
-//                 ) : messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const senderId = msg.sender?._id || msg.sender;
-//                     const isMe = myId && senderId && senderId.toString() === myId.toString();
-//                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-
-//       {/* ── PROFILE MODAL ── */}
-//       {profileModal && (
-//         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
-//           <div className="mp-pm-sheet">
-//             <div className="mp-pm-top">
-//               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
-//               <div className="mp-pm-avatar" style={{
-//                 background: profileModal.profileImage ? "rgba(255,255,255,0.15)" : getAvatarColor(profileModal.name || "U")
-//               }}>
-//                 {profileModal.profileImage
-//                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" onError={(e) => { (e.target as HTMLImageElement).style.display="none"; }} />
-//                   : (profileModal.name || "U").charAt(0).toUpperCase()}
-//               </div>
-//               <div className="mp-pm-name">{profileModal.name || "User"}</div>
-//               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
-//               <div className="mp-pm-tags">
-//                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
-//                   .filter(Boolean).map((c: string, i: number) => (
-//                     <span key={i} className="mp-pm-tag">{c}</span>
-//                   ))}
-//               </div>
-//             </div>
-
-//             <div className="mp-pm-body">
-//               {profileFetching && (
-//                 <div style={{ textAlign: "center", padding: "8px 0" }}>
-//                   <span className="mp-spinner" />
-//                 </div>
-//               )}
-
-//               <div className="mp-pm-stats">
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {profileModal.followers
-//                       ? Number(profileModal.followers) >= 1000
-//                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
-//                         : profileModal.followers
-//                       : "—"}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Followers</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Niches</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
-//                   <div className="mp-pm-stat-label">Platform</div>
-//                 </div>
-//               </div>
-
-//               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
-//                 <div className="mp-pm-empty">
-//                   Profile details not available yet.<br />
-//                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
-//                 </div>
-//               )}
-
-//               {profileModal.bio && (
-//                 <div>
-//                   <div className="mp-pm-lbl">About</div>
-//                   <div className="mp-pm-bio">{profileModal.bio}</div>
-//                 </div>
-//               )}
-//               {profileModal.platform && (
-//                 <div>
-//                   <div className="mp-pm-lbl">Platform</div>
-//                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
-//                     📸 {profileModal.platform}
-//                   </a>
-//                 </div>
-//               )}
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </>
-//   );
-// }
-
-// export default function MessagesPage() {
-//   return (
-//     <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#aaa"}}>Loading...</div>}>
-//       <MessagesInner />
-//     </Suspense>
-//   );
-// }
-
-
-
-
-
-
-
-// "use client";
-
-// import { useEffect, useState, useRef } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// // ✅ Safe fetch — HTML response pe crash nahi karega
-// const safeFetch = async (url: string, opts: RequestInit = {}) => {
-//   try {
-//     const res = await fetch(url, opts);
-//     const text = await res.text();
-//     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
-//     const data = JSON.parse(text);
-//     return { ok: res.ok, data };
-//   } catch {
-//     return { ok: false, data: null };
-//   }
-// };
-
-// export default function MessagesPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const [isMobile, setIsMobile] = useState(false);
-//   const [profileModal, setProfileModal] = useState<any>(null);
-//   const [profileFetching, setProfileFetching] = useState(false);
-//   const [profileCache, setProfileCache] = useState<Record<string, any>>({});
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-
-//   // SSR-safe mobile check
-//   useEffect(() => {
-//     const check = () => setIsMobile(window.innerWidth <= 768);
-//     check();
-//     window.addEventListener("resize", check);
-//     return () => window.removeEventListener("resize", check);
-//   }, []);
-
-//   // Scroll to bottom on new messages
-//   useEffect(() => {
-//     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages]);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token");
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ===== FETCH CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ===== AUTO-OPEN if userId in URL ===== */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//     );
-//     if (existing) openConversation(existing);
-//   }, [conversations, targetUserId]);
-
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       // ✅ OLD working route from old code
-//       const { ok, data } = await safeFetch(`${API}/conversations/my`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("CONVS:", data);
-//       const list = data?.data || data?.conversations || [];
-//       setConversations(list);
-//       if (list.length > 0 && !targetUserId) openConversation(list[0]);
-
-//       // ✅ Har conversation ke participants ka profile fetch karo (profileImage ke liye)
-//       const allParticipantIds: string[] = [];
-//       list.forEach((conv: any) => {
-//         (conv.participants || []).forEach((p: any) => {
-//           const id = p._id?.toString() || (typeof p === "string" ? p : "");
-//           if (id) allParticipantIds.push(id);
-//         });
-//       });
-//       // Unique IDs
-//       const uniqueIds = [...new Set(allParticipantIds)];
-//       fetchParticipantProfiles(uniqueIds, token);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // ✅ Participants ka profile fetch karke cache mein store karo
-//   // Backend /profile/user/:id route se profileImage milegi
-//   const fetchParticipantProfiles = async (userIds: string[], tok: string) => {
-//     const cache: Record<string, any> = {};
-//     await Promise.all(
-//       userIds.map(async (uid) => {
-//         try {
-//           const { ok, data } = await safeFetch(`${API}/profile/user/${uid}`, {
-//             headers: { Authorization: `Bearer ${tok}` },
-//           });
-//           if (ok && data) {
-//             const p = data.profile || data.data || (data._id ? data : null);
-//             if (p) cache[uid] = p;
-//           }
-//         } catch { }
-//       })
-//     );
-//     if (Object.keys(cache).length > 0) {
-//       setProfileCache(prev => ({ ...prev, ...cache }));
-//     }
-//   };
-
-//   const openConversation = (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("MESSAGES:", data);
-//       if (!ok || !data) return;
-//       const msgs = Array.isArray(data.data) ? data.data
-//         : Array.isArray(data.messages) ? data.messages
-//         : data.conversation?.messages || [];
-//       console.log("MSGS COUNT:", msgs.length);
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   /* ===== CREATE CONVERSATION ===== */
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) { console.error("No campaignId"); return null; }
-//       const { ok, data } = await safeFetch(`${API}/conversations/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       console.log("CREATE CONV:", data);
-//       const conv = data?.conversation || data?.data;
-//       if (ok && conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   /* ===== SEND MESSAGE ===== */
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
-//       }
-//       const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-//       console.log("SEND:", data);
-//       if (!ok) { alert(data?.message || "Send failed"); return; }
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   // ✅ OLD working myId extraction
-//   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
-
-//   // ✅ OLD working getOtherParticipant
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants || !myId) return null;
-//     return conv.participants.find((p: any) => {
-//       const pid = p?._id?.toString() || p?.toString();
-//       return pid !== myId.toString();
-//     }) || null;
-//   };
-
-//   // ✅ OLD working name/image helpers
-//   const getParticipantName = (p: any): string => {
-//     if (!p) return "User";
-//     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
-//   };
-
-//   const getParticipantImage = (p: any): string | null => {
-//     if (!p) return null;
-//     // Direct fields se try karo
-//     const direct = p.profileImage || p.profile?.profileImage || p.avatar || null;
-//     if (direct) return direct;
-//     // ✅ profileCache se try karo (separately fetched profiles)
-//     const uid = p._id?.toString() || (typeof p === "string" ? p : "");
-//     const cached = uid ? profileCache[uid] : null;
-//     return cached?.profileImage || cached?.avatar || cached?.image || null;
-//   };
-
-//   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
-//   const openProfileModal = async (other: any) => {
-//     if (!other || typeof other === "string") return;
-//     const basicInfo = {
-//       name: getParticipantName(other),
-//       profileImage: getParticipantImage(other),
-//       bio: other.profile?.bio || other.bio || "",
-//       followers: other.profile?.followers || other.followers || "",
-//       categories: other.profile?.categories || other.categories || [],
-//       platform: other.profile?.platform || other.platform || "",
-//       location: other.profile?.location || other.location || "",
-//     };
-//     setProfileModal({ ...basicInfo, _loading: true });
-
-//     const userId = other._id?.toString() || other.id?.toString();
-//     if (userId) {
-//       setProfileFetching(true);
-//       try {
-//         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-//         if (ok && data) {
-//           const p = data.profile || data.data || (data._id ? data : null);
-//           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
-//         }
-//       } catch { }
-//       setProfileFetching(false);
-//     }
-//     setProfileModal({ ...basicInfo, _loading: false });
-//   };
-
-//   const formatTime = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     const today = new Date();
-//     const diff = today.getDate() - d.getDate();
-//     if (diff === 0) return "Today";
-//     if (diff === 1) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   /* ===== UI ===== */
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
-//         .mp-header-avatar:hover{opacity:0.8}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
-//         .mp-header-name-btn:hover{color:#4f46e5}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
-
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-
-//         @keyframes spin{to{transform:rotate(360deg)}}
-//         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
-
-//         /* ── PROFILE MODAL ── */
-//         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
-//         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
-//         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-//         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
-//         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
-//         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
-//         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
-//         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
-//         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
-//         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
-//         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
-//         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
-//         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
-//         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
-//         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
-//         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-//         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
-//         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
-//         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
-//         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
-//         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
-//         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
-//         .mp-pm-link:hover{background:#f0f0f0}
-//         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
-//       `}</style>
-
-//       <div className="mp">
-//         {/* ── SIDEBAR ── */}
-//         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {targetUserId && !conversations.find(c =>
-//             c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//           ) && (
-//             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = getParticipantName(other);
-//                 const img = getParticipantImage(other);
-//                 const isActive = activeConv?._id === conv._id;
-//                 return (
-//                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}>
-//                     {/* ✅ WhatsApp style — color from name hash */}
-//                     <div className="mp-conv-avatar" style={{
-//                       background: img ? undefined : `hsl(${name.charCodeAt(0) * 37 % 360}, 65%, 50%)`,
-//                       color: img ? undefined : "#fff"
-//                     }}>
-//                       {img
-//                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
-//                         : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* ── CHAT AREA ── */}
-//         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER — avatar/naam click → profile modal */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
-
-//                 {activeConv ? (() => {
-//                   const other = getOtherParticipant(activeConv);
-//                   const name = getParticipantName(other);
-//                   const img = getParticipantImage(other);
-//                   return (
-//                     <>
-//                       {/* ✅ Avatar click → profile */}
-//                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)} style={{
-//                         background: img ? undefined : `hsl(${name.charCodeAt(0) * 37 % 360}, 65%, 50%)`,
-//                         color: img ? undefined : "#fff"
-//                       }}>
-//                         {img
-//                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
-//                           : name.charAt(0).toUpperCase()}
-//                       </div>
-//                       <div className="mp-header-info">
-//                         {/* ✅ Naam click → profile */}
-//                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
-//                           {name}
-//                         </button>
-//                         <div className="mp-header-campaign">
-//                           {activeConv.campaignId?.title || "Campaign conversation"}
-//                         </div>
-//                       </div>
-//                     </>
-//                   );
-//                 })() : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name-btn">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
-//                 ) : messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const senderId = msg.sender?._id || msg.sender;
-//                     const isMe = myId && senderId && senderId.toString() === myId.toString();
-//                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-
-//       {/* ── PROFILE MODAL ── */}
-//       {profileModal && (
-//         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
-//           <div className="mp-pm-sheet">
-//             <div className="mp-pm-top">
-//               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
-//               <div className="mp-pm-avatar">
-//                 {profileModal.profileImage
-//                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" />
-//                   : (profileModal.name || "U").charAt(0).toUpperCase()}
-//               </div>
-//               <div className="mp-pm-name">{profileModal.name || "User"}</div>
-//               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
-//               <div className="mp-pm-tags">
-//                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
-//                   .filter(Boolean).map((c: string, i: number) => (
-//                     <span key={i} className="mp-pm-tag">{c}</span>
-//                   ))}
-//               </div>
-//             </div>
-
-//             <div className="mp-pm-body">
-//               {profileFetching && (
-//                 <div style={{ textAlign: "center", padding: "8px 0" }}>
-//                   <span className="mp-spinner" />
-//                 </div>
-//               )}
-
-//               <div className="mp-pm-stats">
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {profileModal.followers
-//                       ? Number(profileModal.followers) >= 1000
-//                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
-//                         : profileModal.followers
-//                       : "—"}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Followers</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Niches</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
-//                   <div className="mp-pm-stat-label">Platform</div>
-//                 </div>
-//               </div>
-
-//               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
-//                 <div className="mp-pm-empty">
-//                   Profile details not available yet.<br />
-//                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
-//                 </div>
-//               )}
-
-//               {profileModal.bio && (
-//                 <div>
-//                   <div className="mp-pm-lbl">About</div>
-//                   <div className="mp-pm-bio">{profileModal.bio}</div>
-//                 </div>
-//               )}
-//               {profileModal.platform && (
-//                 <div>
-//                   <div className="mp-pm-lbl">Platform</div>
-//                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
-//                     📸 {profileModal.platform}
-//                   </a>
-//                 </div>
-//               )}
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </>
-//   );
-// }
-
-
-// "use client";
-
-// import { useEffect, useState, useRef } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// // ✅ Safe fetch — HTML response pe crash nahi karega
-// const safeFetch = async (url: string, opts: RequestInit = {}) => {
-//   try {
-//     const res = await fetch(url, opts);
-//     const text = await res.text();
-//     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
-//     const data = JSON.parse(text);
-//     return { ok: res.ok, data };
-//   } catch {
-//     return { ok: false, data: null };
-//   }
-// };
-
-// export default function MessagesPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const [isMobile, setIsMobile] = useState(false);
-//   const [profileModal, setProfileModal] = useState<any>(null);
-//   const [profileFetching, setProfileFetching] = useState(false);
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-
-//   // SSR-safe mobile check
-//   useEffect(() => {
-//     const check = () => setIsMobile(window.innerWidth <= 768);
-//     check();
-//     window.addEventListener("resize", check);
-//     return () => window.removeEventListener("resize", check);
-//   }, []);
-
-//   // Scroll to bottom on new messages
-//   useEffect(() => {
-//     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages]);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token");
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ===== FETCH CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ===== AUTO-OPEN if userId in URL ===== */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//     );
-//     if (existing) openConversation(existing);
-//   }, [conversations, targetUserId]);
-
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       // ✅ OLD working route from old code
-//       const { ok, data } = await safeFetch(`${API}/conversations/my`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("CONVS:", data);
-//       const list = data?.data || data?.conversations || [];
-//       setConversations(list);
-//       if (list.length > 0 && !targetUserId) openConversation(list[0]);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const openConversation = (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       console.log("MESSAGES:", data);
-//       if (!ok || !data) return;
-//       const msgs = Array.isArray(data.data) ? data.data
-//         : Array.isArray(data.messages) ? data.messages
-//         : data.conversation?.messages || [];
-//       console.log("MSGS COUNT:", msgs.length);
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   /* ===== CREATE CONVERSATION ===== */
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) { console.error("No campaignId"); return null; }
-//       const { ok, data } = await safeFetch(`${API}/conversations/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       console.log("CREATE CONV:", data);
-//       const conv = data?.conversation || data?.data;
-//       if (ok && conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   /* ===== SEND MESSAGE ===== */
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
-//       }
-//       const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-//       console.log("SEND:", data);
-//       if (!ok) { alert(data?.message || "Send failed"); return; }
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   // ✅ OLD working myId extraction
-//   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
-
-//   // ✅ OLD working getOtherParticipant
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants || !myId) return null;
-//     return conv.participants.find((p: any) => {
-//       const pid = p?._id?.toString() || p?.toString();
-//       return pid !== myId.toString();
-//     }) || null;
-//   };
-
-//   // ✅ OLD working name/image helpers
-//   const getParticipantName = (p: any): string => {
-//     if (!p) return "User";
-//     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
-//   };
-
-//   const getParticipantImage = (p: any): string | null => {
-//     if (!p) return null;
-//     return p.profileImage || p.profile?.profileImage || p.avatar || null;
-//   };
-
-//   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
-//   const openProfileModal = async (other: any) => {
-//     if (!other || typeof other === "string") return;
-//     const basicInfo = {
-//       name: getParticipantName(other),
-//       profileImage: getParticipantImage(other),
-//       bio: other.profile?.bio || other.bio || "",
-//       followers: other.profile?.followers || other.followers || "",
-//       categories: other.profile?.categories || other.categories || [],
-//       platform: other.profile?.platform || other.platform || "",
-//       location: other.profile?.location || other.location || "",
-//     };
-//     setProfileModal({ ...basicInfo, _loading: true });
-
-//     const userId = other._id?.toString() || other.id?.toString();
-//     if (userId) {
-//       setProfileFetching(true);
-//       try {
-//         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-//         if (ok && data) {
-//           const p = data.profile || data.data || (data._id ? data : null);
-//           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
-//         }
-//       } catch { }
-//       setProfileFetching(false);
-//     }
-//     setProfileModal({ ...basicInfo, _loading: false });
-//   };
-
-//   const formatTime = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     const today = new Date();
-//     const diff = today.getDate() - d.getDate();
-//     if (diff === 0) return "Today";
-//     if (diff === 1) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   /* ===== UI ===== */
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
-//         .mp-header-avatar:hover{opacity:0.8}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
-//         .mp-header-name-btn:hover{color:#4f46e5}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
-
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-
-//         @keyframes spin{to{transform:rotate(360deg)}}
-//         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
-
-//         /* ── PROFILE MODAL ── */
-//         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
-//         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
-//         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-//         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
-//         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
-//         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
-//         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
-//         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
-//         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
-//         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
-//         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
-//         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
-//         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
-//         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
-//         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
-//         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-//         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
-//         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
-//         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
-//         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
-//         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
-//         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
-//         .mp-pm-link:hover{background:#f0f0f0}
-//         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
-//       `}</style>
-
-//       <div className="mp">
-//         {/* ── SIDEBAR ── */}
-//         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {targetUserId && !conversations.find(c =>
-//             c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//           ) && (
-//             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = getParticipantName(other);
-//                 const img = getParticipantImage(other);
-//                 const isActive = activeConv?._id === conv._id;
-//                 return (
-//                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}>
-//                     <div className="mp-conv-avatar">
-//                       {img
-//                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
-//                         : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* ── CHAT AREA ── */}
-//         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER — avatar/naam click → profile modal */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
-
-//                 {activeConv ? (() => {
-//                   const other = getOtherParticipant(activeConv);
-//                   const name = getParticipantName(other);
-//                   const img = getParticipantImage(other);
-//                   return (
-//                     <>
-//                       {/* ✅ Avatar click → profile */}
-//                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)}>
-//                         {img
-//                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
-//                           : name.charAt(0).toUpperCase()}
-//                       </div>
-//                       <div className="mp-header-info">
-//                         {/* ✅ Naam click → profile */}
-//                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
-//                           {name}
-//                         </button>
-//                         <div className="mp-header-campaign">
-//                           {activeConv.campaignId?.title || "Campaign conversation"}
-//                         </div>
-//                       </div>
-//                     </>
-//                   );
-//                 })() : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name-btn">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
-//                 ) : messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const senderId = msg.sender?._id || msg.sender;
-//                     const isMe = myId && senderId && senderId.toString() === myId.toString();
-//                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-
-//       {/* ── PROFILE MODAL ── */}
-//       {profileModal && (
-//         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
-//           <div className="mp-pm-sheet">
-//             <div className="mp-pm-top">
-//               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
-//               <div className="mp-pm-avatar">
-//                 {profileModal.profileImage
-//                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" />
-//                   : (profileModal.name || "U").charAt(0).toUpperCase()}
-//               </div>
-//               <div className="mp-pm-name">{profileModal.name || "User"}</div>
-//               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
-//               <div className="mp-pm-tags">
-//                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
-//                   .filter(Boolean).map((c: string, i: number) => (
-//                     <span key={i} className="mp-pm-tag">{c}</span>
-//                   ))}
-//               </div>
-//             </div>
-
-//             <div className="mp-pm-body">
-//               {profileFetching && (
-//                 <div style={{ textAlign: "center", padding: "8px 0" }}>
-//                   <span className="mp-spinner" />
-//                 </div>
-//               )}
-
-//               <div className="mp-pm-stats">
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {profileModal.followers
-//                       ? Number(profileModal.followers) >= 1000
-//                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
-//                         : profileModal.followers
-//                       : "—"}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Followers</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">
-//                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
-//                   </div>
-//                   <div className="mp-pm-stat-label">Niches</div>
-//                 </div>
-//                 <div className="mp-pm-stat">
-//                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
-//                   <div className="mp-pm-stat-label">Platform</div>
-//                 </div>
-//               </div>
-
-//               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
-//                 <div className="mp-pm-empty">
-//                   Profile details not available yet.<br />
-//                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
-//                 </div>
-//               )}
-
-//               {profileModal.bio && (
-//                 <div>
-//                   <div className="mp-pm-lbl">About</div>
-//                   <div className="mp-pm-bio">{profileModal.bio}</div>
-//                 </div>
-//               )}
-//               {profileModal.platform && (
-//                 <div>
-//                   <div className="mp-pm-lbl">Platform</div>
-//                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
-//                     📸 {profileModal.platform}
-//                   </a>
-//                 </div>
-//               )}
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </>
-//   );
-// }
-
-// "use client";
-
-// import { useEffect, useState, useRef, useCallback } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// export default function MessagesPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const bottomRef = useRef<HTMLDivElement>(null);
-
-//   // ✅ Scroll to bottom whenever messages change
-//   useEffect(() => {
-//     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages]);
-//   const pollRef = useRef<any>(null);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token");
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ===== FETCH CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ===== AUTO-OPEN if userId in URL ===== */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     // Find existing conv with this user
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) =>
-//         (p._id || p) === targetUserId
-//       )
-//     );
-//     if (existing) {
-//       openConversation(existing);
-//     }
-//     // else will be created on first message send
-//   }, [conversations, targetUserId]);
-
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       const res = await fetch(`${API}/conversations/my`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("CONVS:", data);
-//       // ✅ Backend sends {success: true, data: [...]} with populated participants
-//       const list = data.data || data.conversations || [];
-//       setConversations(list);
-
-//       // Auto open first conv (if not coming from notification)
-//       if (list.length > 0 && !targetUserId) {
-//         openConversation(list[0]);
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const openConversation = async (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     // Start polling
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const res = await fetch(`${API}/conversations/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("MESSAGES:", data);
-//       // ✅ Backend sends {success: true, data: [...messages array]}
-//       const msgs = Array.isArray(data.data) ? data.data
-//         : Array.isArray(data.messages) ? data.messages : [];
-//       console.log("SETTING MSGS:", msgs.length);
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   /* ===== CREATE CONVERSATION & SEND ===== */
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) {
-//         console.error("No campaignId for conversation");
-//         return null;
-//       }
-//       const res = await fetch(`${API}/conversations/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       const data = await res.json();
-//       console.log("CREATE CONV:", data);
-//       const conv = data.conversation || data.data;
-//       if (conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-
-//       // Create conv if not exists (coming from notification)
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) {
-//           alert("Could not start conversation — make sure campaign is linked");
-//           return;
-//         }
-//       }
-
-//       const res = await fetch(`${API}/conversations/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-
-//       const data = await res.json();
-//       console.log("SEND:", data);
-
-//       if (!res.ok) { alert(data.message || "Send failed"); return; }
-
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   // Cleanup polling
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   // myId from user state
-//   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
-
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants || !myId) return null;
-//     return conv.participants.find((p: any) => {
-//       const pid = p?._id?.toString() || p?.toString();
-//       return pid !== myId.toString();
-//     }) || null;
-//   };
-
-//   const getParticipantName = (p: any): string => {
-//     if (!p) return "User";
-//     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
-//   };
-
-//   const getParticipantImage = (p: any): string | null => {
-//     if (!p) return null;
-//     return p.profileImage || p.profile?.profileImage || p.avatar || null;
-//   };
-
-//   const formatTime = (date: string) => {
-//     const d = new Date(date);
-//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     const d = new Date(date);
-//     const today = new Date();
-//     const diff = today.getDate() - d.getDate();
-//     if (diff === 0) return "Today";
-//     if (diff === 1) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   /* ===== UI ===== */
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         /* SIDEBAR */
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-conv-unread{width:8px;height:8px;border-radius:50%;background:#4f46e5;flex-shrink:0}
-
-//         /* EMPTY SIDEBAR */
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         /* CHAT AREA */
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         /* CHAT HEADER */
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         /* MESSAGES */
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         /* BUBBLE */
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
-
-//         /* INPUT */
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s;resize:none}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         /* EMPTY STATE */
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-
-//         /* NEW CHAT BANNER */
-//         .mp-new-banner{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-//         .mp-new-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-new-sub{font-size:12px;color:#aaa}
-//       `}</style>
-
-//       <div className="mp">
-//         {/* SIDEBAR */}
-//         <div className={`mp-sidebar ${activeConv && window.innerWidth <= 768 ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {/* New chat from notification */}
-//           {targetUserId && !conversations.find(c => c.participants?.some((p: any) => (p._id || p) === targetUserId)) && (
-//             <div className="mp-new-chat">
-//               💬 New conversation with {targetUserName}
-//             </div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>Loading...</div>
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>
-//                 No conversations yet
-//               </div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = getParticipantName(other);
-//                 const img = getParticipantImage(other);
-//                 const isActive = activeConv?._id === conv._id;
-
-//                 return (
-//                   <div
-//                     key={conv._id}
-//                     className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}
-//                   >
-//                     <div className="mp-conv-avatar">
-//                       {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* CHAT AREA */}
-//         <div className={`mp-chat ${!activeConv && !targetUserId ? "" : ""}`}>
-
-//           {/* No conversation selected */}
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => setActiveConv(null)}>←</button>
-
-//                 {activeConv ? (
-//                   <>
-//                     {(() => {
-//                       const other = getOtherParticipant(activeConv);
-//                       const name = getParticipantName(other);
-//                       const img = getParticipantImage(other);
-//                       return (
-//                         <>
-//                           <div className="mp-header-avatar">
-//                             {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
-//                           </div>
-//                           <div className="mp-header-info">
-//                             <div className="mp-header-name">{name}</div>
-//                             <div className="mp-header-campaign">
-//                               {activeConv.campaignId?.title || "Campaign conversation"}
-//                             </div>
-//                           </div>
-//                         </>
-//                       );
-//                     })()}
-//                   </>
-//                 ) : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {/* DEBUG */}
-//               {messages.length > 0 && <div style={{display:"none"}}>msgs: {messages.length}</div>}
-//               {msgLoading && messages.length === 0 ? (
-//                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>Loading messages...</div>
-//                 ) : messages.length === 0 ? (
-//                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const senderId = msg.sender?._id || msg.sender;
-//               const isMe = myId && senderId && senderId.toString() === myId.toString();
-//               if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>
-//                             {msg.text}
-//                           </div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>
-//                             {formatTime(msg.createdAt)}
-//                           </div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-//     </>
-//   );
-// }
-
-
-// "use client";
-
-// import { useEffect, useState, useRef, useCallback } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// export default function MessagesPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token");
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ===== FETCH CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ===== AUTO-OPEN if userId in URL ===== */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     // Find existing conv with this user
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) =>
-//         (p._id || p) === targetUserId
-//       )
-//     );
-//     if (existing) {
-//       openConversation(existing);
-//     }
-//     // else will be created on first message send
-//   }, [conversations, targetUserId]);
-
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       const res = await fetch(`${API}/conversations/messages/all`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("CONVS:", data);
-//       const list = data.conversations || data.data || [];
-//       setConversations(list);
-
-//       // Auto open first or from URL
-//       if (list.length > 0 && !activeConv) {
-//         openConversation(list[0]);
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const openConversation = async (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     // Start polling
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const res = await fetch(`${API}/conversations/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("MESSAGES:", data);
-//       const msgs = data.messages || data.data?.messages || [];
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   /* ===== CREATE CONVERSATION & SEND ===== */
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) {
-//         console.error("No campaignId for conversation");
-//         return null;
-//       }
-//       const res = await fetch(`${API}/conversations/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       const data = await res.json();
-//       console.log("CREATE CONV:", data);
-//       const conv = data.conversation || data.data;
-//       if (conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-
-//       // Create conv if not exists (coming from notification)
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) {
-//           alert("Could not start conversation — make sure campaign is linked");
-//           return;
-//         }
-//       }
-
-//       const res = await fetch(`${API}/conversations/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-
-//       const data = await res.json();
-//       console.log("SEND:", data);
-
-//       if (!res.ok) { alert(data.message || "Send failed"); return; }
-
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   // Cleanup polling
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   // ✅ cb_user structure: {token, role, user: {_id, email}} ya direct {_id, token}
-//   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
-
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants || !myId) return null;
-//     return conv.participants.find((p: any) => {
-//       const pid = p?._id?.toString() || p?.toString();
-//       return pid !== myId.toString();
-//     }) || null;
-//   };
-
-//   const getParticipantName = (p: any): string => {
-//     if (!p) return "User";
-//     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
-//   };
-
-//   const getParticipantImage = (p: any): string | null => {
-//     if (!p) return null;
-//     return p.profileImage || p.profile?.profileImage || p.avatar || null;
-//   };
-
-//   const formatTime = (date: string) => {
-//     const d = new Date(date);
-//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     const d = new Date(date);
-//     const today = new Date();
-//     const diff = today.getDate() - d.getDate();
-//     if (diff === 0) return "Today";
-//     if (diff === 1) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   /* ===== UI ===== */
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         /* SIDEBAR */
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-conv-unread{width:8px;height:8px;border-radius:50%;background:#4f46e5;flex-shrink:0}
-
-//         /* EMPTY SIDEBAR */
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         /* CHAT AREA */
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         /* CHAT HEADER */
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         /* MESSAGES */
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         /* BUBBLE */
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
-
-//         /* INPUT */
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s;resize:none}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         /* EMPTY STATE */
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-
-//         /* NEW CHAT BANNER */
-//         .mp-new-banner{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-//         .mp-new-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-new-sub{font-size:12px;color:#aaa}
-//       `}</style>
-
-//       <div className="mp">
-//         {/* SIDEBAR */}
-//         <div className={`mp-sidebar ${activeConv && window.innerWidth <= 768 ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {/* New chat from notification */}
-//           {targetUserId && !conversations.find(c => c.participants?.some((p: any) => (p._id || p) === targetUserId)) && (
-//             <div className="mp-new-chat">
-//               💬 New conversation with {targetUserName}
-//             </div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>Loading...</div>
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>
-//                 No conversations yet
-//               </div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = getParticipantName(other);
-//                 const img = getParticipantImage(other);
-//                 const isActive = activeConv?._id === conv._id;
-
-//                 return (
-//                   <div
-//                     key={conv._id}
-//                     className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}
-//                   >
-//                     <div className="mp-conv-avatar">
-//                       {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* CHAT AREA */}
-//         <div className={`mp-chat ${!activeConv && !targetUserId ? "" : ""}`}>
-
-//           {/* No conversation selected */}
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => setActiveConv(null)}>←</button>
-
-//                 {activeConv ? (
-//                   <>
-//                     {(() => {
-//                       const other = getOtherParticipant(activeConv);
-//                       const name = getParticipantName(other);
-//                       const img = getParticipantImage(other);
-//                       return (
-//                         <>
-//                           <div className="mp-header-avatar">
-//                             {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
-//                           </div>
-//                           <div className="mp-header-info">
-//                             <div className="mp-header-name">{name}</div>
-//                             <div className="mp-header-campaign">
-//                               {activeConv.campaignId?.title || "Campaign conversation"}
-//                             </div>
-//                           </div>
-//                         </>
-//                       );
-//                     })()}
-//                   </>
-//                 ) : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>Loading messages...</div>
-//                 ) : messages.length === 0 ? (
-//                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const isMe = (msg.sender?._id || msg.sender) === myId;
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>
-//                             {msg.text}
-//                           </div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>
-//                             {formatTime(msg.createdAt)}
-//                           </div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-//     </>
-//   );
-// }
-
-
-// "use client";
-
-// import { useEffect, useState, useRef } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-// import { socket } from "@/lib/socket";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// export default function MessagesPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const [isMobile, setIsMobile] = useState(false);
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-//   const activeConvRef = useRef<any>(null);
-
-//   // ✅ activeConv ka latest ref — socket handler mein use hoga
-//   useEffect(() => {
-//     activeConvRef.current = activeConv;
-//   }, [activeConv]);
-
-//   // ✅ SSR-safe mobile check
-//   useEffect(() => {
-//     const check = () => setIsMobile(window.innerWidth <= 768);
-//     check();
-//     window.addEventListener("resize", check);
-//     return () => window.removeEventListener("resize", check);
-//   }, []);
-
-//   /* ── AUTH ── */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token") || "";
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
+// //       setSending(true);
+
+// //       const res = await fetch(
+// //         `${API}/conversations/send/${activeConv._id}`,
+// //         {
+// //           method: "POST",
+// //           headers: {
+// //             "Content-Type": "application/json",
+// //             Authorization: `Bearer ${token}`,
+// //           },
+// //           body: JSON.stringify({ text: newMsg.trim() }),
+// //         }
+// //       );
+
+// //       const data = await res.json();
+// //       if (data?.success) {
+// //         setNewMsg("");
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   const activeOther = activeConv ? getOtherParticipant(activeConv) : null;
+
+// //   /* ================= UI ================= */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         * { box-sizing: border-box; margin: 0; padding: 0; }
+// //         .msg-root { display: flex; height: 100vh; font-family: 'Plus Jakarta Sans', sans-serif; background: #f5f5f0; }
+
+// //         /* SIDEBAR */
+// //         .msg-sidebar { width: 320px; min-width: 280px; background: #fff; border-right: 1.5px solid #ebebeb; display: flex; flex-direction: column; }
+// //         .msg-sidebar-header { padding: 20px 20px 14px; border-bottom: 1px solid #f0f0f0; }
+// //         .msg-sidebar-title { font-size: 18px; font-weight: 800; color: #111; }
+// //         .msg-conv-list { flex: 1; overflow-y: auto; }
+// //         .msg-conv-item { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; border-bottom: 1px solid #f7f7f7; transition: background 0.15s; }
+// //         .msg-conv-item:hover { background: #f7f7ff; }
+// //         .msg-conv-item.active { background: #eef2ff; }
+// //         .msg-conv-av { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #4f46e5, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; color: #fff; flex-shrink: 0; overflow: hidden; }
+// //         .msg-conv-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+// //         .msg-conv-info { flex: 1; min-width: 0; }
+// //         .msg-conv-name { font-size: 14px; font-weight: 700; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+// //         .msg-conv-last { font-size: 12px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+// //         .msg-conv-empty { padding: 40px 20px; text-align: center; color: #bbb; font-size: 13px; }
+
+// //         /* CHAT AREA */
+// //         .msg-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+// //         .msg-chat-header { background: #fff; border-bottom: 1.5px solid #ebebeb; padding: 16px 20px; display: flex; align-items: center; gap: 12px; }
+// //         .msg-chat-av { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #4f46e5, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; color: #fff; flex-shrink: 0; overflow: hidden; }
+// //         .msg-chat-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+// //         .msg-chat-name { font-size: 15px; font-weight: 800; color: #111; }
+// //         .msg-chat-role { font-size: 12px; color: #aaa; margin-top: 1px; }
+
+// //         /* Messages */
+// //         .msg-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; background: #f9f9f6; }
+// //         .msg-bubble-wrap { display: flex; }
+// //         .msg-bubble-wrap.me { justify-content: flex-end; }
+// //         .msg-bubble { max-width: 65%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; }
+// //         .msg-bubble.me { background: #4f46e5; color: #fff; border-bottom-right-radius: 4px; }
+// //         .msg-bubble.them { background: #fff; color: #222; border: 1.5px solid #ebebeb; border-bottom-left-radius: 4px; }
+// //         .msg-bubble-time { font-size: 10px; margin-top: 4px; opacity: 0.6; text-align: right; }
+
+// //         /* Input */
+// //         .msg-input-bar { background: #fff; border-top: 1.5px solid #ebebeb; padding: 14px 16px; display: flex; gap: 10px; align-items: center; }
+// //         .msg-input { flex: 1; border: 1.5px solid #e0e0e0; border-radius: 12px; padding: 10px 14px; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; transition: border 0.2s; }
+// //         .msg-input:focus { border-color: #4f46e5; }
+// //         .msg-send-btn { background: #4f46e5; color: #fff; border: none; border-radius: 12px; padding: 10px 20px; font-size: 14px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+// //         .msg-send-btn:hover:not(:disabled) { background: #4338ca; }
+// //         .msg-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+// //         /* Empty chat state */
+// //         .msg-no-conv { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bbb; gap: 10px; }
+// //         .msg-no-conv-icon { font-size: 48px; }
+// //         .msg-no-conv-text { font-size: 15px; font-weight: 600; }
+
+// //         @media(max-width: 640px) {
+// //           .msg-sidebar { width: 80px; min-width: 64px; }
+// //           .msg-sidebar-header { padding: 14px 10px; }
+// //           .msg-sidebar-title { display: none; }
+// //           .msg-conv-info { display: none; }
+// //           .msg-conv-item { justify-content: center; padding: 12px 8px; }
+// //         }
+
+// //         @keyframes spin { to { transform: rotate(360deg); } }
+// //         .spinner-sm { width: 20px; height: 20px; border: 2px solid #e0e0e0; border-top-color: #4f46e5; border-radius: 50%; animation: spin 0.8s linear infinite; }
+// //       `}</style>
+
+// //       <div className="msg-root">
+// //         {/* SIDEBAR */}
+// //         <div className="msg-sidebar">
+// //           <div className="msg-sidebar-header">
+// //             <div className="msg-sidebar-title">Messages</div>
+// //           </div>
+
+// //           <div className="msg-conv-list">
+// //             {loadingConvs ? (
+// //               <div style={{ padding: "30px", display: "flex", justifyContent: "center" }}>
+// //                 <div className="spinner-sm" />
+// //               </div>
+// //             ) : conversations.length === 0 ? (
+// //               <div className="msg-conv-empty">No conversations yet</div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const avatarUrl = getAvatar(other);
+// //                 const name = getName(other);
+// //                 const initial = getInitial(other);
+
+// //                 return (
+// //                   <div
+// //                     key={conv._id}
+// //                     className={`msg-conv-item ${activeConv?._id === conv._id ? "active" : ""}`}
+// //                     onClick={() => setActiveConv(conv)}
+// //                   >
+// //                     <div className="msg-conv-av">
+// //                       {avatarUrl ? <img src={avatarUrl} alt={name} /> : initial}
+// //                     </div>
+// //                     <div className="msg-conv-info">
+// //                       <div className="msg-conv-name">{name}</div>
+// //                       {conv.lastMessage && (
+// //                         <div className="msg-conv-last">{conv.lastMessage}</div>
+// //                       )}
+// //                     </div>
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* CHAT AREA */}
+// //         <div className="msg-chat">
+// //           {activeConv ? (
+// //             <>
+// //               {/* Header */}
+// //               <div className="msg-chat-header">
+// //                 <div className="msg-chat-av">
+// //                   {getAvatar(activeOther)
+// //                     ? <img src={getAvatar(activeOther)} alt="avatar" />
+// //                     : getInitial(activeOther)}
+// //                 </div>
+// //                 <div>
+// //                   <div className="msg-chat-name">{getName(activeOther)}</div>
+// //                   <div className="msg-chat-role">{activeOther?.role || ""}</div>
+// //                 </div>
+// //               </div>
+
+// //               {/* Messages */}
+// //               <div className="msg-messages">
+// //                 {messages.map((msg, i) => {
+// //                   const senderId = (msg.sender?._id || msg.sender)?.toString();
+// //                   const isMe = myId && senderId === myId;
+
+// //                   return (
+// //                     <div key={i} className={`msg-bubble-wrap ${isMe ? "me" : ""}`}>
+// //                       <div className={`msg-bubble ${isMe ? "me" : "them"}`}>
+// //                         {msg.text}
+// //                         <div className="msg-bubble-time">
+// //                           {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+// //                         </div>
+// //                       </div>
+// //                     </div>
+// //                   );
+// //                 })}
+// //                 <div ref={messagesEndRef} />
+// //               </div>
+
+// //               {/* Input */}
+// //               <div className="msg-input-bar">
+// //                 <input
+// //                   className="msg-input"
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                   placeholder={`Message ${getName(activeOther)}...`}
+// //                 />
+// //                 <button
+// //                   className="msg-send-btn"
+// //                   onClick={sendMessage}
+// //                   disabled={sending || !newMsg.trim()}
+// //                 >
+// //                   {sending ? "..." : "Send"}
+// //                 </button>
+// //               </div>
+// //             </>
+// //           ) : (
+// //             <div className="msg-no-conv">
+// //               <div className="msg-no-conv-icon">💬</div>
+// //               <div className="msg-no-conv-text">Select a conversation to start chatting</div>
+// //             </div>
+// //           )}
+// //         </div>
+// //       </div>
+// //     </>
+// //   );
+// // }
+
+
+
+// // //"use client";
+
+// // // import { useEffect, useState, useRef } from "react";
+// // // import { io, Socket } from "socket.io-client";
+
+// // // const API = "http://54.252.201.93:5000/api";
+// // // const SOCKET_URL = "http://54.252.201.93:5000";
+
+// // // export default function MessagesInner() {
+// // //   const [token, setToken] = useState<string | null>(null);
+// // //   const [user, setUser] = useState<any>(null);
+// // //   const [myId, setMyId] = useState<string | null>(null);
+
+// // //   const [conversations, setConversations] = useState<any[]>([]);
+// // //   const [activeConv, setActiveConv] = useState<any>(null);
+// // //   const [messages, setMessages] = useState<any[]>([]);
+// // //   const [newMsg, setNewMsg] = useState("");
+// // //   const [sending, setSending] = useState(false);
+
+// // //   const socketRef = useRef<Socket | null>(null);
+// // //   const messagesEndRef = useRef<HTMLDivElement>(null);
+// // //   const activeConvRef = useRef<any>(null);
+
+// // //   /* ================= AUTH ================= */
+// // //   useEffect(() => {
+// // //     const t = localStorage.getItem("token");
+// // //     const u = localStorage.getItem("user");
+
+// // //     if (t) setToken(t);
+// // //     if (u) setUser(JSON.parse(u));
+// // //   }, []);
+
+// // //   useEffect(() => {
+// // //     if (!user) return;
+
+// // //     const id =
+// // //       user?.id ||
+// // //       user?.user?._id ||
+// // //       user?.user?.id ||
+// // //       user?._id;
+
+// // //     if (id) setMyId(id.toString());
+// // //   }, [user]);
+
+// // //   /* ================= SOCKET ================= */
+// // //   useEffect(() => {
+// // //     if (!token || !myId) return;
+// // //     if (socketRef.current) return;
+
+// // //     const socket = io(SOCKET_URL, {
+// // //       transports: ["websocket"],
+// // //       auth: { token },
+// // //     });
+
+// // //     socketRef.current = socket;
+
+// // //     socket.on("connect", () => {
+// // //       socket.emit("join", myId);
+// // //     });
+
+// // //     socket.on("newMessage", (msg: any) => {
+// // //       const conv = activeConvRef.current;
+// // //       if (!conv) return;
+
+// // //       const msgConvId = (msg.conversationId || msg.conversation)?.toString();
+
+// // //       if (msgConvId === conv._id?.toString()) {
+// // //         setMessages(prev =>
+// // //           prev.some(m => m._id === msg._id) ? prev : [...prev, msg]
+// // //         );
+// // //       }
+
+// // //       // Update sidebar last message
+// // //       setConversations(prev =>
+// // //         prev.map(c =>
+// // //           c._id?.toString() === msgConvId
+// // //             ? { ...c, lastMessage: msg.text, updatedAt: msg.createdAt }
+// // //             : c
+// // //         )
+// // //       );
+// // //     });
+
+// // //     return () => {
+// // //       socket.disconnect();
+// // //       socketRef.current = null;
+// // //     };
+// // //   }, [token, myId]);
+
+// // //   /* ================= LOAD CONVERSATIONS ================= */
+// // //   useEffect(() => {
+// // //     if (!token) return;
+
+// // //     fetch(`${API}/conversations/my`, {
+// // //       headers: { Authorization: `Bearer ${token}` },
+// // //     })
+// // //       .then(r => r.json())
+// // //       .then(data => {
+// // //         setConversations(data?.data || []);
+// // //       })
+// // //       .catch(console.error);
+// // //   }, [token]);
+
+// // //   /* ================= LOAD MESSAGES ================= */
+// // //   useEffect(() => {
+// // //     if (!token || !activeConv) return;
+
+// // //     activeConvRef.current = activeConv;
+
+// // //     fetch(`${API}/conversations/messages/${activeConv._id}`, {
+// // //       headers: { Authorization: `Bearer ${token}` },
+// // //     })
+// // //       .then(r => r.json())
+// // //       .then(data => {
+// // //         setMessages(data?.data || []);
+// // //       })
+// // //       .catch(console.error);
+// // //   }, [activeConv, token]);
+
+// // //   /* ================= AUTO SCROLL ================= */
+// // //   useEffect(() => {
+// // //     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+// // //   }, [messages]);
+
+// // //   /* ================= HELPERS ================= */
+// // //   const getOtherParticipant = (conv: any) => {
+// // //     if (!conv?.participants || !myId) return null;
+
+// // //     return conv.participants.find((p: any) => {
+// // //       const pid = (p?._id || p)?.toString();
+// // //       return pid !== myId;
+// // //     });
+// // //   };
+
+// // //   const getName = (p: any): string => {
+// // //     if (!p) return "Unknown";
+// // //     if (typeof p === "string") return "User";
+
+// // //     return (
+// // //       p.name ||
+// // //       p.username ||
+// // //       p.email?.split("@")[0] ||
+// // //       "User"
+// // //     );
+// // //   };
+
+// // //   /* ================= SEND MESSAGE ================= */
+// // //   const sendMessage = async () => {
+// // //     if (!newMsg.trim() || sending || !activeConv) return;
+
+// // //     try {
+// //       setSending(true);
+
+// //       const res = await fetch(
+// //         `${API}/conversations/send/${activeConv._id}`,
+// //         {
+// //           method: "POST",
+// //           headers: {
+// //             "Content-Type": "application/json",
+// //             Authorization: `Bearer ${token}`,
+// //           },
+// //           body: JSON.stringify({ text: newMsg.trim() }),
+// //         }
+// //       );
+
+// //       const data = await res.json();
+
+// //       if (data?.success) {
+// //         setNewMsg("");
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   /* ================= UI ================= */
+// //   return (
+// //     <div className="flex h-screen bg-gray-100">
+
+// //       {/* SIDEBAR */}
+// //       <div className="w-1/3 bg-white border-r overflow-y-auto">
+// //         <h2 className="p-4 font-bold text-lg">Chats</h2>
+
+// //         {conversations.map((conv) => {
+// //           const other = getOtherParticipant(conv);
+
+// //           return (
+// //             <div
+// //               key={conv._id}
+// //               onClick={() => setActiveConv(conv)}
+// //               className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${
+// //                 activeConv?._id === conv._id ? "bg-gray-200" : ""
+// //               }`}
+// //             >
+// //               <div className="font-medium">
+// //                 {getName(other)}
+// //               </div>
+
+// //               {conv.lastMessage && (
+// //                 <div className="text-sm text-gray-500 truncate">
+// //                   {conv.lastMessage}
+// //                 </div>
+// //               )}
+// //             </div>
+// //           );
+// //         })}
+// //       </div>
+
+// //       {/* CHAT AREA */}
+// //       <div className="flex flex-col flex-1">
+
+// //         {/* Messages */}
+// //         <div className="flex-1 overflow-y-auto p-4">
+// //           {messages.map((msg, i) => {
+// //             const senderId = (msg.sender?._id || msg.sender)?.toString();
+// //             const isMe = myId && senderId === myId;
+
+// //             return (
+// //               <div
+// //                 key={i}
+// //                 className={`mb-2 p-2 rounded w-fit max-w-xs ${
+// //                   isMe
+// //                     ? "bg-blue-200 ml-auto"
+// //                     : "bg-gray-200"
+// //                 }`}
+// //               >
+// //                 {msg.text}
+// //                 <div className="text-xs text-gray-500">
+// //                   {new Date(msg.createdAt).toLocaleTimeString()}
+// //                 </div>
+// //               </div>
+// //             );
+// //           })}
+// //           <div ref={messagesEndRef} />
+// //         </div>
+
+// //         {/* Input */}
+// //         {activeConv && (
+// //           <div className="flex border-t">
+// //             <input
+// //               value={newMsg}
+// //               onChange={(e) => setNewMsg(e.target.value)}
+// //               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+// //               className="flex-1 p-3 outline-none"
+// //               placeholder="Type message..."
+// //             />
+// //             <button
+// //               onClick={sendMessage}
+// //               disabled={sending}
+// //               className="bg-blue-500 text-white px-6 disabled:opacity-50"
+// //             >
+// //               Send
+// //             </button>
+// //           </div>
+// //         )}
+// //       </div>
+// //     </div>
+// //   );
+// // }
+
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef } from "react";
+// // import { io, Socket } from "socket.io-client";
+
+// // const API = "http://54.252.201.93:5000/api";
+// // const SOCKET_URL = "http://54.252.201.93:5000";
+
+// // export default function MessagesInner() {
+// //   const [token, setToken] = useState<string | null>(null);
+// //   const [user, setUser] = useState<any>(null);
+// //   const [socket, setSocket] = useState<Socket | null>(null);
+
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+
+// //   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     const t = localStorage.getItem("token");
+// //     const u = localStorage.getItem("user");
+
+// //     if (t) setToken(t);
+// //     if (u) setUser(JSON.parse(u));
+// //   }, []);
+
+// //   const myId = (
+// //     user?.user?._id ||
+// //     user?.user?.id ||
+// //     user?._id ||
+// //     user?.id
+// //   )?.toString();
+
+// //   /* ===== SOCKET CONNECT ===== */
+// //   useEffect(() => {
+// //     if (!token || !myId) return;
+
+// //     const newSocket = io(SOCKET_URL, {
+// //       transports: ["websocket"],
+// //     });
+
+// //     setSocket(newSocket);
+
+// //     newSocket.on("connect", () => {
+// //       console.log("✅ Socket connected:", newSocket.id);
+// //       newSocket.emit("joinRoom", myId);
+// //     });
+
+// //     newSocket.on("receiveMessage", (msg: any) => {
+// //       if (
+// //         activeConv &&
+// //         msg.conversationId?.toString() === activeConv._id?.toString()
+// //       ) {
+// //         setMessages((prev) => [...prev, msg]);
+// //       }
+// //     });
+
+// //     return () => newSocket.disconnect();
+// //   }, [token, myId]);
+
+// //   /* ===== LOAD CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+
+// //     fetch(`${API}/conversations/my`, {
+// //       headers: { Authorization: `Bearer ${token}` },
+// //     })
+// //       .then((r) => r.json())
+// //       .then((data) => {
+// //         setConversations(data?.data || []);
+// //       })
+// //       .catch(console.error);
+// //   }, [token]);
+
+// //   /* ===== LOAD MESSAGES ===== */
+// //   useEffect(() => {
+// //     if (!token || !activeConv) return;
+
+// //     fetch(`${API}/conversations/messages/${activeConv._id}`, {
+// //       headers: { Authorization: `Bearer ${token}` },
+// //     })
+// //       .then((r) => r.json())
+// //       .then((data) => {
+// //         setMessages(data?.data || []);
+// //       })
+// //       .catch(console.error);
+// //   }, [activeConv, token]);
+
+// //   /* ===== AUTO SCROLL ===== */
+// //   useEffect(() => {
+// //     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+// //   }, [messages]);
+
+// //   /* ===== SEND MESSAGE ===== */
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending || !activeConv) return;
+
+// //     try {
+// //       setSending(true);
+
+// //       const res = await fetch(
+// //         `${API}/conversations/send/${activeConv._id}`,
+// //         {
+// //           method: "POST",
+// //           headers: {
+// //             "Content-Type": "application/json",
+// //             Authorization: `Bearer ${token}`,
+// //           },
+// //           body: JSON.stringify({ text: newMsg.trim() }),
+// //         }
+// //       );
+
+// //       const data = await res.json();
+
+// //       if (data?.success) {
+// //         setNewMsg("");
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   return (
+// //     <div className="flex h-screen bg-gray-100">
+
+// //       {/* LEFT SIDEBAR */}
+// //       <div className="w-1/3 bg-white border-r overflow-y-auto">
+// //         <h2 className="p-4 font-bold text-lg">Chats</h2>
+
+// //         {conversations.map((c) => {
+// //           const otherUser = c.participants?.find(
+// //             (u: any) => u?._id?.toString() !== myId
+// //           );
+
+// //           return (
+// //             <div
+// //               key={c._id}
+// //               onClick={() => setActiveConv(c)}
+// //               className="p-3 border-b cursor-pointer hover:bg-gray-100"
+// //             >
+// //               {otherUser?.name || otherUser?.email || "User"}
+// //             </div>
+// //           );
+// //         })}
+// //       </div>
+
+// //       {/* RIGHT CHAT */}
+// //       <div className="flex flex-col flex-1">
+
+// //         {/* Messages */}
+// //         <div className="flex-1 overflow-y-auto p-4">
+// //           {messages.map((m, i) => (
+// //             <div
+// //               key={i}
+// //               className={`mb-2 p-2 rounded w-fit max-w-xs ${
+// //                 m.sender?._id?.toString() === myId ||
+// //                 m.sender?.toString() === myId
+// //                   ? "bg-blue-200 ml-auto"
+// //                   : "bg-gray-200"
+// //               }`}
+// //             >
+// //               {m.text}
+// //               <div className="text-xs text-gray-500">
+// //                 {new Date(m.createdAt).toLocaleTimeString()}
+// //               </div>
+// //             </div>
+// //           ))}
+// //           <div ref={messagesEndRef} />
+// //         </div>
+
+// //         {/* Input */}
+// //         <div className="flex border-t">
+// //           <input
+// //             value={newMsg}
+// //             onChange={(e) => setNewMsg(e.target.value)}
+// //             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+// //             className="flex-1 p-3 outline-none"
+// //             placeholder="Type message..."
+// //           />
+// //           <button
+// //             onClick={sendMessage}
+// //             className="bg-blue-500 text-white px-6"
+// //           >
+// //             Send
+// //           </button>
+// //         </div>
+// //       </div>
+// //     </div>
+// //   );
+// // }
+
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef, Suspense } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // // ✅ Safe fetch — HTML response pe crash nahi karega
+// // const safeFetch = async (url: string, opts: RequestInit = {}) => {
+// //   try {
+// //     const res = await fetch(url, opts);
+// //     const text = await res.text();
+// //     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
+// //     const data = JSON.parse(text);
+// //     return { ok: res.ok, data };
+// //   } catch {
+// //     return { ok: false, data: null };
+// //   }
+// // };
+
+// // function MessagesInner() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const [isMobile, setIsMobile] = useState(false);
+// //   const [profileModal, setProfileModal] = useState<any>(null);
+// //   const [profileFetching, setProfileFetching] = useState(false);
+// //   const [profileCache, setProfileCache] = useState<Record<string, any>>({});
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+
+// //   // SSR-safe mobile check
+// //   useEffect(() => {
+// //     const check = () => setIsMobile(window.innerWidth <= 768);
+// //     check();
+// //     window.addEventListener("resize", check);
+// //     return () => window.removeEventListener("resize", check);
+// //   }, []);
+
+// //   // Scroll to bottom on new messages
+// //   useEffect(() => {
+// //     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+// //   }, [messages]);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token");
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ===== FETCH CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ===== AUTO-OPEN if userId in URL ===== */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //     );
+// //     if (existing) openConversation(existing);
+// //   }, [conversations, targetUserId]);
+
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       // ✅ OLD working route from old code
+// //       const { ok, data } = await safeFetch(`${API}/conversations/my`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("CONVS:", data);
+// //       const list = data?.data || data?.conversations || [];
+// //       setConversations(list);
+// //       if (list.length > 0 && !targetUserId) openConversation(list[0]);
+
+// //       // ✅ Har conversation ke participants ka profile fetch karo (profileImage ke liye)
+// //       const allParticipantIds: string[] = [];
+// //       list.forEach((conv: any) => {
+// //         (conv.participants || []).forEach((p: any) => {
+// //           const id = p._id?.toString() || (typeof p === "string" ? p : "");
+// //           if (id) allParticipantIds.push(id);
+// //         });
+// //       });
+// //       // Unique IDs
+// //       const uniqueIds = [...new Set(allParticipantIds)];
+// //       fetchParticipantProfiles(uniqueIds, token);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   // ✅ Participants ka profile fetch karke cache mein store karo
+// //   // Backend /profile/user/:id route se profileImage milegi
+// //   const fetchParticipantProfiles = async (userIds: string[], tok: string) => {
+// //     const cache: Record<string, any> = {};
+// //     await Promise.all(
+// //       userIds.map(async (uid) => {
+// //         try {
+// //           const { ok, data } = await safeFetch(`${API}/profile/user/${uid}`, {
+// //             headers: { Authorization: `Bearer ${tok}` },
+// //           });
+// //           if (ok && data) {
+// //             const p = data.profile || data.data || (data._id ? data : null);
+// //             if (p) cache[uid] = p;
+// //           }
+// //         } catch { }
+// //       })
+// //     );
+// //     if (Object.keys(cache).length > 0) {
+// //       setProfileCache(prev => ({ ...prev, ...cache }));
+// //     }
+// //   };
+
+// //   const openConversation = (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("MESSAGES:", data);
+// //       if (!ok || !data) return;
+// //       const msgs = Array.isArray(data.data) ? data.data
+// //         : Array.isArray(data.messages) ? data.messages
+// //         : data.conversation?.messages || [];
+// //       console.log("MSGS COUNT:", msgs.length);
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   /* ===== CREATE CONVERSATION ===== */
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) { console.error("No campaignId"); return null; }
+// //       const { ok, data } = await safeFetch(`${API}/conversations/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data?.conversation || data?.data;
+// //       if (ok && conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   /* ===== SEND MESSAGE ===== */
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
+// //       }
+// //       const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+// //       console.log("SEND:", data);
+// //       if (!ok) { alert(data?.message || "Send failed"); return; }
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   // ✅ OLD working myId extraction
+// //   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
+
+// //   // ✅ OLD working getOtherParticipant
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants || !myId) return null;
+// //     return conv.participants.find((p: any) => {
+// //       const pid = p?._id?.toString() || p?.toString();
+// //       return pid !== myId.toString();
+// //     }) || null;
+// //   };
+
+// //   // ✅ Name se consistent color generate karo (WhatsApp style)
+// //   const getAvatarColor = (name: string): string => {
+// //     const colors = [
+// //       "#ef4444", "#f97316", "#eab308", "#22c55e",
+// //       "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899",
+// //       "#06b6d4", "#a855f7", "#f43f5e", "#10b981"
+// //     ];
+// //     let hash = 0;
+// //     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+// //     return colors[Math.abs(hash) % colors.length];
+// //   };
+
+// //   // ✅ OLD working name/image helpers
+// //   const getParticipantName = (p: any): string => {
+// //     if (!p) return "User";
+// //     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
+// //   };
+
+// //   const getParticipantImage = (p: any): string | null => {
+// //     if (!p) return null;
+// //     // Direct fields se try karo
+// //     const direct = p.profileImage || p.profile?.profileImage || p.avatar || null;
+// //     if (direct) return direct;
+// //     // ✅ profileCache se try karo (separately fetched profiles)
+// //     const uid = p._id?.toString() || (typeof p === "string" ? p : "");
+// //     const cached = uid ? profileCache[uid] : null;
+// //     return cached?.profileImage || cached?.avatar || cached?.image || null;
+// //   };
+
+// //   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
+// //   const openProfileModal = async (other: any) => {
+// //     if (!other || typeof other === "string") return;
+// //     const basicInfo = {
+// //       name: getParticipantName(other),
+// //       profileImage: getParticipantImage(other),
+// //       bio: other.profile?.bio || other.bio || "",
+// //       followers: other.profile?.followers || other.followers || "",
+// //       categories: other.profile?.categories || other.categories || [],
+// //       platform: other.profile?.platform || other.platform || "",
+// //       location: other.profile?.location || other.location || "",
+// //     };
+// //     setProfileModal({ ...basicInfo, _loading: true });
+
+// //     const userId = other._id?.toString() || other.id?.toString();
+// //     if (userId) {
+// //       setProfileFetching(true);
+// //       try {
+// //         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
+// //           headers: { Authorization: `Bearer ${token}` },
+// //         });
+// //         if (ok && data) {
+// //           const p = data.profile || data.data || (data._id ? data : null);
+// //           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
+// //         }
+// //       } catch { }
+// //       setProfileFetching(false);
+// //     }
+// //     setProfileModal({ ...basicInfo, _loading: false });
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     const diff = today.getDate() - d.getDate();
+// //     if (diff === 0) return "Today";
+// //     if (diff === 1) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   /* ===== UI ===== */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
+// //         .mp-header-avatar:hover{opacity:0.8}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
+// //         .mp-header-name-btn:hover{color:#4f46e5}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+
+// //         @keyframes spin{to{transform:rotate(360deg)}}
+// //         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
+
+// //         /* ── PROFILE MODAL ── */
+// //         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
+// //         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
+// //         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+// //         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
+// //         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
+// //         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+// //         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
+// //         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+// //         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
+// //         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
+// //         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
+// //         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
+// //         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
+// //         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
+// //         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
+// //         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+// //         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
+// //         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
+// //         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+// //         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
+// //         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
+// //         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
+// //         .mp-pm-link:hover{background:#f0f0f0}
+// //         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
+// //       `}</style>
+
+// //       <div className="mp">
+// //         {/* ── SIDEBAR ── */}
+// //         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {targetUserId && !conversations.find(c =>
+// //             c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //           ) && (
+// //             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = getParticipantName(other);
+// //                 const img = getParticipantImage(other);
+// //                 const isActive = activeConv?._id === conv._id;
+// //                 return (
+// //                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}>
+// //                     <div className="mp-conv-avatar" style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff", fontSize: "18px", fontWeight: 800 }}>
+// //                       {img
+// //                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+// //                         : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* ── CHAT AREA ── */}
+// //         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER — avatar/naam click → profile modal */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
+
+// //                 {activeConv ? (() => {
+// //                   const other = getOtherParticipant(activeConv);
+// //                   const name = getParticipantName(other);
+// //                   const img = getParticipantImage(other);
+// //                   return (
+// //                     <>
+// //                       {/* ✅ Avatar click → profile */}
+// //                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)} style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff" }}>
+// //                         {img
+// //                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+// //                           : name.charAt(0).toUpperCase()}
+// //                       </div>
+// //                       <div className="mp-header-info">
+// //                         {/* ✅ Naam click → profile */}
+// //                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
+// //                           {name}
+// //                         </button>
+// //                         <div className="mp-header-campaign">
+// //                           {activeConv.campaignId?.title || "Campaign conversation"}
+// //                         </div>
+// //                       </div>
+// //                     </>
+// //                   );
+// //                 })() : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name-btn">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const senderId = msg.sender?._id || msg.sender;
+// //                     const isMe = myId && senderId && senderId.toString() === myId.toString();
+// //                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+
+// //       {/* ── PROFILE MODAL ── */}
+// //       {profileModal && (
+// //         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
+// //           <div className="mp-pm-sheet">
+// //             <div className="mp-pm-top">
+// //               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
+// //               <div className="mp-pm-avatar" style={{
+// //                 background: profileModal.profileImage ? "rgba(255,255,255,0.15)" : getAvatarColor(profileModal.name || "U")
+// //               }}>
+// //                 {profileModal.profileImage
+// //                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" onError={(e) => { (e.target as HTMLImageElement).style.display="none"; }} />
+// //                   : (profileModal.name || "U").charAt(0).toUpperCase()}
+// //               </div>
+// //               <div className="mp-pm-name">{profileModal.name || "User"}</div>
+// //               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
+// //               <div className="mp-pm-tags">
+// //                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
+// //                   .filter(Boolean).map((c: string, i: number) => (
+// //                     <span key={i} className="mp-pm-tag">{c}</span>
+// //                   ))}
+// //               </div>
+// //             </div>
+
+// //             <div className="mp-pm-body">
+// //               {profileFetching && (
+// //                 <div style={{ textAlign: "center", padding: "8px 0" }}>
+// //                   <span className="mp-spinner" />
+// //                 </div>
+// //               )}
+
+// //               <div className="mp-pm-stats">
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {profileModal.followers
+// //                       ? Number(profileModal.followers) >= 1000
+// //                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
+// //                         : profileModal.followers
+// //                       : "—"}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Followers</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Niches</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
+// //                   <div className="mp-pm-stat-label">Platform</div>
+// //                 </div>
+// //               </div>
+
+// //               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
+// //                 <div className="mp-pm-empty">
+// //                   Profile details not available yet.<br />
+// //                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
+// //                 </div>
+// //               )}
+
+// //               {profileModal.bio && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">About</div>
+// //                   <div className="mp-pm-bio">{profileModal.bio}</div>
+// //                 </div>
+// //               )}
+// //               {profileModal.platform && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">Platform</div>
+// //                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
+// //                     📸 {profileModal.platform}
+// //                   </a>
+// //                 </div>
+// //               )}
+// //             </div>
+// //           </div>
+// //         </div>
+// //       )}
+// //     </>
+// //   );
+// // }
+
+// // export default function MessagesPage() {
+// //   return (
+// //     <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#aaa"}}>Loading...</div>}>
+// //       <MessagesInner />
+// //     </Suspense>
+// //   );
+// // }
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef, Suspense } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // // ✅ Safe fetch — HTML response pe crash nahi karega
+// // const safeFetch = async (url: string, opts: RequestInit = {}) => {
+// //   try {
+// //     const res = await fetch(url, opts);
+// //     const text = await res.text();
+// //     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
+// //     const data = JSON.parse(text);
+// //     return { ok: res.ok, data };
+// //   } catch {
+// //     return { ok: false, data: null };
+// //   }
+// // };
+
+// // function MessagesInner() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const [isMobile, setIsMobile] = useState(false);
+// //   const [profileModal, setProfileModal] = useState<any>(null);
+// //   const [profileFetching, setProfileFetching] = useState(false);
+// //   const [profileCache, setProfileCache] = useState<Record<string, any>>({});
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+
+// //   // SSR-safe mobile check
+// //   useEffect(() => {
+// //     const check = () => setIsMobile(window.innerWidth <= 768);
+// //     check();
+// //     window.addEventListener("resize", check);
+// //     return () => window.removeEventListener("resize", check);
+// //   }, []);
+
+// //   // Scroll to bottom on new messages
+// //   useEffect(() => {
+// //     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+// //   }, [messages]);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token");
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ===== FETCH CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ===== AUTO-OPEN if userId in URL ===== */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //     );
+// //     if (existing) openConversation(existing);
+// //   }, [conversations, targetUserId]);
+
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       // ✅ OLD working route from old code
+// //       const { ok, data } = await safeFetch(`${API}/conversation/my`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("CONVS:", data);
+// //       const list = data?.data || data?.conversations || [];
+// //       setConversations(list);
+// //       if (list.length > 0 && !targetUserId) openConversation(list[0]);
+
+// //       // ✅ Har conversation ke participants ka profile fetch karo (profileImage ke liye)
+// //       const allParticipantIds: string[] = [];
+// //       list.forEach((conv: any) => {
+// //         (conv.participants || []).forEach((p: any) => {
+// //           const id = p._id?.toString() || (typeof p === "string" ? p : "");
+// //           if (id) allParticipantIds.push(id);
+// //         });
+// //       });
+// //       // Unique IDs
+// //       const uniqueIds = [...new Set(allParticipantIds)];
+// //       fetchParticipantProfiles(uniqueIds, token);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   // ✅ Participants ka profile fetch karke cache mein store karo
+// //   // Backend /profile/user/:id route se profileImage milegi
+// //   const fetchParticipantProfiles = async (userIds: string[], tok: string) => {
+// //     const cache: Record<string, any> = {};
+// //     await Promise.all(
+// //       userIds.map(async (uid) => {
+// //         try {
+// //           const { ok, data } = await safeFetch(`${API}/profile/user/${uid}`, {
+// //             headers: { Authorization: `Bearer ${tok}` },
+// //           });
+// //           if (ok && data) {
+// //             const p = data.profile || data.data || (data._id ? data : null);
+// //             if (p) cache[uid] = p;
+// //           }
+// //         } catch { }
+// //       })
+// //     );
+// //     if (Object.keys(cache).length > 0) {
+// //       setProfileCache(prev => ({ ...prev, ...cache }));
+// //     }
+// //   };
+
+// //   const openConversation = (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const { ok, data } = await safeFetch(`${API}/conversation/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("MESSAGES:", data);
+// //       if (!ok || !data) return;
+// //       const msgs = Array.isArray(data.data) ? data.data
+// //         : Array.isArray(data.messages) ? data.messages
+// //         : data.conversation?.messages || [];
+// //       console.log("MSGS COUNT:", msgs.length);
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   /* ===== CREATE CONVERSATION ===== */
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) { console.error("No campaignId"); return null; }
+// //       const { ok, data } = await safeFetch(`${API}/conversation/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data?.conversation || data?.data;
+// //       if (ok && conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   /* ===== SEND MESSAGE ===== */
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
+// //       }
+// //       const { ok, data } = await safeFetch(`${API}/conversation/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+// //       console.log("SEND:", data);
+// //       if (!ok) { alert(data?.message || "Send failed"); return; }
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   // ✅ OLD working myId extraction
+// //   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
+
+// //   // ✅ OLD working getOtherParticipant
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants || !myId) return null;
+// //     return conv.participants.find((p: any) => {
+// //       const pid = p?._id?.toString() || p?.toString();
+// //       return pid !== myId.toString();
+// //     }) || null;
+// //   };
+
+// //   // ✅ Name se consistent color generate karo (WhatsApp style)
+// //   const getAvatarColor = (name: string): string => {
+// //     const colors = [
+// //       "#ef4444", "#f97316", "#eab308", "#22c55e",
+// //       "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899",
+// //       "#06b6d4", "#a855f7", "#f43f5e", "#10b981"
+// //     ];
+// //     let hash = 0;
+// //     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+// //     return colors[Math.abs(hash) % colors.length];
+// //   };
+
+// //   // ✅ OLD working name/image helpers
+// //   const getParticipantName = (p: any): string => {
+// //     if (!p) return "User";
+// //     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
+// //   };
+
+// //   const getParticipantImage = (p: any): string | null => {
+// //     if (!p) return null;
+// //     // Direct fields se try karo
+// //     const direct = p.profileImage || p.profile?.profileImage || p.avatar || null;
+// //     if (direct) return direct;
+// //     // ✅ profileCache se try karo (separately fetched profiles)
+// //     const uid = p._id?.toString() || (typeof p === "string" ? p : "");
+// //     const cached = uid ? profileCache[uid] : null;
+// //     return cached?.profileImage || cached?.avatar || cached?.image || null;
+// //   };
+
+// //   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
+// //   const openProfileModal = async (other: any) => {
+// //     if (!other || typeof other === "string") return;
+// //     const basicInfo = {
+// //       name: getParticipantName(other),
+// //       profileImage: getParticipantImage(other),
+// //       bio: other.profile?.bio || other.bio || "",
+// //       followers: other.profile?.followers || other.followers || "",
+// //       categories: other.profile?.categories || other.categories || [],
+// //       platform: other.profile?.platform || other.platform || "",
+// //       location: other.profile?.location || other.location || "",
+// //     };
+// //     setProfileModal({ ...basicInfo, _loading: true });
+
+// //     const userId = other._id?.toString() || other.id?.toString();
+// //     if (userId) {
+// //       setProfileFetching(true);
+// //       try {
+// //         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
+// //           headers: { Authorization: `Bearer ${token}` },
+// //         });
+// //         if (ok && data) {
+// //           const p = data.profile || data.data || (data._id ? data : null);
+// //           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
+// //         }
+// //       } catch { }
+// //       setProfileFetching(false);
+// //     }
+// //     setProfileModal({ ...basicInfo, _loading: false });
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     const diff = today.getDate() - d.getDate();
+// //     if (diff === 0) return "Today";
+// //     if (diff === 1) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   /* ===== UI ===== */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
+// //         .mp-header-avatar:hover{opacity:0.8}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
+// //         .mp-header-name-btn:hover{color:#4f46e5}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+
+// //         @keyframes spin{to{transform:rotate(360deg)}}
+// //         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
+
+// //         /* ── PROFILE MODAL ── */
+// //         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
+// //         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
+// //         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+// //         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
+// //         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
+// //         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+// //         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
+// //         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+// //         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
+// //         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
+// //         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
+// //         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
+// //         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
+// //         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
+// //         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
+// //         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+// //         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
+// //         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
+// //         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+// //         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
+// //         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
+// //         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
+// //         .mp-pm-link:hover{background:#f0f0f0}
+// //         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
+// //       `}</style>
+
+// //       <div className="mp">
+// //         {/* ── SIDEBAR ── */}
+// //         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {targetUserId && !conversations.find(c =>
+// //             c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //           ) && (
+// //             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = getParticipantName(other);
+// //                 const img = getParticipantImage(other);
+// //                 const isActive = activeConv?._id === conv._id;
+// //                 return (
+// //                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}>
+// //                     <div className="mp-conv-avatar" style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff", fontSize: "18px", fontWeight: 800 }}>
+// //                       {img
+// //                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+// //                         : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* ── CHAT AREA ── */}
+// //         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER — avatar/naam click → profile modal */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
+
+// //                 {activeConv ? (() => {
+// //                   const other = getOtherParticipant(activeConv);
+// //                   const name = getParticipantName(other);
+// //                   const img = getParticipantImage(other);
+// //                   return (
+// //                     <>
+// //                       {/* ✅ Avatar click → profile */}
+// //                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)} style={{ background: img ? "#e8e8e8" : getAvatarColor(name), color: "#fff" }}>
+// //                         {img
+// //                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+// //                           : name.charAt(0).toUpperCase()}
+// //                       </div>
+// //                       <div className="mp-header-info">
+// //                         {/* ✅ Naam click → profile */}
+// //                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
+// //                           {name}
+// //                         </button>
+// //                         <div className="mp-header-campaign">
+// //                           {activeConv.campaignId?.title || "Campaign conversation"}
+// //                         </div>
+// //                       </div>
+// //                     </>
+// //                   );
+// //                 })() : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name-btn">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const senderId = msg.sender?._id || msg.sender;
+// //                     const isMe = myId && senderId && senderId.toString() === myId.toString();
+// //                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+
+// //       {/* ── PROFILE MODAL ── */}
+// //       {profileModal && (
+// //         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
+// //           <div className="mp-pm-sheet">
+// //             <div className="mp-pm-top">
+// //               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
+// //               <div className="mp-pm-avatar" style={{
+// //                 background: profileModal.profileImage ? "rgba(255,255,255,0.15)" : getAvatarColor(profileModal.name || "U")
+// //               }}>
+// //                 {profileModal.profileImage
+// //                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" onError={(e) => { (e.target as HTMLImageElement).style.display="none"; }} />
+// //                   : (profileModal.name || "U").charAt(0).toUpperCase()}
+// //               </div>
+// //               <div className="mp-pm-name">{profileModal.name || "User"}</div>
+// //               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
+// //               <div className="mp-pm-tags">
+// //                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
+// //                   .filter(Boolean).map((c: string, i: number) => (
+// //                     <span key={i} className="mp-pm-tag">{c}</span>
+// //                   ))}
+// //               </div>
+// //             </div>
+
+// //             <div className="mp-pm-body">
+// //               {profileFetching && (
+// //                 <div style={{ textAlign: "center", padding: "8px 0" }}>
+// //                   <span className="mp-spinner" />
+// //                 </div>
+// //               )}
+
+// //               <div className="mp-pm-stats">
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {profileModal.followers
+// //                       ? Number(profileModal.followers) >= 1000
+// //                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
+// //                         : profileModal.followers
+// //                       : "—"}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Followers</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Niches</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
+// //                   <div className="mp-pm-stat-label">Platform</div>
+// //                 </div>
+// //               </div>
+
+// //               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
+// //                 <div className="mp-pm-empty">
+// //                   Profile details not available yet.<br />
+// //                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
+// //                 </div>
+// //               )}
+
+// //               {profileModal.bio && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">About</div>
+// //                   <div className="mp-pm-bio">{profileModal.bio}</div>
+// //                 </div>
+// //               )}
+// //               {profileModal.platform && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">Platform</div>
+// //                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
+// //                     📸 {profileModal.platform}
+// //                   </a>
+// //                 </div>
+// //               )}
+// //             </div>
+// //           </div>
+// //         </div>
+// //       )}
+// //     </>
+// //   );
+// // }
+
+// // export default function MessagesPage() {
+// //   return (
+// //     <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#aaa"}}>Loading...</div>}>
+// //       <MessagesInner />
+// //     </Suspense>
+// //   );
+// // }
+
+
+
+
+
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // // ✅ Safe fetch — HTML response pe crash nahi karega
+// // const safeFetch = async (url: string, opts: RequestInit = {}) => {
+// //   try {
+// //     const res = await fetch(url, opts);
+// //     const text = await res.text();
+// //     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
+// //     const data = JSON.parse(text);
+// //     return { ok: res.ok, data };
+// //   } catch {
+// //     return { ok: false, data: null };
+// //   }
+// // };
+
+// // export default function MessagesPage() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const [isMobile, setIsMobile] = useState(false);
+// //   const [profileModal, setProfileModal] = useState<any>(null);
+// //   const [profileFetching, setProfileFetching] = useState(false);
+// //   const [profileCache, setProfileCache] = useState<Record<string, any>>({});
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+
+// //   // SSR-safe mobile check
+// //   useEffect(() => {
+// //     const check = () => setIsMobile(window.innerWidth <= 768);
+// //     check();
+// //     window.addEventListener("resize", check);
+// //     return () => window.removeEventListener("resize", check);
+// //   }, []);
+
+// //   // Scroll to bottom on new messages
+// //   useEffect(() => {
+// //     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+// //   }, [messages]);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token");
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ===== FETCH CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ===== AUTO-OPEN if userId in URL ===== */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //     );
+// //     if (existing) openConversation(existing);
+// //   }, [conversations, targetUserId]);
+
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       // ✅ OLD working route from old code
+// //       const { ok, data } = await safeFetch(`${API}/conversations/my`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("CONVS:", data);
+// //       const list = data?.data || data?.conversations || [];
+// //       setConversations(list);
+// //       if (list.length > 0 && !targetUserId) openConversation(list[0]);
+
+// //       // ✅ Har conversation ke participants ka profile fetch karo (profileImage ke liye)
+// //       const allParticipantIds: string[] = [];
+// //       list.forEach((conv: any) => {
+// //         (conv.participants || []).forEach((p: any) => {
+// //           const id = p._id?.toString() || (typeof p === "string" ? p : "");
+// //           if (id) allParticipantIds.push(id);
+// //         });
+// //       });
+// //       // Unique IDs
+// //       const uniqueIds = [...new Set(allParticipantIds)];
+// //       fetchParticipantProfiles(uniqueIds, token);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   // ✅ Participants ka profile fetch karke cache mein store karo
+// //   // Backend /profile/user/:id route se profileImage milegi
+// //   const fetchParticipantProfiles = async (userIds: string[], tok: string) => {
+// //     const cache: Record<string, any> = {};
+// //     await Promise.all(
+// //       userIds.map(async (uid) => {
+// //         try {
+// //           const { ok, data } = await safeFetch(`${API}/profile/user/${uid}`, {
+// //             headers: { Authorization: `Bearer ${tok}` },
+// //           });
+// //           if (ok && data) {
+// //             const p = data.profile || data.data || (data._id ? data : null);
+// //             if (p) cache[uid] = p;
+// //           }
+// //         } catch { }
+// //       })
+// //     );
+// //     if (Object.keys(cache).length > 0) {
+// //       setProfileCache(prev => ({ ...prev, ...cache }));
+// //     }
+// //   };
+
+// //   const openConversation = (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("MESSAGES:", data);
+// //       if (!ok || !data) return;
+// //       const msgs = Array.isArray(data.data) ? data.data
+// //         : Array.isArray(data.messages) ? data.messages
+// //         : data.conversation?.messages || [];
+// //       console.log("MSGS COUNT:", msgs.length);
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   /* ===== CREATE CONVERSATION ===== */
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) { console.error("No campaignId"); return null; }
+// //       const { ok, data } = await safeFetch(`${API}/conversations/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data?.conversation || data?.data;
+// //       if (ok && conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   /* ===== SEND MESSAGE ===== */
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
+// //       }
+// //       const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+// //       console.log("SEND:", data);
+// //       if (!ok) { alert(data?.message || "Send failed"); return; }
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   // ✅ OLD working myId extraction
+// //   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
+
+// //   // ✅ OLD working getOtherParticipant
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants || !myId) return null;
+// //     return conv.participants.find((p: any) => {
+// //       const pid = p?._id?.toString() || p?.toString();
+// //       return pid !== myId.toString();
+// //     }) || null;
+// //   };
+
+// //   // ✅ OLD working name/image helpers
+// //   const getParticipantName = (p: any): string => {
+// //     if (!p) return "User";
+// //     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
+// //   };
+
+// //   const getParticipantImage = (p: any): string | null => {
+// //     if (!p) return null;
+// //     // Direct fields se try karo
+// //     const direct = p.profileImage || p.profile?.profileImage || p.avatar || null;
+// //     if (direct) return direct;
+// //     // ✅ profileCache se try karo (separately fetched profiles)
+// //     const uid = p._id?.toString() || (typeof p === "string" ? p : "");
+// //     const cached = uid ? profileCache[uid] : null;
+// //     return cached?.profileImage || cached?.avatar || cached?.image || null;
+// //   };
+
+// //   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
+// //   const openProfileModal = async (other: any) => {
+// //     if (!other || typeof other === "string") return;
+// //     const basicInfo = {
+// //       name: getParticipantName(other),
+// //       profileImage: getParticipantImage(other),
+// //       bio: other.profile?.bio || other.bio || "",
+// //       followers: other.profile?.followers || other.followers || "",
+// //       categories: other.profile?.categories || other.categories || [],
+// //       platform: other.profile?.platform || other.platform || "",
+// //       location: other.profile?.location || other.location || "",
+// //     };
+// //     setProfileModal({ ...basicInfo, _loading: true });
+
+// //     const userId = other._id?.toString() || other.id?.toString();
+// //     if (userId) {
+// //       setProfileFetching(true);
+// //       try {
+// //         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
+// //           headers: { Authorization: `Bearer ${token}` },
+// //         });
+// //         if (ok && data) {
+// //           const p = data.profile || data.data || (data._id ? data : null);
+// //           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
+// //         }
+// //       } catch { }
+// //       setProfileFetching(false);
+// //     }
+// //     setProfileModal({ ...basicInfo, _loading: false });
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     const diff = today.getDate() - d.getDate();
+// //     if (diff === 0) return "Today";
+// //     if (diff === 1) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   /* ===== UI ===== */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#c7d2fe;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
+// //         .mp-header-avatar:hover{opacity:0.8}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
+// //         .mp-header-name-btn:hover{color:#4f46e5}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+
+// //         @keyframes spin{to{transform:rotate(360deg)}}
+// //         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
+
+// //         /* ── PROFILE MODAL ── */
+// //         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
+// //         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
+// //         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+// //         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
+// //         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
+// //         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+// //         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
+// //         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+// //         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
+// //         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
+// //         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
+// //         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
+// //         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
+// //         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
+// //         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
+// //         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+// //         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
+// //         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
+// //         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+// //         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
+// //         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
+// //         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
+// //         .mp-pm-link:hover{background:#f0f0f0}
+// //         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
+// //       `}</style>
+
+// //       <div className="mp">
+// //         {/* ── SIDEBAR ── */}
+// //         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {targetUserId && !conversations.find(c =>
+// //             c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //           ) && (
+// //             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = getParticipantName(other);
+// //                 const img = getParticipantImage(other);
+// //                 const isActive = activeConv?._id === conv._id;
+// //                 return (
+// //                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}>
+// //                     {/* ✅ WhatsApp style — color from name hash */}
+// //                     <div className="mp-conv-avatar" style={{
+// //                       background: img ? undefined : `hsl(${name.charCodeAt(0) * 37 % 360}, 65%, 50%)`,
+// //                       color: img ? undefined : "#fff"
+// //                     }}>
+// //                       {img
+// //                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
+// //                         : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* ── CHAT AREA ── */}
+// //         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER — avatar/naam click → profile modal */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
+
+// //                 {activeConv ? (() => {
+// //                   const other = getOtherParticipant(activeConv);
+// //                   const name = getParticipantName(other);
+// //                   const img = getParticipantImage(other);
+// //                   return (
+// //                     <>
+// //                       {/* ✅ Avatar click → profile */}
+// //                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)} style={{
+// //                         background: img ? undefined : `hsl(${name.charCodeAt(0) * 37 % 360}, 65%, 50%)`,
+// //                         color: img ? undefined : "#fff"
+// //                       }}>
+// //                         {img
+// //                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
+// //                           : name.charAt(0).toUpperCase()}
+// //                       </div>
+// //                       <div className="mp-header-info">
+// //                         {/* ✅ Naam click → profile */}
+// //                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
+// //                           {name}
+// //                         </button>
+// //                         <div className="mp-header-campaign">
+// //                           {activeConv.campaignId?.title || "Campaign conversation"}
+// //                         </div>
+// //                       </div>
+// //                     </>
+// //                   );
+// //                 })() : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name-btn">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const senderId = msg.sender?._id || msg.sender;
+// //                     const isMe = myId && senderId && senderId.toString() === myId.toString();
+// //                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+
+// //       {/* ── PROFILE MODAL ── */}
+// //       {profileModal && (
+// //         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
+// //           <div className="mp-pm-sheet">
+// //             <div className="mp-pm-top">
+// //               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
+// //               <div className="mp-pm-avatar">
+// //                 {profileModal.profileImage
+// //                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" />
+// //                   : (profileModal.name || "U").charAt(0).toUpperCase()}
+// //               </div>
+// //               <div className="mp-pm-name">{profileModal.name || "User"}</div>
+// //               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
+// //               <div className="mp-pm-tags">
+// //                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
+// //                   .filter(Boolean).map((c: string, i: number) => (
+// //                     <span key={i} className="mp-pm-tag">{c}</span>
+// //                   ))}
+// //               </div>
+// //             </div>
+
+// //             <div className="mp-pm-body">
+// //               {profileFetching && (
+// //                 <div style={{ textAlign: "center", padding: "8px 0" }}>
+// //                   <span className="mp-spinner" />
+// //                 </div>
+// //               )}
+
+// //               <div className="mp-pm-stats">
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {profileModal.followers
+// //                       ? Number(profileModal.followers) >= 1000
+// //                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
+// //                         : profileModal.followers
+// //                       : "—"}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Followers</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Niches</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
+// //                   <div className="mp-pm-stat-label">Platform</div>
+// //                 </div>
+// //               </div>
+
+// //               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
+// //                 <div className="mp-pm-empty">
+// //                   Profile details not available yet.<br />
+// //                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
+// //                 </div>
+// //               )}
+
+// //               {profileModal.bio && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">About</div>
+// //                   <div className="mp-pm-bio">{profileModal.bio}</div>
+// //                 </div>
+// //               )}
+// //               {profileModal.platform && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">Platform</div>
+// //                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
+// //                     📸 {profileModal.platform}
+// //                   </a>
+// //                 </div>
+// //               )}
+// //             </div>
+// //           </div>
+// //         </div>
+// //       )}
+// //     </>
+// //   );
+// // }
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // // ✅ Safe fetch — HTML response pe crash nahi karega
+// // const safeFetch = async (url: string, opts: RequestInit = {}) => {
+// //   try {
+// //     const res = await fetch(url, opts);
+// //     const text = await res.text();
+// //     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
+// //     const data = JSON.parse(text);
+// //     return { ok: res.ok, data };
+// //   } catch {
+// //     return { ok: false, data: null };
+// //   }
+// // };
+
+// // export default function MessagesPage() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const [isMobile, setIsMobile] = useState(false);
+// //   const [profileModal, setProfileModal] = useState<any>(null);
+// //   const [profileFetching, setProfileFetching] = useState(false);
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+
+// //   // SSR-safe mobile check
+// //   useEffect(() => {
+// //     const check = () => setIsMobile(window.innerWidth <= 768);
+// //     check();
+// //     window.addEventListener("resize", check);
+// //     return () => window.removeEventListener("resize", check);
+// //   }, []);
+
+// //   // Scroll to bottom on new messages
+// //   useEffect(() => {
+// //     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+// //   }, [messages]);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token");
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ===== FETCH CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ===== AUTO-OPEN if userId in URL ===== */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //     );
+// //     if (existing) openConversation(existing);
+// //   }, [conversations, targetUserId]);
+
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       // ✅ OLD working route from old code
+// //       const { ok, data } = await safeFetch(`${API}/conversations/my`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("CONVS:", data);
+// //       const list = data?.data || data?.conversations || [];
+// //       setConversations(list);
+// //       if (list.length > 0 && !targetUserId) openConversation(list[0]);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   const openConversation = (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const { ok, data } = await safeFetch(`${API}/conversations/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       console.log("MESSAGES:", data);
+// //       if (!ok || !data) return;
+// //       const msgs = Array.isArray(data.data) ? data.data
+// //         : Array.isArray(data.messages) ? data.messages
+// //         : data.conversation?.messages || [];
+// //       console.log("MSGS COUNT:", msgs.length);
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   /* ===== CREATE CONVERSATION ===== */
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) { console.error("No campaignId"); return null; }
+// //       const { ok, data } = await safeFetch(`${API}/conversations/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data?.conversation || data?.data;
+// //       if (ok && conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   /* ===== SEND MESSAGE ===== */
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) { alert("Could not start conversation — make sure campaign is linked"); return; }
+// //       }
+// //       const { ok, data } = await safeFetch(`${API}/conversations/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+// //       console.log("SEND:", data);
+// //       if (!ok) { alert(data?.message || "Send failed"); return; }
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   // ✅ OLD working myId extraction
+// //   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
+
+// //   // ✅ OLD working getOtherParticipant
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants || !myId) return null;
+// //     return conv.participants.find((p: any) => {
+// //       const pid = p?._id?.toString() || p?.toString();
+// //       return pid !== myId.toString();
+// //     }) || null;
+// //   };
+
+// //   // ✅ OLD working name/image helpers
+// //   const getParticipantName = (p: any): string => {
+// //     if (!p) return "User";
+// //     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
+// //   };
+
+// //   const getParticipantImage = (p: any): string | null => {
+// //     if (!p) return null;
+// //     return p.profileImage || p.profile?.profileImage || p.avatar || null;
+// //   };
+
+// //   /* ===== PROFILE MODAL — naam/avatar click pe ===== */
+// //   const openProfileModal = async (other: any) => {
+// //     if (!other || typeof other === "string") return;
+// //     const basicInfo = {
+// //       name: getParticipantName(other),
+// //       profileImage: getParticipantImage(other),
+// //       bio: other.profile?.bio || other.bio || "",
+// //       followers: other.profile?.followers || other.followers || "",
+// //       categories: other.profile?.categories || other.categories || [],
+// //       platform: other.profile?.platform || other.platform || "",
+// //       location: other.profile?.location || other.location || "",
+// //     };
+// //     setProfileModal({ ...basicInfo, _loading: true });
+
+// //     const userId = other._id?.toString() || other.id?.toString();
+// //     if (userId) {
+// //       setProfileFetching(true);
+// //       try {
+// //         const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
+// //           headers: { Authorization: `Bearer ${token}` },
+// //         });
+// //         if (ok && data) {
+// //           const p = data.profile || data.data || (data._id ? data : null);
+// //           if (p) { setProfileModal({ ...p, _loading: false }); setProfileFetching(false); return; }
+// //         }
+// //       } catch { }
+// //       setProfileFetching(false);
+// //     }
+// //     setProfileModal({ ...basicInfo, _loading: false });
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     const diff = today.getDate() - d.getDate();
+// //     if (diff === 0) return "Today";
+// //     if (diff === 1) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   /* ===== UI ===== */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0;cursor:pointer;transition:opacity 0.15s}
+// //         .mp-header-avatar:hover{opacity:0.8}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name-btn{background:none;border:none;padding:0;cursor:pointer;font-size:15px;font-weight:700;color:#111;font-family:'Plus Jakarta Sans',sans-serif;transition:color 0.15s;text-align:left;display:block}
+// //         .mp-header-name-btn:hover{color:#4f46e5}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+
+// //         @keyframes spin{to{transform:rotate(360deg)}}
+// //         .mp-spinner{display:inline-block;width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite}
+
+// //         /* ── PROFILE MODAL ── */
+// //         .mp-pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn 0.2s}
+// //         @media(min-width:500px){.mp-pm-overlay{align-items:center}}
+// //         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+// //         .mp-pm-sheet{background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;animation:slideUp 0.28s ease}
+// //         @media(min-width:500px){.mp-pm-sheet{border-radius:24px}}
+// //         @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+// //         .mp-pm-top{background:linear-gradient(135deg,#312e81 0%,#4f46e5 100%);padding:28px 24px 22px;position:relative;border-radius:24px 24px 0 0}
+// //         .mp-pm-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.18);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+// //         .mp-pm-close:hover{background:rgba(255,255,255,0.3)}
+// //         .mp-pm-avatar{width:72px;height:72px;border-radius:50%;border:3px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;margin-bottom:12px;overflow:hidden}
+// //         .mp-pm-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-pm-name{font-size:19px;font-weight:800;color:#fff;margin:0 0 3px}
+// //         .mp-pm-loc{font-size:13px;color:rgba(255,255,255,0.6);margin:0 0 10px}
+// //         .mp-pm-tags{display:flex;flex-wrap:wrap;gap:6px}
+// //         .mp-pm-tag{padding:3px 10px;border-radius:100px;background:rgba(255,255,255,0.15);font-size:11px;color:rgba(255,255,255,0.9)}
+// //         .mp-pm-body{padding:20px;display:flex;flex-direction:column;gap:16px}
+// //         .mp-pm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+// //         .mp-pm-stat{background:#fafafa;border-radius:12px;padding:12px;text-align:center;border:1px solid #f0f0f0}
+// //         .mp-pm-stat-num{font-size:16px;font-weight:800;color:#4f46e5}
+// //         .mp-pm-stat-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+// //         .mp-pm-lbl{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px}
+// //         .mp-pm-bio{font-size:14px;color:#555;line-height:1.7}
+// //         .mp-pm-link{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fafafa;border-radius:10px;border:1px solid #f0f0f0;text-decoration:none;color:#111;font-size:13px;font-weight:500}
+// //         .mp-pm-link:hover{background:#f0f0f0}
+// //         .mp-pm-empty{text-align:center;padding:20px;color:#bbb;font-size:13px}
+// //       `}</style>
+
+// //       <div className="mp">
+// //         {/* ── SIDEBAR ── */}
+// //         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {targetUserId && !conversations.find(c =>
+// //             c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //           ) && (
+// //             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>Loading...</div>
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>No conversations yet</div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = getParticipantName(other);
+// //                 const img = getParticipantImage(other);
+// //                 const isActive = activeConv?._id === conv._id;
+// //                 return (
+// //                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}>
+// //                     <div className="mp-conv-avatar">
+// //                       {img
+// //                         ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
+// //                         : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* ── CHAT AREA ── */}
+// //         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "hidden" : ""}`}>
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER — avatar/naam click → profile modal */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
+
+// //                 {activeConv ? (() => {
+// //                   const other = getOtherParticipant(activeConv);
+// //                   const name = getParticipantName(other);
+// //                   const img = getParticipantImage(other);
+// //                   return (
+// //                     <>
+// //                       {/* ✅ Avatar click → profile */}
+// //                       <div className="mp-header-avatar" onClick={() => openProfileModal(other)}>
+// //                         {img
+// //                           ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={name} />
+// //                           : name.charAt(0).toUpperCase()}
+// //                       </div>
+// //                       <div className="mp-header-info">
+// //                         {/* ✅ Naam click → profile */}
+// //                         <button className="mp-header-name-btn" onClick={() => openProfileModal(other)}>
+// //                           {name}
+// //                         </button>
+// //                         <div className="mp-header-campaign">
+// //                           {activeConv.campaignId?.title || "Campaign conversation"}
+// //                         </div>
+// //                       </div>
+// //                     </>
+// //                   );
+// //                 })() : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name-btn">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>Loading messages...</div>
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const senderId = msg.sender?._id || msg.sender;
+// //                     const isMe = myId && senderId && senderId.toString() === myId.toString();
+// //                     if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+
+// //       {/* ── PROFILE MODAL ── */}
+// //       {profileModal && (
+// //         <div className="mp-pm-overlay" onClick={(e) => e.target === e.currentTarget && setProfileModal(null)}>
+// //           <div className="mp-pm-sheet">
+// //             <div className="mp-pm-top">
+// //               <button className="mp-pm-close" onClick={() => setProfileModal(null)}>✕</button>
+// //               <div className="mp-pm-avatar">
+// //                 {profileModal.profileImage
+// //                   ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={profileModal.profileImage} alt="avatar" />
+// //                   : (profileModal.name || "U").charAt(0).toUpperCase()}
+// //               </div>
+// //               <div className="mp-pm-name">{profileModal.name || "User"}</div>
+// //               {profileModal.location && <div className="mp-pm-loc">📍 {profileModal.location}</div>}
+// //               <div className="mp-pm-tags">
+// //                 {(Array.isArray(profileModal.categories) ? profileModal.categories : [profileModal.categories])
+// //                   .filter(Boolean).map((c: string, i: number) => (
+// //                     <span key={i} className="mp-pm-tag">{c}</span>
+// //                   ))}
+// //               </div>
+// //             </div>
+
+// //             <div className="mp-pm-body">
+// //               {profileFetching && (
+// //                 <div style={{ textAlign: "center", padding: "8px 0" }}>
+// //                   <span className="mp-spinner" />
+// //                 </div>
+// //               )}
+
+// //               <div className="mp-pm-stats">
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {profileModal.followers
+// //                       ? Number(profileModal.followers) >= 1000
+// //                         ? Math.floor(Number(profileModal.followers) / 1000) + "K"
+// //                         : profileModal.followers
+// //                       : "—"}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Followers</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">
+// //                     {Array.isArray(profileModal.categories) ? profileModal.categories.length : profileModal.categories ? 1 : 0}
+// //                   </div>
+// //                   <div className="mp-pm-stat-label">Niches</div>
+// //                 </div>
+// //                 <div className="mp-pm-stat">
+// //                   <div className="mp-pm-stat-num">{profileModal.platform ? "✓" : "—"}</div>
+// //                   <div className="mp-pm-stat-label">Platform</div>
+// //                 </div>
+// //               </div>
+
+// //               {!profileFetching && !profileModal.bio && !profileModal.followers && !profileModal.platform && (
+// //                 <div className="mp-pm-empty">
+// //                   Profile details not available yet.<br />
+// //                   <small>Backend needs <code>/api/profile/user/:id</code> route</small>
+// //                 </div>
+// //               )}
+
+// //               {profileModal.bio && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">About</div>
+// //                   <div className="mp-pm-bio">{profileModal.bio}</div>
+// //                 </div>
+// //               )}
+// //               {profileModal.platform && (
+// //                 <div>
+// //                   <div className="mp-pm-lbl">Platform</div>
+// //                   <a href={profileModal.platform} target="_blank" rel="noopener noreferrer" className="mp-pm-link">
+// //                     📸 {profileModal.platform}
+// //                   </a>
+// //                 </div>
+// //               )}
+// //             </div>
+// //           </div>
+// //         </div>
+// //       )}
+// //     </>
+// //   );
+// // }
+
+// // "use client";
+
+// // import { useEffect, useState, useRef, useCallback } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // export default function MessagesPage() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+
+// //   // ✅ Scroll to bottom whenever messages change
+// //   useEffect(() => {
+// //     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+// //   }, [messages]);
+// //   const pollRef = useRef<any>(null);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token");
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ===== FETCH CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ===== AUTO-OPEN if userId in URL ===== */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     // Find existing conv with this user
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) =>
+// //         (p._id || p) === targetUserId
+// //       )
+// //     );
+// //     if (existing) {
+// //       openConversation(existing);
+// //     }
+// //     // else will be created on first message send
+// //   }, [conversations, targetUserId]);
+
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       const res = await fetch(`${API}/conversations/my`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("CONVS:", data);
+// //       // ✅ Backend sends {success: true, data: [...]} with populated participants
+// //       const list = data.data || data.conversations || [];
+// //       setConversations(list);
+
+// //       // Auto open first conv (if not coming from notification)
+// //       if (list.length > 0 && !targetUserId) {
+// //         openConversation(list[0]);
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   const openConversation = async (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     // Start polling
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const res = await fetch(`${API}/conversations/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("MESSAGES:", data);
+// //       // ✅ Backend sends {success: true, data: [...messages array]}
+// //       const msgs = Array.isArray(data.data) ? data.data
+// //         : Array.isArray(data.messages) ? data.messages : [];
+// //       console.log("SETTING MSGS:", msgs.length);
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   /* ===== CREATE CONVERSATION & SEND ===== */
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) {
+// //         console.error("No campaignId for conversation");
+// //         return null;
+// //       }
+// //       const res = await fetch(`${API}/conversations/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       const data = await res.json();
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data.conversation || data.data;
+// //       if (conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+
+// //       // Create conv if not exists (coming from notification)
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) {
+// //           alert("Could not start conversation — make sure campaign is linked");
+// //           return;
+// //         }
+// //       }
+
+// //       const res = await fetch(`${API}/conversations/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+
+// //       const data = await res.json();
+// //       console.log("SEND:", data);
+
+// //       if (!res.ok) { alert(data.message || "Send failed"); return; }
+
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   // Cleanup polling
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   // myId from user state
+// //   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
+
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants || !myId) return null;
+// //     return conv.participants.find((p: any) => {
+// //       const pid = p?._id?.toString() || p?.toString();
+// //       return pid !== myId.toString();
+// //     }) || null;
+// //   };
+
+// //   const getParticipantName = (p: any): string => {
+// //     if (!p) return "User";
+// //     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
+// //   };
+
+// //   const getParticipantImage = (p: any): string | null => {
+// //     if (!p) return null;
+// //     return p.profileImage || p.profile?.profileImage || p.avatar || null;
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     const d = new Date(date);
+// //     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     const diff = today.getDate() - d.getDate();
+// //     if (diff === 0) return "Today";
+// //     if (diff === 1) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   /* ===== UI ===== */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         /* SIDEBAR */
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-conv-unread{width:8px;height:8px;border-radius:50%;background:#4f46e5;flex-shrink:0}
+
+// //         /* EMPTY SIDEBAR */
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         /* CHAT AREA */
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         /* CHAT HEADER */
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         /* MESSAGES */
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         /* BUBBLE */
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+// //         /* INPUT */
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s;resize:none}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         /* EMPTY STATE */
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+
+// //         /* NEW CHAT BANNER */
+// //         .mp-new-banner{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+// //         .mp-new-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-new-sub{font-size:12px;color:#aaa}
+// //       `}</style>
+
+// //       <div className="mp">
+// //         {/* SIDEBAR */}
+// //         <div className={`mp-sidebar ${activeConv && window.innerWidth <= 768 ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {/* New chat from notification */}
+// //           {targetUserId && !conversations.find(c => c.participants?.some((p: any) => (p._id || p) === targetUserId)) && (
+// //             <div className="mp-new-chat">
+// //               💬 New conversation with {targetUserName}
+// //             </div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>Loading...</div>
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>
+// //                 No conversations yet
+// //               </div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = getParticipantName(other);
+// //                 const img = getParticipantImage(other);
+// //                 const isActive = activeConv?._id === conv._id;
+
+// //                 return (
+// //                   <div
+// //                     key={conv._id}
+// //                     className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}
+// //                   >
+// //                     <div className="mp-conv-avatar">
+// //                       {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* CHAT AREA */}
+// //         <div className={`mp-chat ${!activeConv && !targetUserId ? "" : ""}`}>
+
+// //           {/* No conversation selected */}
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => setActiveConv(null)}>←</button>
+
+// //                 {activeConv ? (
+// //                   <>
+// //                     {(() => {
+// //                       const other = getOtherParticipant(activeConv);
+// //                       const name = getParticipantName(other);
+// //                       const img = getParticipantImage(other);
+// //                       return (
+// //                         <>
+// //                           <div className="mp-header-avatar">
+// //                             {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
+// //                           </div>
+// //                           <div className="mp-header-info">
+// //                             <div className="mp-header-name">{name}</div>
+// //                             <div className="mp-header-campaign">
+// //                               {activeConv.campaignId?.title || "Campaign conversation"}
+// //                             </div>
+// //                           </div>
+// //                         </>
+// //                       );
+// //                     })()}
+// //                   </>
+// //                 ) : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {/* DEBUG */}
+// //               {messages.length > 0 && <div style={{display:"none"}}>msgs: {messages.length}</div>}
+// //               {msgLoading && messages.length === 0 ? (
+// //                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>Loading messages...</div>
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const senderId = msg.sender?._id || msg.sender;
+// //               const isMe = myId && senderId && senderId.toString() === myId.toString();
+// //               if (idx === 0) console.log("DEBUG myId:", myId, "senderId:", senderId, "isMe:", isMe);
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>
+// //                             {msg.text}
+// //                           </div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>
+// //                             {formatTime(msg.createdAt)}
+// //                           </div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+// //     </>
+// //   );
+// // }
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef, useCallback } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // export default function MessagesPage() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token");
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ===== FETCH CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ===== AUTO-OPEN if userId in URL ===== */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     // Find existing conv with this user
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) =>
+// //         (p._id || p) === targetUserId
+// //       )
+// //     );
+// //     if (existing) {
+// //       openConversation(existing);
+// //     }
+// //     // else will be created on first message send
+// //   }, [conversations, targetUserId]);
+
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       const res = await fetch(`${API}/conversations/messages/all`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("CONVS:", data);
+// //       const list = data.conversations || data.data || [];
+// //       setConversations(list);
+
+// //       // Auto open first or from URL
+// //       if (list.length > 0 && !activeConv) {
+// //         openConversation(list[0]);
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   const openConversation = async (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     // Start polling
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const res = await fetch(`${API}/conversations/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("MESSAGES:", data);
+// //       const msgs = data.messages || data.data?.messages || [];
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   /* ===== CREATE CONVERSATION & SEND ===== */
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) {
+// //         console.error("No campaignId for conversation");
+// //         return null;
+// //       }
+// //       const res = await fetch(`${API}/conversations/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       const data = await res.json();
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data.conversation || data.data;
+// //       if (conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+
+// //       // Create conv if not exists (coming from notification)
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) {
+// //           alert("Could not start conversation — make sure campaign is linked");
+// //           return;
+// //         }
+// //       }
+
+// //       const res = await fetch(`${API}/conversations/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+
+// //       const data = await res.json();
+// //       console.log("SEND:", data);
+
+// //       if (!res.ok) { alert(data.message || "Send failed"); return; }
+
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   // Cleanup polling
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   // ✅ cb_user structure: {token, role, user: {_id, email}} ya direct {_id, token}
+// //   const myId = user?.user?._id || user?.user?.id || user?._id || user?.id;
+
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants || !myId) return null;
+// //     return conv.participants.find((p: any) => {
+// //       const pid = p?._id?.toString() || p?.toString();
+// //       return pid !== myId.toString();
+// //     }) || null;
+// //   };
+
+// //   const getParticipantName = (p: any): string => {
+// //     if (!p) return "User";
+// //     return p.name || p.profile?.name || p.username || p.email?.split("@")[0] || "User";
+// //   };
+
+// //   const getParticipantImage = (p: any): string | null => {
+// //     if (!p) return null;
+// //     return p.profileImage || p.profile?.profileImage || p.avatar || null;
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     const d = new Date(date);
+// //     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     const diff = today.getDate() - d.getDate();
+// //     if (diff === 0) return "Today";
+// //     if (diff === 1) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   /* ===== UI ===== */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         /* SIDEBAR */
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-conv-unread{width:8px;height:8px;border-radius:50%;background:#4f46e5;flex-shrink:0}
+
+// //         /* EMPTY SIDEBAR */
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         /* CHAT AREA */
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         /* CHAT HEADER */
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         /* MESSAGES */
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         /* BUBBLE */
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+// //         /* INPUT */
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s;resize:none}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         /* EMPTY STATE */
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+
+// //         /* NEW CHAT BANNER */
+// //         .mp-new-banner{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+// //         .mp-new-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-new-sub{font-size:12px;color:#aaa}
+// //       `}</style>
+
+// //       <div className="mp">
+// //         {/* SIDEBAR */}
+// //         <div className={`mp-sidebar ${activeConv && window.innerWidth <= 768 ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {/* New chat from notification */}
+// //           {targetUserId && !conversations.find(c => c.participants?.some((p: any) => (p._id || p) === targetUserId)) && (
+// //             <div className="mp-new-chat">
+// //               💬 New conversation with {targetUserName}
+// //             </div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>Loading...</div>
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>
+// //                 No conversations yet
+// //               </div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = getParticipantName(other);
+// //                 const img = getParticipantImage(other);
+// //                 const isActive = activeConv?._id === conv._id;
+
+// //                 return (
+// //                   <div
+// //                     key={conv._id}
+// //                     className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}
+// //                   >
+// //                     <div className="mp-conv-avatar">
+// //                       {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* CHAT AREA */}
+// //         <div className={`mp-chat ${!activeConv && !targetUserId ? "" : ""}`}>
+
+// //           {/* No conversation selected */}
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => setActiveConv(null)}>←</button>
+
+// //                 {activeConv ? (
+// //                   <>
+// //                     {(() => {
+// //                       const other = getOtherParticipant(activeConv);
+// //                       const name = getParticipantName(other);
+// //                       const img = getParticipantImage(other);
+// //                       return (
+// //                         <>
+// //                           <div className="mp-header-avatar">
+// //                             {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
+// //                           </div>
+// //                           <div className="mp-header-info">
+// //                             <div className="mp-header-name">{name}</div>
+// //                             <div className="mp-header-campaign">
+// //                               {activeConv.campaignId?.title || "Campaign conversation"}
+// //                             </div>
+// //                           </div>
+// //                         </>
+// //                       );
+// //                     })()}
+// //                   </>
+// //                 ) : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>Loading messages...</div>
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const isMe = (msg.sender?._id || msg.sender) === myId;
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>
+// //                             {msg.text}
+// //                           </div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>
+// //                             {formatTime(msg.createdAt)}
+// //                           </div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+// //     </>
+// //   );
+// // }
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+// // import { socket } from "@/lib/socket";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // export default function MessagesPage() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const [isMobile, setIsMobile] = useState(false);
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+// //   const activeConvRef = useRef<any>(null);
+
+// //   // ✅ activeConv ka latest ref — socket handler mein use hoga
+// //   useEffect(() => {
+// //     activeConvRef.current = activeConv;
+// //   }, [activeConv]);
+
+// //   // ✅ SSR-safe mobile check
+// //   useEffect(() => {
+// //     const check = () => setIsMobile(window.innerWidth <= 768);
+// //     check();
+// //     window.addEventListener("resize", check);
+// //     return () => window.removeEventListener("resize", check);
+// //   }, []);
+
+// //   /* ── AUTH ── */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token") || "";
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
 
  
   
 
-//   useEffect(() => {
-//   socket.on("receiveMessage", ({ conversationId, message }: any) => {
-//     console.log("📩 Message via socket:", message);
-
-//     const conv = activeConvRef.current;
-
-//     if (conv && conv._id === conversationId) {
-//       setMessages((prev) => {
-//         const exists = prev.some((m) => m._id === message._id);
-//         if (exists) return prev;
-//         return [...prev, message];
-//       });
-
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-//     }
-
-//     setConversations((prev) =>
-//       prev.map((c) =>
-//         c._id === conversationId
-//           ? { ...c, lastMessage: message.text, lastMessageAt: message.createdAt }
-//           : c
-//       )
-//     );
-//   });
-
-//   return () => {
-//     socket.off("receiveMessage");
-//   };
-// }, []);
-
-//   /* ── FETCH CONVERSATIONS ── */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ── AUTO-OPEN conv if userId in URL ── */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//     );
-//     if (existing) openConversation(existing);
-//   }, [conversations, targetUserId]);
-
-//   // ✅ Backend route: GET /api/conversations/my
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       const res = await fetch(`${API}/conversations/my`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("CONVS:", data);
-//       const list = data.conversations || data.data || [];
-
-//       // ✅ Participants populate karo agar sirf IDs aa rahi hain
-//       const populated = await Promise.all(
-//         list.map(async (conv: any) => {
-//           if (!conv.participants) return conv;
-//           const populatedParticipants = await Promise.all(
-//             conv.participants.map(async (p: any) => {
-//               // Agar already object hai (populated) toh skip karo
-//               if (typeof p === "object" && p.name) return p;
-//               // Sirf ID hai — fetch karo
-//               const uid = p._id || p;
-//               try {
-//                 const uRes = await fetch(`${API}/profile/user/${uid}`, {
-//                   headers: { Authorization: `Bearer ${token}` },
-//                 });
-//                 const uData = await uRes.json();
-//                 return uData.user || uData.data || { _id: uid, name: "User" };
-//               } catch {
-//                 return { _id: uid, name: "User" };
-//               }
-//             })
-//           );
-//           return { ...conv, participants: populatedParticipants };
-//         })
-//       );
-
-//       setConversations(populated);
-//       if (populated.length > 0 && !activeConv && !targetUserId) {
-//         openConversation(populated[0]);
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const openConversation = (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     // // if (pollRef.current) clearInterval(pollRef.current);
-//     // pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   // ✅ Backend route: GET /api/conversations/messages/:conversationId
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const res = await fetch(`${API}/conversations/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("MESSAGES:", data);
-//       // ✅ Backend returns: {success: true, data: [...messages]}
-//       const msgs = Array.isArray(data.data)
-//         ? data.data
-//         : data.messages || data.data?.messages || data.conversation?.messages || [];
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   // ✅ Backend route: POST /api/conversations/create
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) {
-//         alert("Campaign ID missing — go back and try again from notifications");
-//         return null;
-//       }
-//       const res = await fetch(`${API}/conversations/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       const data = await res.json();
-//       console.log("CREATE CONV:", data);
-//       const conv = data.conversation || data.data;
-//       if (conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   // ✅ Backend route: POST /api/conversations/send/:conversationId
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) return;
-//       }
-
-//       const res = await fetch(`${API}/conversations/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-//       const data = await res.json();
-//       console.log("SEND:", data);
-//       if (!res.ok) { alert(data.message || "Send failed"); return; }
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   const myId = user?._id || user?.id;
-
-//   // const getOtherParticipant = (conv: any) => {
-//   //   if (!conv?.participants) return null;
-//   //   return conv.participants.find((p: any) => (p._id || p) !== myId) || null;
-//   // };
-
-//   const getOtherParticipant = (conv: any) => {
-//   if (!conv?.participants || !user?._id) return null;
-
-//   return conv.participants.find((p: any) => {
-//     // handle both populated and non-populated cases
-//     const participantId =
-//       typeof p === "string"
-//         ? p
-//         : p._id?._id || p._id;
-
-//     return participantId?.toString() !== user._id.toString();
-//   });
-// };
-
-//   const formatTime = (date: string) => {
-//     if (!date) return "";
-//     return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     const today = new Date();
-//     if (d.toDateString() === today.toDateString()) return "Today";
-//     const yesterday = new Date(today);
-//     yesterday.setDate(today.getDate() - 1);
-//     if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.5)}
-
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-
-//         @keyframes spin{to{transform:rotate(360deg)}}
-//         .mp-spinner{width:24px;height:24px;border:3px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;margin:40px auto}
-//       `}</style>
-
-//       <div className="mp">
-
-//         {/* ── SIDEBAR ── */}
-//         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {targetUserId && !conversations.find(c =>
-//             c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//           ) && (
-//             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div className="mp-spinner" />
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>
-//                 No conversations yet
-//               </div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = other?.name || other?.profile?.name || "User";
-//                 const img = other?.profileImage || other?.profile?.profileImage;
-//                 const isActive = activeConv?._id === conv._id;
-//                 return (
-//                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}>
-//                     <div className="mp-conv-avatar">
-//                       {img
-//                         ? /* eslint-disable-next-line @next/next/no-img-element */
-//                           <img src={img} alt={name} />
-//                         : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* ── CHAT AREA ── */}
-//         <div className="mp-chat">
-
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
-
-//                 {activeConv ? (() => {
-//                   const other = getOtherParticipant(activeConv);
-//                   const name = other?.name || other?.profile?.name || "User";
-//                   const img = other?.profileImage || other?.profile?.profileImage;
-//                   return (
-//                     <>
-//                       <div className="mp-header-avatar">
-//                         {img
-//                           ? /* eslint-disable-next-line @next/next/no-img-element */
-//                             <img src={img} alt={name} />
-//                           : name.charAt(0).toUpperCase()}
-//                       </div>
-//                       <div className="mp-header-info">
-//                         <div className="mp-header-name">{name}</div>
-//                         <div className="mp-header-campaign">{activeConv.campaignId?.title || "Campaign conversation"}</div>
-//                       </div>
-//                     </>
-//                   );
-//                 })() : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div className="mp-spinner" />
-//                 ) : messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const isMe = (msg.sender?._id || msg.sender) === myId;
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-//     </>
-//   );
-// }
-
-
-
-// "use client";
-
-// import { useEffect, useState, useRef } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-// import { socket } from "@/lib/socket";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// export default function MessagesPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const [isMobile, setIsMobile] = useState(false);
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-
-//   // ✅ SSR-safe mobile check
-//   useEffect(() => {
-//     const check = () => setIsMobile(window.innerWidth <= 768);
-//     check();
-//     window.addEventListener("resize", check);
-//     return () => window.removeEventListener("resize", check);
-//   }, []);
-
-//   /* ── AUTH ── */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token") || "";
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ── FETCH CONVERSATIONS ── */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ── AUTO-OPEN conv if userId in URL ── */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//     );
-//     if (existing) openConversation(existing);
-//   }, [conversations, targetUserId]);
-
-//   // ✅ Backend route: GET /api/conversation/my
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       const res = await fetch(`${API}/conversations/my`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("CONVS:", data);
-//       const list = data.conversations || data.data || [];
-//       setConversations(list);
-//       if (list.length > 0 && !activeConv && !targetUserId) {
-//         openConversation(list[0]);
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const openConversation = (conv: any) => {
-//     setActiveConv(conv);
-//     // ✅ Messages conversation ke andar embedded hain schema mein
-//     // GET /api/conversation/messages/:conversationId
-//     fetchMessages(conv._id);
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   // ✅ Backend route: GET /api/conversation/messages/:conversationId
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const res = await fetch(`${API}/conversations/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("MESSAGES:", data);
-//       // ✅ Schema: messages array conversation ke andar hai
-//       const msgs = data.messages || data.data?.messages || data.conversation?.messages || [];
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   // ✅ Backend route: POST /api/conversation/create
-//   // Body: { campaignId, participantId }
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) {
-//         alert("Campaign ID missing — go back and try again from notifications");
-//         return null;
-//       }
-//       const res = await fetch(`${API}/conversations/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       const data = await res.json();
-//       console.log("CREATE CONV:", data);
-//       const conv = data.conversation || data.data;
-//       if (conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   // ✅ Backend route: POST /api/conversation/send/:conversationId
-//   // Body: { text }
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) return;
-//       }
-
-//       const res = await fetch(`${API}/conversations/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-//       const data = await res.json();
-//       console.log("SEND:", data);
-//       if (!res.ok) { alert(data.message || "Send failed"); return; }
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   const myId = user?._id || user?.id;
-
-//   // ✅ participants array mein dono users hain — apna ID hata ke doosra dikhao
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants) return null;
-//     return conv.participants.find((p: any) => (p._id || p) !== myId) || null;
-//   };
-
-//   const formatTime = (date: string) => {
-//     if (!date) return "";
-//     return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     if (!date) return "";
-//     const d = new Date(date);
-//     const today = new Date();
-//     if (d.toDateString() === today.toDateString()) return "Today";
-//     const yesterday = new Date(today);
-//     yesterday.setDate(today.getDate() - 1);
-//     if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.5)}
-
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-
-//         @keyframes spin{to{transform:rotate(360deg)}}
-//         .mp-spinner{width:24px;height:24px;border:3px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;margin:40px auto}
-//       `}</style>
-
-//       <div className="mp">
-
-//         {/* ── SIDEBAR ── */}
-//         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {/* New chat banner — notification se aaya */}
-//           {targetUserId && !conversations.find(c =>
-//             c.participants?.some((p: any) => (p._id || p) === targetUserId)
-//           ) && (
-//             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div className="mp-spinner" />
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>
-//                 No conversations yet
-//               </div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = other?.name || other?.profile?.name || "User";
-//                 const img = other?.profileImage || other?.profile?.profileImage;
-//                 const isActive = activeConv?._id === conv._id;
-//                 return (
-//                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}>
-//                     <div className="mp-conv-avatar">
-//                       {img
-//                         ? /* eslint-disable-next-line @next/next/no-img-element */
-//                           <img src={img} alt={name} />
-//                         : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       {/* ✅ Schema: lastMessage field hai conversation mein */}
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {/* ✅ Schema: lastMessageAt field hai */}
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* ── CHAT AREA ── */}
-//         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "" : ""}`}>
-
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
-
-//                 {activeConv ? (() => {
-//                   const other = getOtherParticipant(activeConv);
-//                   const name = other?.name || other?.profile?.name || "User";
-//                   const img = other?.profileImage || other?.profile?.profileImage;
-//                   return (
-//                     <>
-//                       <div className="mp-header-avatar">
-//                         {img
-//                           ? /* eslint-disable-next-line @next/next/no-img-element */
-//                             <img src={img} alt={name} />
-//                           : name.charAt(0).toUpperCase()}
-//                       </div>
-//                       <div className="mp-header-info">
-//                         <div className="mp-header-name">{name}</div>
-//                         {/* ✅ Schema: campaignId ref Campaign hai */}
-//                         <div className="mp-header-campaign">{activeConv.campaignId?.title || "Campaign conversation"}</div>
-//                       </div>
-//                     </>
-//                   );
-//                 })() : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div className="mp-spinner" />
-//                 ) : messages.length === 0 ? (
-//                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     // ✅ Schema: sender ObjectId ref User
-//                     const isMe = (msg.sender?._id || msg.sender) === myId;
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           {/* ✅ Schema: text field */}
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
-//                           {/* ✅ Schema: createdAt field */}
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-//     </>
-//   );
-// }
-
-
-
-// "use client";
-
-// import { useEffect, useState, useRef, useCallback } from "react";
-// import { useRouter, useSearchParams } from "next/navigation";
-
-// const API = "http://54.252.201.93:5000/api";
-
-// export default function MessagesPage() {
-//   const router = useRouter();
-//   const searchParams = useSearchParams();
-//   const targetUserId = searchParams.get("userId");
-//   const targetUserName = searchParams.get("name") || "Creator";
-//   const targetCampaignId = searchParams.get("campaignId");
-
-//   const [user, setUser] = useState<any>(null);
-//   const [token, setToken] = useState("");
-//   const [conversations, setConversations] = useState<any[]>([]);
-//   const [activeConv, setActiveConv] = useState<any>(null);
-//   const [messages, setMessages] = useState<any[]>([]);
-//   const [newMsg, setNewMsg] = useState("");
-//   const [sending, setSending] = useState(false);
-//   const [loading, setLoading] = useState(true);
-//   const [msgLoading, setMsgLoading] = useState(false);
-//   const bottomRef = useRef<HTMLDivElement>(null);
-//   const pollRef = useRef<any>(null);
-
-//   /* ===== AUTH ===== */
-//   useEffect(() => {
-//     if (typeof window === "undefined") return;
-//     const stored = localStorage.getItem("cb_user");
-//     if (!stored) { router.push("/login"); return; }
-//     const parsed = JSON.parse(stored);
-//     const t = parsed.token || localStorage.getItem("token");
-//     if (!t) { router.push("/login"); return; }
-//     setUser(parsed);
-//     setToken(t);
-//   }, []);
-
-//   /* ===== FETCH CONVERSATIONS ===== */
-//   useEffect(() => {
-//     if (!token) return;
-//     fetchConversations();
-//   }, [token]);
-
-//   /* ===== AUTO-OPEN if userId in URL ===== */
-//   useEffect(() => {
-//     if (!token || !targetUserId || conversations.length === 0) return;
-//     // Find existing conv with this user
-//     const existing = conversations.find((c: any) =>
-//       c.participants?.some((p: any) =>
-//         (p._id || p) === targetUserId
-//       )
-//     );
-//     if (existing) {
-//       openConversation(existing);
-//     }
-//     // else will be created on first message send
-//   }, [conversations, targetUserId]);
-
-//   const fetchConversations = async () => {
-//     try {
-//       setLoading(true);
-//       const res = await fetch(`${API}/conversation/messages/all`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("CONVS:", data);
-//       const list = data.conversations || data.data || [];
-//       setConversations(list);
-
-//       // Auto open first or from URL
-//       if (list.length > 0 && !activeConv) {
-//         openConversation(list[0]);
-//       }
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const openConversation = async (conv: any) => {
-//     setActiveConv(conv);
-//     fetchMessages(conv._id);
-//     // Start polling
-//     if (pollRef.current) clearInterval(pollRef.current);
-//     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
-//   };
-
-//   const fetchMessages = async (convId: string) => {
-//     try {
-//       setMsgLoading(true);
-//       const res = await fetch(`${API}/conversation/messages/${convId}`, {
-//         headers: { Authorization: `Bearer ${token}` },
-//       });
-//       const data = await res.json();
-//       console.log("MESSAGES:", data);
-//       const msgs = data.messages || data.data?.messages || [];
-//       setMessages(msgs);
-//       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setMsgLoading(false);
-//     }
-//   };
-
-//   /* ===== CREATE CONVERSATION & SEND ===== */
-//   const createConversation = async (): Promise<string | null> => {
-//     if (!targetUserId) return null;
-//     try {
-//       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
-//       if (!campaignId) {
-//         console.error("No campaignId for conversation");
-//         return null;
-//       }
-//       const res = await fetch(`${API}/conversation/create`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ campaignId, participantId: targetUserId }),
-//       });
-//       const data = await res.json();
-//       console.log("CREATE CONV:", data);
-//       const conv = data.conversation || data.data;
-//       if (conv) {
-//         setActiveConv(conv);
-//         setConversations(prev => [conv, ...prev]);
-//         return conv._id;
-//       }
-//       return null;
-//     } catch (err) {
-//       console.error(err);
-//       return null;
-//     }
-//   };
-
-//   const sendMessage = async () => {
-//     if (!newMsg.trim() || sending) return;
-
-//     try {
-//       setSending(true);
-//       let convId = activeConv?._id;
-
-//       // Create conv if not exists (coming from notification)
-//       if (!convId && targetUserId) {
-//         convId = await createConversation();
-//         if (!convId) {
-//           alert("Could not start conversation — make sure campaign is linked");
-//           return;
-//         }
-//       }
-
-//       const res = await fetch(`${API}/conversation/send/${convId}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-//         body: JSON.stringify({ text: newMsg.trim() }),
-//       });
-
-//       const data = await res.json();
-//       console.log("SEND:", data);
-
-//       if (!res.ok) { alert(data.message || "Send failed"); return; }
-
-//       setNewMsg("");
-//       fetchMessages(convId);
-//     } catch (err) {
-//       console.error(err);
-//     } finally {
-//       setSending(false);
-//     }
-//   };
-
-//   // Cleanup polling
-//   useEffect(() => {
-//     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-//   }, []);
-
-//   const myId = user?._id || user?.id;
-
-//   const getOtherParticipant = (conv: any) => {
-//     if (!conv?.participants) return null;
-//     return conv.participants.find((p: any) => (p._id || p) !== myId);
-//   };
-
-//   const formatTime = (date: string) => {
-//     const d = new Date(date);
-//     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-//   };
-
-//   const formatDate = (date: string) => {
-//     const d = new Date(date);
-//     const today = new Date();
-//     const diff = today.getDate() - d.getDate();
-//     if (diff === 0) return "Today";
-//     if (diff === 1) return "Yesterday";
-//     return d.toLocaleDateString();
-//   };
-
-//   /* ===== UI ===== */
-//   return (
-//     <>
-//       <style>{`
-//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-//         *{box-sizing:border-box;margin:0;padding:0}
-//         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
-
-//         /* SIDEBAR */
-//         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
-//         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
-//         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
-//         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
-//         .mp-conv-list{flex:1;overflow-y:auto}
-//         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
-//         .mp-conv-item:hover{background:#f9f9f9}
-//         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
-//         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
-//         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-conv-info{flex:1;min-width:0}
-//         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-//         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-//         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
-//         .mp-conv-unread{width:8px;height:8px;border-radius:50%;background:#4f46e5;flex-shrink:0}
-
-//         /* EMPTY SIDEBAR */
-//         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
-
-//         /* CHAT AREA */
-//         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
-//         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
-
-//         /* CHAT HEADER */
-//         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
-//         @media(max-width:768px){.mp-back-btn{display:block}}
-//         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
-//         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-//         .mp-header-info{flex:1}
-//         .mp-header-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
-
-//         /* MESSAGES */
-//         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
-//         .mp-date-label{text-align:center;margin:12px 0}
-//         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
-
-//         /* BUBBLE */
-//         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
-//         .mp-bubble-wrap.me{align-items:flex-end}
-//         .mp-bubble-wrap.them{align-items:flex-start}
-//         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
-//         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
-//         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-//         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
-//         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
-
-//         /* INPUT */
-//         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s;resize:none}
-//         .mp-input:focus{border-color:#4f46e5;background:#fff}
-//         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
-//         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
-//         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
-
-//         /* EMPTY STATE */
-//         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
-//         .mp-empty-icon{font-size:52px}
-//         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
-//         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
-
-//         /* NEW CHAT BANNER */
-//         .mp-new-banner{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
-//         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
-//         .mp-new-name{font-size:15px;font-weight:700;color:#111}
-//         .mp-new-sub{font-size:12px;color:#aaa}
-//       `}</style>
-
-//       <div className="mp">
-//         {/* SIDEBAR */}
-//         <div className={`mp-sidebar ${activeConv && window.innerWidth <= 768 ? "hidden" : ""}`}>
-//           <div className="mp-sidebar-header">
-//             <div className="mp-sidebar-title">Messages</div>
-//           </div>
-
-//           {/* New chat from notification */}
-//           {targetUserId && !conversations.find(c => c.participants?.some((p: any) => (p._id || p) === targetUserId)) && (
-//             <div className="mp-new-chat">
-//               💬 New conversation with {targetUserName}
-//             </div>
-//           )}
-
-//           <div className="mp-conv-list">
-//             {loading ? (
-//               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>Loading...</div>
-//             ) : conversations.length === 0 && !targetUserId ? (
-//               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>
-//                 No conversations yet
-//               </div>
-//             ) : (
-//               conversations.map((conv) => {
-//                 const other = getOtherParticipant(conv);
-//                 const name = other?.name || other?.profile?.name || "User";
-//                 const img = other?.profileImage || other?.profile?.profileImage;
-//                 const isActive = activeConv?._id === conv._id;
-
-//                 return (
-//                   <div
-//                     key={conv._id}
-//                     className={`mp-conv-item ${isActive ? "active" : ""}`}
-//                     onClick={() => openConversation(conv)}
-//                   >
-//                     <div className="mp-conv-avatar">
-//                       {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
-//                     </div>
-//                     <div className="mp-conv-info">
-//                       <div className="mp-conv-name">{name}</div>
-//                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
-//                     </div>
-//                     {conv.lastMessageAt && (
-//                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
-//                     )}
-//                   </div>
-//                 );
-//               })
-//             )}
-//           </div>
-//         </div>
-
-//         {/* CHAT AREA */}
-//         <div className={`mp-chat ${!activeConv && !targetUserId ? "" : ""}`}>
-
-//           {/* No conversation selected */}
-//           {!activeConv && !targetUserId ? (
-//             <div className="mp-empty">
-//               <div className="mp-empty-icon">💬</div>
-//               <div className="mp-empty-title">Your Messages</div>
-//               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
-//             </div>
-//           ) : (
-//             <>
-//               {/* HEADER */}
-//               <div className="mp-chat-header">
-//                 <button className="mp-back-btn" onClick={() => setActiveConv(null)}>←</button>
-
-//                 {activeConv ? (
-//                   <>
-//                     {(() => {
-//                       const other = getOtherParticipant(activeConv);
-//                       const name = other?.name || other?.profile?.name || "User";
-//                       const img = other?.profileImage || other?.profile?.profileImage;
-//                       return (
-//                         <>
-//                           <div className="mp-header-avatar">
-//                             {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
-//                           </div>
-//                           <div className="mp-header-info">
-//                             <div className="mp-header-name">{name}</div>
-//                             <div className="mp-header-campaign">
-//                               {activeConv.campaignId?.title || "Campaign conversation"}
-//                             </div>
-//                           </div>
-//                         </>
-//                       );
-//                     })()}
-//                   </>
-//                 ) : (
-//                   <>
-//                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
-//                     <div className="mp-header-info">
-//                       <div className="mp-header-name">{targetUserName}</div>
-//                       <div className="mp-header-campaign">Send a message to start</div>
-//                     </div>
-//                   </>
-//                 )}
-//               </div>
-
-//               {/* MESSAGES */}
-//               <div className="mp-messages">
-//                 {msgLoading && messages.length === 0 ? (
-//                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>Loading messages...</div>
-//                 ) : messages.length === 0 ? (
-//                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>
-//                     No messages yet — say hello! 👋
-//                   </div>
-//                 ) : (
-//                   messages.map((msg, idx) => {
-//                     const isMe = (msg.sender?._id || msg.sender) === myId;
-//                     const prevMsg = messages[idx - 1];
-//                     const showDate = !prevMsg ||
-//                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
-
-//                     return (
-//                       <div key={msg._id || idx}>
-//                         {showDate && (
-//                           <div className="mp-date-label">
-//                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
-//                           </div>
-//                         )}
-//                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
-//                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>
-//                             {msg.text}
-//                           </div>
-//                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>
-//                             {formatTime(msg.createdAt)}
-//                           </div>
-//                         </div>
-//                       </div>
-//                     );
-//                   })
-//                 )}
-//                 <div ref={bottomRef} />
-//               </div>
-
-//               {/* INPUT */}
-//               <div className="mp-input-area">
-//                 <input
-//                   className="mp-input"
-//                   placeholder="Type a message..."
-//                   value={newMsg}
-//                   onChange={(e) => setNewMsg(e.target.value)}
-//                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-//                 />
-//                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
-//                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-//                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-//                   </svg>
-//                 </button>
-//               </div>
-//             </>
-//           )}
-//         </div>
-//       </div>
-//     </>
-//   );
-// }
+// //   useEffect(() => {
+// //   socket.on("receiveMessage", ({ conversationId, message }: any) => {
+// //     console.log("📩 Message via socket:", message);
+
+// //     const conv = activeConvRef.current;
+
+// //     if (conv && conv._id === conversationId) {
+// //       setMessages((prev) => {
+// //         const exists = prev.some((m) => m._id === message._id);
+// //         if (exists) return prev;
+// //         return [...prev, message];
+// //       });
+
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+// //     }
+
+// //     setConversations((prev) =>
+// //       prev.map((c) =>
+// //         c._id === conversationId
+// //           ? { ...c, lastMessage: message.text, lastMessageAt: message.createdAt }
+// //           : c
+// //       )
+// //     );
+// //   });
+
+// //   return () => {
+// //     socket.off("receiveMessage");
+// //   };
+// // }, []);
+
+// //   /* ── FETCH CONVERSATIONS ── */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ── AUTO-OPEN conv if userId in URL ── */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //     );
+// //     if (existing) openConversation(existing);
+// //   }, [conversations, targetUserId]);
+
+// //   // ✅ Backend route: GET /api/conversations/my
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       const res = await fetch(`${API}/conversations/my`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("CONVS:", data);
+// //       const list = data.conversations || data.data || [];
+
+// //       // ✅ Participants populate karo agar sirf IDs aa rahi hain
+// //       const populated = await Promise.all(
+// //         list.map(async (conv: any) => {
+// //           if (!conv.participants) return conv;
+// //           const populatedParticipants = await Promise.all(
+// //             conv.participants.map(async (p: any) => {
+// //               // Agar already object hai (populated) toh skip karo
+// //               if (typeof p === "object" && p.name) return p;
+// //               // Sirf ID hai — fetch karo
+// //               const uid = p._id || p;
+// //               try {
+// //                 const uRes = await fetch(`${API}/profile/user/${uid}`, {
+// //                   headers: { Authorization: `Bearer ${token}` },
+// //                 });
+// //                 const uData = await uRes.json();
+// //                 return uData.user || uData.data || { _id: uid, name: "User" };
+// //               } catch {
+// //                 return { _id: uid, name: "User" };
+// //               }
+// //             })
+// //           );
+// //           return { ...conv, participants: populatedParticipants };
+// //         })
+// //       );
+
+// //       setConversations(populated);
+// //       if (populated.length > 0 && !activeConv && !targetUserId) {
+// //         openConversation(populated[0]);
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   const openConversation = (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     // // if (pollRef.current) clearInterval(pollRef.current);
+// //     // pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   // ✅ Backend route: GET /api/conversations/messages/:conversationId
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const res = await fetch(`${API}/conversations/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("MESSAGES:", data);
+// //       // ✅ Backend returns: {success: true, data: [...messages]}
+// //       const msgs = Array.isArray(data.data)
+// //         ? data.data
+// //         : data.messages || data.data?.messages || data.conversation?.messages || [];
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   // ✅ Backend route: POST /api/conversations/create
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) {
+// //         alert("Campaign ID missing — go back and try again from notifications");
+// //         return null;
+// //       }
+// //       const res = await fetch(`${API}/conversations/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       const data = await res.json();
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data.conversation || data.data;
+// //       if (conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   // ✅ Backend route: POST /api/conversations/send/:conversationId
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) return;
+// //       }
+
+// //       const res = await fetch(`${API}/conversations/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+// //       const data = await res.json();
+// //       console.log("SEND:", data);
+// //       if (!res.ok) { alert(data.message || "Send failed"); return; }
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   const myId = user?._id || user?.id;
+
+// //   // const getOtherParticipant = (conv: any) => {
+// //   //   if (!conv?.participants) return null;
+// //   //   return conv.participants.find((p: any) => (p._id || p) !== myId) || null;
+// //   // };
+
+// //   const getOtherParticipant = (conv: any) => {
+// //   if (!conv?.participants || !user?._id) return null;
+
+// //   return conv.participants.find((p: any) => {
+// //     // handle both populated and non-populated cases
+// //     const participantId =
+// //       typeof p === "string"
+// //         ? p
+// //         : p._id?._id || p._id;
+
+// //     return participantId?.toString() !== user._id.toString();
+// //   });
+// // };
+
+// //   const formatTime = (date: string) => {
+// //     if (!date) return "";
+// //     return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     if (d.toDateString() === today.toDateString()) return "Today";
+// //     const yesterday = new Date(today);
+// //     yesterday.setDate(today.getDate() - 1);
+// //     if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.5)}
+
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+
+// //         @keyframes spin{to{transform:rotate(360deg)}}
+// //         .mp-spinner{width:24px;height:24px;border:3px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;margin:40px auto}
+// //       `}</style>
+
+// //       <div className="mp">
+
+// //         {/* ── SIDEBAR ── */}
+// //         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {targetUserId && !conversations.find(c =>
+// //             c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //           ) && (
+// //             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div className="mp-spinner" />
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>
+// //                 No conversations yet
+// //               </div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = other?.name || other?.profile?.name || "User";
+// //                 const img = other?.profileImage || other?.profile?.profileImage;
+// //                 const isActive = activeConv?._id === conv._id;
+// //                 return (
+// //                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}>
+// //                     <div className="mp-conv-avatar">
+// //                       {img
+// //                         ? /* eslint-disable-next-line @next/next/no-img-element */
+// //                           <img src={img} alt={name} />
+// //                         : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* ── CHAT AREA ── */}
+// //         <div className="mp-chat">
+
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
+
+// //                 {activeConv ? (() => {
+// //                   const other = getOtherParticipant(activeConv);
+// //                   const name = other?.name || other?.profile?.name || "User";
+// //                   const img = other?.profileImage || other?.profile?.profileImage;
+// //                   return (
+// //                     <>
+// //                       <div className="mp-header-avatar">
+// //                         {img
+// //                           ? /* eslint-disable-next-line @next/next/no-img-element */
+// //                             <img src={img} alt={name} />
+// //                           : name.charAt(0).toUpperCase()}
+// //                       </div>
+// //                       <div className="mp-header-info">
+// //                         <div className="mp-header-name">{name}</div>
+// //                         <div className="mp-header-campaign">{activeConv.campaignId?.title || "Campaign conversation"}</div>
+// //                       </div>
+// //                     </>
+// //                   );
+// //                 })() : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div className="mp-spinner" />
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const isMe = (msg.sender?._id || msg.sender) === myId;
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+// //     </>
+// //   );
+// // }
+
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+// // import { socket } from "@/lib/socket";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // export default function MessagesPage() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const [isMobile, setIsMobile] = useState(false);
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+
+// //   // ✅ SSR-safe mobile check
+// //   useEffect(() => {
+// //     const check = () => setIsMobile(window.innerWidth <= 768);
+// //     check();
+// //     window.addEventListener("resize", check);
+// //     return () => window.removeEventListener("resize", check);
+// //   }, []);
+
+// //   /* ── AUTH ── */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token") || "";
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ── FETCH CONVERSATIONS ── */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ── AUTO-OPEN conv if userId in URL ── */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //     );
+// //     if (existing) openConversation(existing);
+// //   }, [conversations, targetUserId]);
+
+// //   // ✅ Backend route: GET /api/conversation/my
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       const res = await fetch(`${API}/conversations/my`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("CONVS:", data);
+// //       const list = data.conversations || data.data || [];
+// //       setConversations(list);
+// //       if (list.length > 0 && !activeConv && !targetUserId) {
+// //         openConversation(list[0]);
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   const openConversation = (conv: any) => {
+// //     setActiveConv(conv);
+// //     // ✅ Messages conversation ke andar embedded hain schema mein
+// //     // GET /api/conversation/messages/:conversationId
+// //     fetchMessages(conv._id);
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   // ✅ Backend route: GET /api/conversation/messages/:conversationId
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const res = await fetch(`${API}/conversations/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("MESSAGES:", data);
+// //       // ✅ Schema: messages array conversation ke andar hai
+// //       const msgs = data.messages || data.data?.messages || data.conversation?.messages || [];
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   // ✅ Backend route: POST /api/conversation/create
+// //   // Body: { campaignId, participantId }
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) {
+// //         alert("Campaign ID missing — go back and try again from notifications");
+// //         return null;
+// //       }
+// //       const res = await fetch(`${API}/conversations/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       const data = await res.json();
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data.conversation || data.data;
+// //       if (conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   // ✅ Backend route: POST /api/conversation/send/:conversationId
+// //   // Body: { text }
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) return;
+// //       }
+
+// //       const res = await fetch(`${API}/conversations/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+// //       const data = await res.json();
+// //       console.log("SEND:", data);
+// //       if (!res.ok) { alert(data.message || "Send failed"); return; }
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   const myId = user?._id || user?.id;
+
+// //   // ✅ participants array mein dono users hain — apna ID hata ke doosra dikhao
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants) return null;
+// //     return conv.participants.find((p: any) => (p._id || p) !== myId) || null;
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     if (!date) return "";
+// //     return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     if (!date) return "";
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     if (d.toDateString() === today.toDateString()) return "Today";
+// //     const yesterday = new Date(today);
+// //     yesterday.setDate(today.getDate() - 1);
+// //     if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.5)}
+
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+
+// //         @keyframes spin{to{transform:rotate(360deg)}}
+// //         .mp-spinner{width:24px;height:24px;border:3px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;margin:40px auto}
+// //       `}</style>
+
+// //       <div className="mp">
+
+// //         {/* ── SIDEBAR ── */}
+// //         <div className={`mp-sidebar ${isMobile && activeConv ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {/* New chat banner — notification se aaya */}
+// //           {targetUserId && !conversations.find(c =>
+// //             c.participants?.some((p: any) => (p._id || p) === targetUserId)
+// //           ) && (
+// //             <div className="mp-new-chat">💬 New conversation with {targetUserName}</div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div className="mp-spinner" />
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{ padding: "40px", textAlign: "center", color: "#bbb", fontSize: "13px" }}>
+// //                 No conversations yet
+// //               </div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = other?.name || other?.profile?.name || "User";
+// //                 const img = other?.profileImage || other?.profile?.profileImage;
+// //                 const isActive = activeConv?._id === conv._id;
+// //                 return (
+// //                   <div key={conv._id} className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}>
+// //                     <div className="mp-conv-avatar">
+// //                       {img
+// //                         ? /* eslint-disable-next-line @next/next/no-img-element */
+// //                           <img src={img} alt={name} />
+// //                         : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       {/* ✅ Schema: lastMessage field hai conversation mein */}
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {/* ✅ Schema: lastMessageAt field hai */}
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* ── CHAT AREA ── */}
+// //         <div className={`mp-chat ${isMobile && !activeConv && !targetUserId ? "" : ""}`}>
+
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => { setActiveConv(null); if (pollRef.current) clearInterval(pollRef.current); }}>←</button>
+
+// //                 {activeConv ? (() => {
+// //                   const other = getOtherParticipant(activeConv);
+// //                   const name = other?.name || other?.profile?.name || "User";
+// //                   const img = other?.profileImage || other?.profile?.profileImage;
+// //                   return (
+// //                     <>
+// //                       <div className="mp-header-avatar">
+// //                         {img
+// //                           ? /* eslint-disable-next-line @next/next/no-img-element */
+// //                             <img src={img} alt={name} />
+// //                           : name.charAt(0).toUpperCase()}
+// //                       </div>
+// //                       <div className="mp-header-info">
+// //                         <div className="mp-header-name">{name}</div>
+// //                         {/* ✅ Schema: campaignId ref Campaign hai */}
+// //                         <div className="mp-header-campaign">{activeConv.campaignId?.title || "Campaign conversation"}</div>
+// //                       </div>
+// //                     </>
+// //                   );
+// //                 })() : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div className="mp-spinner" />
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{ textAlign: "center", color: "#bbb", fontSize: "13px", padding: "40px" }}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     // ✅ Schema: sender ObjectId ref User
+// //                     const isMe = (msg.sender?._id || msg.sender) === myId;
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           {/* ✅ Schema: text field */}
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>{msg.text}</div>
+// //                           {/* ✅ Schema: createdAt field */}
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>{formatTime(msg.createdAt)}</div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+// //     </>
+// //   );
+// // }
+
+
+
+// // "use client";
+
+// // import { useEffect, useState, useRef, useCallback } from "react";
+// // import { useRouter, useSearchParams } from "next/navigation";
+
+// // const API = "http://54.252.201.93:5000/api";
+
+// // export default function MessagesPage() {
+// //   const router = useRouter();
+// //   const searchParams = useSearchParams();
+// //   const targetUserId = searchParams.get("userId");
+// //   const targetUserName = searchParams.get("name") || "Creator";
+// //   const targetCampaignId = searchParams.get("campaignId");
+
+// //   const [user, setUser] = useState<any>(null);
+// //   const [token, setToken] = useState("");
+// //   const [conversations, setConversations] = useState<any[]>([]);
+// //   const [activeConv, setActiveConv] = useState<any>(null);
+// //   const [messages, setMessages] = useState<any[]>([]);
+// //   const [newMsg, setNewMsg] = useState("");
+// //   const [sending, setSending] = useState(false);
+// //   const [loading, setLoading] = useState(true);
+// //   const [msgLoading, setMsgLoading] = useState(false);
+// //   const bottomRef = useRef<HTMLDivElement>(null);
+// //   const pollRef = useRef<any>(null);
+
+// //   /* ===== AUTH ===== */
+// //   useEffect(() => {
+// //     if (typeof window === "undefined") return;
+// //     const stored = localStorage.getItem("cb_user");
+// //     if (!stored) { router.push("/login"); return; }
+// //     const parsed = JSON.parse(stored);
+// //     const t = parsed.token || localStorage.getItem("token");
+// //     if (!t) { router.push("/login"); return; }
+// //     setUser(parsed);
+// //     setToken(t);
+// //   }, []);
+
+// //   /* ===== FETCH CONVERSATIONS ===== */
+// //   useEffect(() => {
+// //     if (!token) return;
+// //     fetchConversations();
+// //   }, [token]);
+
+// //   /* ===== AUTO-OPEN if userId in URL ===== */
+// //   useEffect(() => {
+// //     if (!token || !targetUserId || conversations.length === 0) return;
+// //     // Find existing conv with this user
+// //     const existing = conversations.find((c: any) =>
+// //       c.participants?.some((p: any) =>
+// //         (p._id || p) === targetUserId
+// //       )
+// //     );
+// //     if (existing) {
+// //       openConversation(existing);
+// //     }
+// //     // else will be created on first message send
+// //   }, [conversations, targetUserId]);
+
+// //   const fetchConversations = async () => {
+// //     try {
+// //       setLoading(true);
+// //       const res = await fetch(`${API}/conversation/messages/all`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("CONVS:", data);
+// //       const list = data.conversations || data.data || [];
+// //       setConversations(list);
+
+// //       // Auto open first or from URL
+// //       if (list.length > 0 && !activeConv) {
+// //         openConversation(list[0]);
+// //       }
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setLoading(false);
+// //     }
+// //   };
+
+// //   const openConversation = async (conv: any) => {
+// //     setActiveConv(conv);
+// //     fetchMessages(conv._id);
+// //     // Start polling
+// //     if (pollRef.current) clearInterval(pollRef.current);
+// //     pollRef.current = setInterval(() => fetchMessages(conv._id), 5000);
+// //   };
+
+// //   const fetchMessages = async (convId: string) => {
+// //     try {
+// //       setMsgLoading(true);
+// //       const res = await fetch(`${API}/conversation/messages/${convId}`, {
+// //         headers: { Authorization: `Bearer ${token}` },
+// //       });
+// //       const data = await res.json();
+// //       console.log("MESSAGES:", data);
+// //       const msgs = data.messages || data.data?.messages || [];
+// //       setMessages(msgs);
+// //       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setMsgLoading(false);
+// //     }
+// //   };
+
+// //   /* ===== CREATE CONVERSATION & SEND ===== */
+// //   const createConversation = async (): Promise<string | null> => {
+// //     if (!targetUserId) return null;
+// //     try {
+// //       const campaignId = targetCampaignId || activeConv?.campaignId?._id || activeConv?.campaignId;
+// //       if (!campaignId) {
+// //         console.error("No campaignId for conversation");
+// //         return null;
+// //       }
+// //       const res = await fetch(`${API}/conversation/create`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ campaignId, participantId: targetUserId }),
+// //       });
+// //       const data = await res.json();
+// //       console.log("CREATE CONV:", data);
+// //       const conv = data.conversation || data.data;
+// //       if (conv) {
+// //         setActiveConv(conv);
+// //         setConversations(prev => [conv, ...prev]);
+// //         return conv._id;
+// //       }
+// //       return null;
+// //     } catch (err) {
+// //       console.error(err);
+// //       return null;
+// //     }
+// //   };
+
+// //   const sendMessage = async () => {
+// //     if (!newMsg.trim() || sending) return;
+
+// //     try {
+// //       setSending(true);
+// //       let convId = activeConv?._id;
+
+// //       // Create conv if not exists (coming from notification)
+// //       if (!convId && targetUserId) {
+// //         convId = await createConversation();
+// //         if (!convId) {
+// //           alert("Could not start conversation — make sure campaign is linked");
+// //           return;
+// //         }
+// //       }
+
+// //       const res = await fetch(`${API}/conversation/send/${convId}`, {
+// //         method: "POST",
+// //         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+// //         body: JSON.stringify({ text: newMsg.trim() }),
+// //       });
+
+// //       const data = await res.json();
+// //       console.log("SEND:", data);
+
+// //       if (!res.ok) { alert(data.message || "Send failed"); return; }
+
+// //       setNewMsg("");
+// //       fetchMessages(convId);
+// //     } catch (err) {
+// //       console.error(err);
+// //     } finally {
+// //       setSending(false);
+// //     }
+// //   };
+
+// //   // Cleanup polling
+// //   useEffect(() => {
+// //     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+// //   }, []);
+
+// //   const myId = user?._id || user?.id;
+
+// //   const getOtherParticipant = (conv: any) => {
+// //     if (!conv?.participants) return null;
+// //     return conv.participants.find((p: any) => (p._id || p) !== myId);
+// //   };
+
+// //   const formatTime = (date: string) => {
+// //     const d = new Date(date);
+// //     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// //   };
+
+// //   const formatDate = (date: string) => {
+// //     const d = new Date(date);
+// //     const today = new Date();
+// //     const diff = today.getDate() - d.getDate();
+// //     if (diff === 0) return "Today";
+// //     if (diff === 1) return "Yesterday";
+// //     return d.toLocaleDateString();
+// //   };
+
+// //   /* ===== UI ===== */
+// //   return (
+// //     <>
+// //       <style>{`
+// //         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+// //         *{box-sizing:border-box;margin:0;padding:0}
+// //         .mp{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;height:calc(100vh - 64px);display:flex;overflow:hidden}
+
+// //         /* SIDEBAR */
+// //         .mp-sidebar{width:300px;background:#fff;border-right:1px solid #ebebeb;display:flex;flex-direction:column;flex-shrink:0}
+// //         @media(max-width:768px){.mp-sidebar{width:100%;position:absolute;z-index:10;height:100%}.mp-sidebar.hidden{display:none}}
+// //         .mp-sidebar-header{padding:20px;border-bottom:1px solid #f0f0f0}
+// //         .mp-sidebar-title{font-size:18px;font-weight:800;color:#111}
+// //         .mp-conv-list{flex:1;overflow-y:auto}
+// //         .mp-conv-item{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #fafafa}
+// //         .mp-conv-item:hover{background:#f9f9f9}
+// //         .mp-conv-item.active{background:#eff6ff;border-left:3px solid #4f46e5}
+// //         .mp-conv-avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#666;flex-shrink:0;overflow:hidden}
+// //         .mp-conv-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-conv-info{flex:1;min-width:0}
+// //         .mp-conv-name{font-size:14px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+// //         .mp-conv-last{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+// //         .mp-conv-time{font-size:11px;color:#bbb;flex-shrink:0}
+// //         .mp-conv-unread{width:8px;height:8px;border-radius:50%;background:#4f46e5;flex-shrink:0}
+
+// //         /* EMPTY SIDEBAR */
+// //         .mp-new-chat{margin:16px;padding:12px 16px;background:#eff6ff;border-radius:12px;border:1px solid #bfdbfe;display:flex;align-items:center;gap:8px;font-size:13px;color:#4f46e5;font-weight:600}
+
+// //         /* CHAT AREA */
+// //         .mp-chat{flex:1;display:flex;flex-direction:column;min-width:0}
+// //         @media(max-width:768px){.mp-chat{position:absolute;width:100%;height:100%;z-index:5}.mp-chat.hidden{display:none}}
+
+// //         /* CHAT HEADER */
+// //         .mp-chat-header{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-back-btn{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:#666;padding:4px 8px;border-radius:8px}
+// //         @media(max-width:768px){.mp-back-btn{display:block}}
+// //         .mp-header-avatar{width:40px;height:40px;border-radius:50%;background:#e8e8e8;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#666;overflow:hidden;flex-shrink:0}
+// //         .mp-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+// //         .mp-header-info{flex:1}
+// //         .mp-header-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-header-campaign{font-size:12px;color:#aaa;margin-top:1px}
+
+// //         /* MESSAGES */
+// //         .mp-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;background:#f8f8f5}
+// //         .mp-date-label{text-align:center;margin:12px 0}
+// //         .mp-date-text{background:#e8e8e8;color:#888;font-size:11px;padding:4px 12px;border-radius:100px;display:inline-block}
+
+// //         /* BUBBLE */
+// //         .mp-bubble-wrap{display:flex;flex-direction:column;margin:2px 0}
+// //         .mp-bubble-wrap.me{align-items:flex-end}
+// //         .mp-bubble-wrap.them{align-items:flex-start}
+// //         .mp-bubble{max-width:68%;padding:10px 14px;border-radius:18px;font-size:14px;line-height:1.5;word-break:break-word}
+// //         .mp-bubble.me{background:#4f46e5;color:#fff;border-bottom-right-radius:4px}
+// //         .mp-bubble.them{background:#fff;color:#111;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+// //         .mp-bubble-time{font-size:10px;color:#bbb;margin-top:3px;padding:0 4px}
+// //         .mp-bubble-time.me{color:rgba(79,70,229,0.6)}
+
+// //         /* INPUT */
+// //         .mp-input-area{background:#fff;border-top:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-input{flex:1;padding:12px 16px;border-radius:24px;border:1.5px solid #ebebeb;background:#f9f9f9;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:all 0.2s;resize:none}
+// //         .mp-input:focus{border-color:#4f46e5;background:#fff}
+// //         .mp-send-btn{width:44px;height:44px;border-radius:50%;background:#4f46e5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s}
+// //         .mp-send-btn:hover{background:#4338ca;transform:scale(1.05)}
+// //         .mp-send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+
+// //         /* EMPTY STATE */
+// //         .mp-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f8f8f5;gap:12px;color:#bbb}
+// //         .mp-empty-icon{font-size:52px}
+// //         .mp-empty-title{font-size:16px;font-weight:700;color:#999}
+// //         .mp-empty-sub{font-size:13px;color:#bbb;text-align:center;max-width:260px;line-height:1.6}
+
+// //         /* NEW CHAT BANNER */
+// //         .mp-new-banner{background:#fff;border-bottom:1px solid #ebebeb;padding:16px 20px;display:flex;align-items:center;gap:12px}
+// //         .mp-new-avatar{width:44px;height:44px;border-radius:50%;background:#eff6ff;border:2px solid #bfdbfe;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f46e5}
+// //         .mp-new-name{font-size:15px;font-weight:700;color:#111}
+// //         .mp-new-sub{font-size:12px;color:#aaa}
+// //       `}</style>
+
+// //       <div className="mp">
+// //         {/* SIDEBAR */}
+// //         <div className={`mp-sidebar ${activeConv && window.innerWidth <= 768 ? "hidden" : ""}`}>
+// //           <div className="mp-sidebar-header">
+// //             <div className="mp-sidebar-title">Messages</div>
+// //           </div>
+
+// //           {/* New chat from notification */}
+// //           {targetUserId && !conversations.find(c => c.participants?.some((p: any) => (p._id || p) === targetUserId)) && (
+// //             <div className="mp-new-chat">
+// //               💬 New conversation with {targetUserName}
+// //             </div>
+// //           )}
+
+// //           <div className="mp-conv-list">
+// //             {loading ? (
+// //               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>Loading...</div>
+// //             ) : conversations.length === 0 && !targetUserId ? (
+// //               <div style={{padding:"40px",textAlign:"center",color:"#bbb",fontSize:"13px"}}>
+// //                 No conversations yet
+// //               </div>
+// //             ) : (
+// //               conversations.map((conv) => {
+// //                 const other = getOtherParticipant(conv);
+// //                 const name = other?.name || other?.profile?.name || "User";
+// //                 const img = other?.profileImage || other?.profile?.profileImage;
+// //                 const isActive = activeConv?._id === conv._id;
+
+// //                 return (
+// //                   <div
+// //                     key={conv._id}
+// //                     className={`mp-conv-item ${isActive ? "active" : ""}`}
+// //                     onClick={() => openConversation(conv)}
+// //                   >
+// //                     <div className="mp-conv-avatar">
+// //                       {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
+// //                     </div>
+// //                     <div className="mp-conv-info">
+// //                       <div className="mp-conv-name">{name}</div>
+// //                       <div className="mp-conv-last">{conv.lastMessage || "Start chatting..."}</div>
+// //                     </div>
+// //                     {conv.lastMessageAt && (
+// //                       <div className="mp-conv-time">{formatTime(conv.lastMessageAt)}</div>
+// //                     )}
+// //                   </div>
+// //                 );
+// //               })
+// //             )}
+// //           </div>
+// //         </div>
+
+// //         {/* CHAT AREA */}
+// //         <div className={`mp-chat ${!activeConv && !targetUserId ? "" : ""}`}>
+
+// //           {/* No conversation selected */}
+// //           {!activeConv && !targetUserId ? (
+// //             <div className="mp-empty">
+// //               <div className="mp-empty-icon">💬</div>
+// //               <div className="mp-empty-title">Your Messages</div>
+// //               <div className="mp-empty-sub">Accept a creator from notifications to start a conversation</div>
+// //             </div>
+// //           ) : (
+// //             <>
+// //               {/* HEADER */}
+// //               <div className="mp-chat-header">
+// //                 <button className="mp-back-btn" onClick={() => setActiveConv(null)}>←</button>
+
+// //                 {activeConv ? (
+// //                   <>
+// //                     {(() => {
+// //                       const other = getOtherParticipant(activeConv);
+// //                       const name = other?.name || other?.profile?.name || "User";
+// //                       const img = other?.profileImage || other?.profile?.profileImage;
+// //                       return (
+// //                         <>
+// //                           <div className="mp-header-avatar">
+// //                             {img ? <img src={img} alt={name} /> : name.charAt(0).toUpperCase()}
+// //                           </div>
+// //                           <div className="mp-header-info">
+// //                             <div className="mp-header-name">{name}</div>
+// //                             <div className="mp-header-campaign">
+// //                               {activeConv.campaignId?.title || "Campaign conversation"}
+// //                             </div>
+// //                           </div>
+// //                         </>
+// //                       );
+// //                     })()}
+// //                   </>
+// //                 ) : (
+// //                   <>
+// //                     <div className="mp-new-avatar">{targetUserName.charAt(0).toUpperCase()}</div>
+// //                     <div className="mp-header-info">
+// //                       <div className="mp-header-name">{targetUserName}</div>
+// //                       <div className="mp-header-campaign">Send a message to start</div>
+// //                     </div>
+// //                   </>
+// //                 )}
+// //               </div>
+
+// //               {/* MESSAGES */}
+// //               <div className="mp-messages">
+// //                 {msgLoading && messages.length === 0 ? (
+// //                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>Loading messages...</div>
+// //                 ) : messages.length === 0 ? (
+// //                   <div style={{textAlign:"center",color:"#bbb",fontSize:"13px",padding:"40px"}}>
+// //                     No messages yet — say hello! 👋
+// //                   </div>
+// //                 ) : (
+// //                   messages.map((msg, idx) => {
+// //                     const isMe = (msg.sender?._id || msg.sender) === myId;
+// //                     const prevMsg = messages[idx - 1];
+// //                     const showDate = !prevMsg ||
+// //                       new Date(msg.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+
+// //                     return (
+// //                       <div key={msg._id || idx}>
+// //                         {showDate && (
+// //                           <div className="mp-date-label">
+// //                             <span className="mp-date-text">{formatDate(msg.createdAt)}</span>
+// //                           </div>
+// //                         )}
+// //                         <div className={`mp-bubble-wrap ${isMe ? "me" : "them"}`}>
+// //                           <div className={`mp-bubble ${isMe ? "me" : "them"}`}>
+// //                             {msg.text}
+// //                           </div>
+// //                           <div className={`mp-bubble-time ${isMe ? "me" : ""}`}>
+// //                             {formatTime(msg.createdAt)}
+// //                           </div>
+// //                         </div>
+// //                       </div>
+// //                     );
+// //                   })
+// //                 )}
+// //                 <div ref={bottomRef} />
+// //               </div>
+
+// //               {/* INPUT */}
+// //               <div className="mp-input-area">
+// //                 <input
+// //                   className="mp-input"
+// //                   placeholder="Type a message..."
+// //                   value={newMsg}
+// //                   onChange={(e) => setNewMsg(e.target.value)}
+// //                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+// //                 />
+// //                 <button className="mp-send-btn" onClick={sendMessage} disabled={sending || !newMsg.trim()}>
+// //                   <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
+// //                     <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+// //                   </svg>
+// //                 </button>
+// //               </div>
+// //             </>
+// //           )}
+// //         </div>
+// //       </div>
+// //     </>
+// //   );
+// // }
