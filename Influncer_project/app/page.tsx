@@ -384,8 +384,8 @@ export default function LandingPage() {
             <span className="nav-logo-text">CreatorBridge</span>
           </Link>
           <div className="nav-right">
-            <Link href="/login" className="nav-login">Log In</Link>
-            <Link href="/signup" className="nav-signup">Sign Up →</Link>
+            <Link href="/login" className="nav-login">LogIn</Link>
+            <Link href="/signup" className="nav-signup">SignUp →</Link>
           </div>
         </nav>
       )}

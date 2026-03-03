@@ -3,11 +3,11 @@
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-// import { io, Socket } from "socket.io-client";
+
 
 const API = "http://54.252.201.93:5000/api";
 const SOCKET_URL = "http://54.252.201.93:5000";
-// const SOCKET_URL = "http://54.252.201.93:5000";
+
 
 // ✅ Safe fetch
 const safeFetch = async (url: string, opts: RequestInit = {}) => {
