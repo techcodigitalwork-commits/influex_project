@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Script from "next/script";
 
 const API          = "http://54.252.201.93:5000/api";
-const API_BASE     = "http://54.252.201.93:5000/api";
 const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
 const PLAN_ID      = "plan_SKmSEwh4wl4Tv6";
 const FREE_COINS      = 100;
@@ -24,31 +23,31 @@ export default function DiscoveryPage() {
   const [token, setToken]               = useState("");
   const [influencerId, setInfluencerId] = useState("");
 
-  const [coins, setCoins]                   = useState<number>(FREE_COINS);
-  const [isSubscribed, setIsSubscribed]     = useState(false);
-  const [showCoinModal, setShowCoinModal]   = useState(false);
-  const [loadingPlan, setLoadingPlan]       = useState<string | null>(null);
-  const [toast, setToast]                   = useState<{ msg: string; type: "success" | "error" } | null>(null);
-  const [coinToast, setCoinToast]           = useState<string | null>(null);
+  const [coins, setCoins]               = useState<number>(FREE_COINS);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [showCoinModal, setShowCoinModal] = useState(false);
+  const [loadingPlan, setLoadingPlan]   = useState<string | null>(null);
+  const [toast, setToast]               = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [coinToast, setCoinToast]       = useState<string | null>(null);
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-
-
-
-  /* ===== AUTH ===== */
+  /* ===== AUTH — bits only, profile/me se coins KABHI override nahi ===== */
   useEffect(() => {
-    const stored = localStorage.getItem("cb_user");
-    if (!stored) { router.push("/login"); return; }
-    const parsed = JSON.parse(stored);
-    // Remove stale 'coins' field — bits is the source of truth
+    const raw = localStorage.getItem("cb_user");
+    if (!raw) { router.push("/login"); return; }
+    const parsed = JSON.parse(raw);
+
+    // ✅ Stale 'coins' field hata do — sirf 'bits' use hoga
+    // 'coins' field tha jo har refresh pe 100 reset karata tha
     if (parsed.coins !== undefined) {
       delete parsed.coins;
       localStorage.setItem("cb_user", JSON.stringify(parsed));
     }
+
     if (parsed.role?.toLowerCase() === "brand") { router.push("/campaigns"); return; }
     const t = parsed.token || localStorage.getItem("token");
     if (!t) { router.push("/login"); return; }
@@ -60,13 +59,30 @@ export default function DiscoveryPage() {
     const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
     setAppliedIds(savedApplied);
 
-    // Load from localStorage first
+    // ✅ SIRF localStorage.bits use karo
+    // Yeh value tab update hoti hai jab:
+    // 1. Influencer campaignsdetail page pe apply karta hai
+    // 2. Backend response mein updated bits aata hai
+    // 3. Woh value localStorage mein save hoti hai
+    // profile/me KABHI bits override nahi karega — woh 100 return karta rehta tha
     const localBits = parsed.bits ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
-
-
+    // ✅ profile/me se SIRF isSubscribed lo — bits/coins NAHI
+    fetch(`${API}/profile/me`, { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (data?.success && data?.profile) {
+          const liveSub = data.profile.isSubscribed ?? false;
+          setIsSubscribed(liveSub);
+          // Sirf subscription update karo localStorage mein
+          const updated = { ...parsed, isSubscribed: liveSub };
+          delete updated.coins; // stale field kabhi nahi rakhenge
+          localStorage.setItem("cb_user", JSON.stringify(updated));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -74,15 +90,16 @@ export default function DiscoveryPage() {
     fetchAllCampaigns();
   }, [token]);
 
-  // ✅ Window focus pe bhi backend se refresh
+  // ✅ Window focus pe localStorage se bits reload karo
+  // (Jab creator campaignsdetail pe apply karke wapas aaye — bits updated mil jayenge)
   useEffect(() => {
     const handleFocus = () => {
       const saved = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
       setAppliedIds(saved);
-      // Reload coins from localStorage (updated after each apply)
-      const stored = localStorage.getItem("cb_user");
-      if (stored) {
-        const p = JSON.parse(stored);
+      const raw = localStorage.getItem("cb_user");
+      if (raw) {
+        const p = JSON.parse(raw);
+        // ✅ bits field — coins nahi
         setCoins(p.bits ?? FREE_COINS);
         setIsSubscribed(p.isSubscribed ?? false);
       }
@@ -102,7 +119,7 @@ export default function DiscoveryPage() {
         : Array.isArray(data) ? data : [];
       setAllCampaigns(campaigns);
 
-      const applied    = campaigns.filter((c: any) => c.hasApplied || c.applied).map((c: any) => c._id);
+      const applied      = campaigns.filter((c: any) => c.hasApplied || c.applied).map((c: any) => c._id);
       const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
       setAppliedIds([...new Set([...applied, ...savedApplied])]);
 
@@ -137,8 +154,7 @@ export default function DiscoveryPage() {
 
   /* ===== RAZORPAY ===== */
   const openRazorpay = (subscriptionId: string, planId: string, planName: string) => {
-    const stored = localStorage.getItem("cb_user");
-    const parsed = JSON.parse(stored || "{}");
+    const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
     const tok    = parsed.token || localStorage.getItem("token");
     const options = {
       key: RAZORPAY_KEY, subscription_id: subscriptionId,
@@ -150,13 +166,23 @@ export default function DiscoveryPage() {
           await fetch(`${API}/subscription/verify`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-            body: JSON.stringify({ razorpay_payment_id: response.razorpay_payment_id, razorpay_subscription_id: response.razorpay_subscription_id, razorpay_signature: response.razorpay_signature, plan_id: PLAN_ID, planName }),
+            body: JSON.stringify({
+              razorpay_payment_id:      response.razorpay_payment_id,
+              razorpay_subscription_id: response.razorpay_subscription_id,
+              razorpay_signature:       response.razorpay_signature,
+              plan_id: PLAN_ID, planName,
+            }),
           });
         } catch {}
-        const aRes  = await fetch(`${API}/subscription/activate`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` }, body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }) });
+        const aRes  = await fetch(`${API}/subscription/activate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
+          body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }),
+        });
         const aData = await aRes.json();
         if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999, coins: undefined };
+          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999 };
+          delete updated.coins;
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
           showToast(`🎉 ${planName} activated! Unlimited applies!`, "success");
@@ -171,15 +197,20 @@ export default function DiscoveryPage() {
   };
 
   const handleSubscribe = async (planId: string, planName: string) => {
-    const stored = localStorage.getItem("cb_user");
-    const parsed = JSON.parse(stored || "{}");
+    const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
     const t      = parsed.token || localStorage.getItem("token");
     if (!t) { showToast("Session expired.", "error"); return; }
     setLoadingPlan(planId);
     try {
-      const res  = await fetch(`${API}/subscription/create`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` }, body: JSON.stringify({ plan_id: PLAN_ID }) });
+      const res  = await fetch(`${API}/subscription/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+        body: JSON.stringify({ plan_id: PLAN_ID }),
+      });
       const data = await res.json();
-      if (!data.success || !data.subscription?.id) { showToast(data.message || "Failed.", "error"); setLoadingPlan(null); return; }
+      if (!data.success || !data.subscription?.id) {
+        showToast(data.message || "Failed.", "error"); setLoadingPlan(null); return;
+      }
       openRazorpay(data.subscription.id, planId, planName);
     } catch { showToast("Something went wrong.", "error"); setLoadingPlan(null); }
   };
@@ -197,13 +228,20 @@ export default function DiscoveryPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         *, *::before, *::after { box-sizing: border-box; }
+        @keyframes spin     { to { transform: rotate(360deg); } }
+        @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp  { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes toastIn  { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        @keyframes miniSpin { to { transform: rotate(360deg); } }
+
         .disc-page { font-family: 'Plus Jakarta Sans', sans-serif; background: #f5f5f0; min-height: 100vh; }
+
         .disc-header { padding: 40px 40px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         @media(max-width:600px){ .disc-header { padding: 24px 16px 0; } }
         .disc-title { font-size: 30px; font-weight: 800; color: #4f46e5; margin: 0 0 4px; }
         .disc-sub   { color: #999; font-size: 14px; margin: 0; }
 
-        .disc-coin-pill { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #e8e8e8; border-radius: 14px; padding: 10px 16px; min-width: 200px; flex-shrink: 0; }
+        .disc-coin-pill { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #e8e8e8; border-radius: 14px; padding: 10px 16px; min-width: 200px; flex-shrink: 0; transition: border-color 0.2s; }
         .disc-coin-pill.warn  { border-color: #fbbf24; background: #fffbeb; }
         .disc-coin-pill.empty { border-color: #ef4444; background: #fff5f5; }
         .disc-coin-pill.pro   { border-color: #86efac; background: #f0fdf4; }
@@ -214,18 +252,22 @@ export default function DiscoveryPage() {
         .disc-coin-val.warn-val  { color: #d97706; }
         .disc-coin-val.empty-val { color: #ef4444; }
         .disc-coin-val.pro-val   { color: #16a34a; }
+        .disc-coin-sub { font-size: 11px; color: #aaa; margin-top: 2px; }
         .disc-coin-bar-wrap { width: 100%; height: 3px; background: #f0f0f0; border-radius: 2px; margin-top: 4px; overflow: hidden; }
         .disc-coin-bar { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
-        .disc-coin-upgrade-btn { padding: 7px 12px; border-radius: 8px; background: #4f46e5; color: #fff; font-size: 11px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; white-space: nowrap; }
+        .disc-coin-upgrade-btn { padding: 7px 12px; border-radius: 8px; background: #4f46e5; color: #fff; font-size: 11px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+        .disc-coin-upgrade-btn:hover { background: #4338ca; }
         .disc-coin-upgrade-btn.warn-btn  { background: #f59e0b; }
+        .disc-coin-upgrade-btn.warn-btn:hover  { background: #d97706; }
         .disc-coin-upgrade-btn.empty-btn { background: #ef4444; }
+        .disc-coin-upgrade-btn.empty-btn:hover { background: #dc2626; }
 
         .disc-filters { display: flex; gap: 10px; padding: 20px 40px; flex-wrap: wrap; }
         @media(max-width:600px){ .disc-filters { padding: 16px; } }
         .disc-select { padding: 10px 36px 10px 14px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fff; font-size: 13px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500; color: #555; outline: none; cursor: pointer; transition: all 0.2s; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-color: #fff; }
         .disc-select:focus { border-color: #4f46e5; }
         .disc-select.active { border-color: #4f46e5; background-color: #4f46e5; color: #fff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); }
-        .disc-clear { padding: 10px 16px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fafafa; font-size: 13px; color: #999; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .disc-clear { padding: 10px 16px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fafafa; font-size: 13px; color: #999; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.2s; }
         .disc-clear:hover { border-color: #ef4444; color: #ef4444; }
 
         .disc-stats { display: flex; gap: 6px; align-items: center; padding: 0 40px 16px; }
@@ -239,7 +281,6 @@ export default function DiscoveryPage() {
         .disc-card { background: #fff; border-radius: 18px; border: 1.5px solid #ebebeb; padding: 22px; transition: all 0.2s; cursor: pointer; }
         .disc-card:hover { border-color: #c7d2fe; box-shadow: 0 8px 30px rgba(79,70,229,0.08); transform: translateY(-2px); }
         .disc-card.blurred { filter: blur(4px); pointer-events: none; user-select: none; opacity: 0.5; }
-
         .disc-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 10px; }
         .disc-card-title { font-size: 16px; font-weight: 700; color: #111; margin: 0; line-height: 1.3; }
         .disc-badge { padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; white-space: nowrap; flex-shrink: 0; }
@@ -250,74 +291,70 @@ export default function DiscoveryPage() {
         .disc-cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
         .disc-cat { padding: 3px 10px; border-radius: 100px; background: #f0eeff; font-size: 11px; color: #4f46e5; font-weight: 600; }
 
-        .disc-coin-cost { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #aaa; font-weight: 600; margin-bottom: 10px; }
-        .disc-coin-cost.empty-cost { color: #ef4444; }
+        .disc-coin-cost { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #aaa; font-weight: 600; margin-bottom: 10px; background: #fafafa; border-radius: 8px; padding: 6px 10px; }
+        .disc-coin-cost.empty-cost { color: #ef4444; background: #fff5f5; }
 
         .disc-apply-btn { width: 100%; padding: 11px; border-radius: 11px; font-size: 13px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; transition: all 0.2s; background: #4f46e5; color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px; }
         .disc-apply-btn:hover:not(:disabled) { background: #4338ca; transform: translateY(-1px); }
         .disc-apply-btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
-        .disc-apply-btn.applied-btn   { background: #f0fdf4; color: #16a34a; cursor: default; }
-        .disc-apply-btn.no-coins-btn  { background: #fff5f5; color: #ef4444; border: 1.5px solid #fecaca; }
+        .disc-apply-btn.applied-btn  { background: #f0fdf4; color: #16a34a; border: 1.5px solid #bbf7d0; }
+        .disc-apply-btn.applied-btn:hover { background: #dcfce7; transform: none; }
+        .disc-apply-btn.no-coins-btn { background: #fff5f5; color: #ef4444; border: 1.5px solid #fecaca; }
         .disc-apply-btn.no-coins-btn:hover { background: #fee2e2; transform: none; }
 
         .disc-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 40px; text-align: center; }
-        .disc-empty-icon { font-size: 48px; margin-bottom: 16px; }
+        .disc-empty-icon  { font-size: 48px; margin-bottom: 16px; }
         .disc-empty-title { font-size: 20px; font-weight: 700; color: #111; margin: 0 0 8px; }
-        .disc-empty-sub { color: #aaa; font-size: 14px; margin: 0; }
+        .disc-empty-sub   { color: #aaa; font-size: 14px; margin: 0; }
 
         .disc-loading { display: flex; align-items: center; justify-content: center; padding: 80px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
         .disc-spinner { width: 32px; height: 32px; border: 3px solid #f0f0f0; border-top-color: #4f46e5; border-radius: 50%; animation: spin 0.8s linear infinite; }
 
         .disc-unlock-banner { margin: 0 40px 40px; background: linear-gradient(135deg, #faf5ff, #eff6ff); border: 1.5px solid #c7d2fe; border-radius: 18px; padding: 28px; text-align: center; }
         @media(max-width:600px){ .disc-unlock-banner { margin: 0 16px 24px; } }
         .disc-unlock-title { font-size: 17px; font-weight: 700; color: #111; margin: 0 0 6px; }
-        .disc-unlock-sub { color: #888; font-size: 13px; margin: 0 0 16px; }
-        .disc-unlock-btn { display: inline-block; padding: 11px 24px; border-radius: 11px; background: #4f46e5; color: #fff; font-size: 13px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; border: none; }
+        .disc-unlock-sub   { color: #888; font-size: 13px; margin: 0 0 16px; }
+        .disc-unlock-btn { display: inline-block; padding: 11px 24px; border-radius: 11px; background: #4f46e5; color: #fff; font-size: 13px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; border: none; transition: background 0.2s; }
         .disc-unlock-btn:hover { background: #4338ca; }
 
-        /* COIN MODAL */
-        .coin-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .coin-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.2s ease; }
         .coin-modal { background: #fff; border-radius: 24px; max-width: 420px; width: 100%; padding: 36px 32px 30px; position: relative; text-align: center; animation: slideUp 0.25s ease; }
-        .coin-modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; font-size: 20px; cursor: pointer; color: #aaa; }
+        .coin-modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; font-size: 20px; cursor: pointer; color: #aaa; padding: 4px; }
+        .coin-modal-close:hover { color: #555; }
         .coin-modal-icon  { font-size: 56px; margin-bottom: 16px; line-height: 1; }
         .coin-modal-title { font-size: 22px; font-weight: 700; color: #111; margin-bottom: 8px; }
         .coin-modal-sub   { font-size: 14px; color: #777; line-height: 1.65; margin-bottom: 10px; }
-        .coin-prog-wrap   { margin: 16px 0 24px; }
-        .coin-prog-top    { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 6px; }
-        .coin-prog        { height: 8px; background: #f0f0f0; border-radius: 100px; overflow: hidden; }
-        .coin-prog-fill   { height: 100%; border-radius: 100px; transition: width 0.6s ease; }
+        .coin-prog-wrap { margin: 16px 0 24px; }
+        .coin-prog-top  { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 6px; }
+        .coin-prog      { height: 8px; background: #f0f0f0; border-radius: 100px; overflow: hidden; }
+        .coin-prog-fill { height: 100%; border-radius: 100px; transition: width 0.6s ease; }
         .coin-plan-btn { width: 100%; padding: 14px 20px; border-radius: 14px; border: none; font-size: 15px; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; box-shadow: 0 4px 16px rgba(79,70,229,0.3); }
-        .coin-plan-btn:hover { box-shadow: 0 6px 24px rgba(79,70,229,0.4); transform: translateY(-1px); }
+        .coin-plan-btn:hover:not(:disabled) { box-shadow: 0 6px 24px rgba(79,70,229,0.4); transform: translateY(-1px); }
         .coin-plan-btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
-        .coin-skip { font-size: 13px; color: #ccc; cursor: pointer; background: none; border: none; font-family: 'Plus Jakarta Sans', sans-serif; text-decoration: underline; }
+        .coin-skip   { font-size: 13px; color: #ccc; cursor: pointer; background: none; border: none; font-family: 'Plus Jakarta Sans', sans-serif; text-decoration: underline; }
+        .coin-skip:hover { color: #888; }
         .coin-secure { font-size: 11px; color: #ddd; margin-top: 10px; }
 
-        /* TOASTS */
-        @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
         .disc-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); padding: 12px 22px; border-radius: 12px; font-size: 14px; font-weight: 500; font-family: 'Plus Jakarta Sans', sans-serif; z-index: 99999; box-shadow: 0 4px 20px rgba(0,0,0,0.15); animation: toastIn 0.3s ease; white-space: nowrap; max-width: 90vw; text-align: center; }
         .disc-toast.success { background: #16a34a; color: #fff; }
         .disc-toast.error   { background: #ef4444; color: #fff; }
         .disc-coin-toast { position: fixed; top: 80px; right: 24px; background: #111; color: #fff; padding: 10px 18px; border-radius: 12px; font-size: 13px; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; z-index: 99998; box-shadow: 0 4px 16px rgba(0,0,0,0.2); animation: toastIn 0.3s ease; }
-        @keyframes miniSpin { to { transform: rotate(360deg); } }
         .mini-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%; animation: miniSpin 0.7s linear infinite; margin-right: 6px; vertical-align: middle; }
       `}</style>
 
-      {toast && <div className={`disc-toast ${toast.type}`}>{toast.msg}</div>}
+      {toast     && <div className={`disc-toast ${toast.type}`}>{toast.msg}</div>}
       {coinToast && <div className="disc-coin-toast">{coinToast}</div>}
 
-      {/* COIN MODAL */}
+      {/* ── COIN MODAL ── */}
       {showCoinModal && (
         <div className="coin-overlay">
           <div className="coin-modal">
             <button className="coin-modal-close" onClick={() => setShowCoinModal(false)}>✕</button>
             <div className="coin-modal-icon">🪙</div>
-            <div className="coin-modal-title">{coinsEmpty ? "Coins Exhausted!" : "Coins Khatam Hone Wale Hain!"}</div>
+            <div className="coin-modal-title">{coinsEmpty ? "Coins Khatam Ho Gaye!" : "Coins Khatam Hone Wale Hain!"}</div>
             <div className="coin-modal-sub">
               {coinsEmpty
-                ? `Saare ${FREE_COINS} coins use ho gaye. Pro plan lo — unlimited applies karo.`
+                ? `Saare ${FREE_COINS} coins use ho gaye. Pro plan lo — unlimited campaigns apply karo.`
                 : `Sirf ${coins} coins bache — ${Math.floor(coins / COINS_PER_APPLY)} aur applies. Upgrade karo!`}
             </div>
             <div className="coin-prog-wrap">
@@ -326,11 +363,18 @@ export default function DiscoveryPage() {
                 <span>{FREE_COINS - Math.max(0, coins)} / {FREE_COINS}</span>
               </div>
               <div className="coin-prog">
-                <div className="coin-prog-fill" style={{ width: `${100 - coinsPercent}%`, background: coinsEmpty ? "#ef4444" : "#f59e0b" }} />
+                <div className="coin-prog-fill" style={{
+                  width: `${Math.min(100, ((FREE_COINS - Math.max(0, coins)) / FREE_COINS) * 100)}%`,
+                  background: coinsEmpty ? "#ef4444" : "#f59e0b",
+                }} />
               </div>
             </div>
             <button className="coin-plan-btn" onClick={() => handleSubscribe("pro_monthly", "Pro")} disabled={loadingPlan !== null}>
-              <span>{loadingPlan === "pro_monthly" ? <><span className="mini-spin" />Processing...</> : "⚡ Upgrade to Pro — Unlimited Applies"}</span>
+              <span>
+                {loadingPlan === "pro_monthly"
+                  ? <><span className="mini-spin" />Processing...</>
+                  : "⚡ Upgrade to Pro — Unlimited Applies"}
+              </span>
               <span style={{ fontSize: 13, opacity: 0.85 }}>₹999/mo</span>
             </button>
             <button className="coin-skip" onClick={() => setShowCoinModal(false)}>Maybe later</button>
@@ -340,48 +384,76 @@ export default function DiscoveryPage() {
       )}
 
       <div className="disc-page">
-        {/* HEADER */}
+        {/* ── HEADER ── */}
         <div className="disc-header">
           <div>
             <h1 className="disc-title">Discover Campaigns</h1>
             <p className="disc-sub">Find brand campaigns that match your vibe</p>
           </div>
+
           {/* COIN PILL */}
           <div className={`disc-coin-pill ${isSubscribed ? "pro" : coinsEmpty ? "empty" : coinsLow ? "warn" : ""}`}>
             <div className="disc-coin-icon">🪙</div>
             <div className="disc-coin-info">
-              <div className="disc-coin-label">{isSubscribed ? "Unlimited Coins" : `Coins • ${appliesLeft} applies left`}</div>
+              <div className="disc-coin-label">
+                {isSubscribed ? "Unlimited Coins" : `Coins • ${appliesLeft} applies left`}
+              </div>
               <div className={`disc-coin-val ${isSubscribed ? "pro-val" : coinsEmpty ? "empty-val" : coinsLow ? "warn-val" : ""}`}>
                 {isSubscribed ? "∞" : coins}
               </div>
+              <div className="disc-coin-sub">
+                {isSubscribed ? "Pro Plan" : `${COINS_PER_APPLY} coins per apply`}
+              </div>
               {!isSubscribed && (
                 <div className="disc-coin-bar-wrap">
-                  <div className="disc-coin-bar" style={{ width: `${coinsPercent}%`, background: coinsEmpty ? "#ef4444" : coinsLow ? "#f59e0b" : "#4f46e5" }} />
+                  <div className="disc-coin-bar" style={{
+                    width: `${coinsPercent}%`,
+                    background: coinsEmpty ? "#ef4444" : coinsLow ? "#f59e0b" : "#4f46e5",
+                  }} />
                 </div>
               )}
             </div>
             {!isSubscribed && (
-              <button className={`disc-coin-upgrade-btn ${coinsEmpty ? "empty-btn" : coinsLow ? "warn-btn" : ""}`} onClick={() => setShowCoinModal(true)}>
+              <button
+                className={`disc-coin-upgrade-btn ${coinsEmpty ? "empty-btn" : coinsLow ? "warn-btn" : ""}`}
+                onClick={() => setShowCoinModal(true)}
+              >
                 {coinsEmpty ? "Upgrade!" : coinsLow ? "Upgrade ⚡" : "Upgrade"}
               </button>
             )}
           </div>
         </div>
 
-        {/* FILTERS */}
+        {/* ── FILTERS ── */}
         <div className="disc-filters">
-          <select className={`disc-select ${selectedCity ? "active" : ""}`} value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)}>
+          <select
+            className={`disc-select ${selectedCity ? "active" : ""}`}
+            value={selectedCity}
+            onChange={(e) => setSelectedCity(e.target.value)}
+          >
             <option value="">🏙 All Cities</option>
-            {cities.map((city, i) => <option key={i} value={city}>{city.charAt(0).toUpperCase() + city.slice(1)}</option>)}
+            {cities.map((city, i) => (
+              <option key={i} value={city}>{city.charAt(0).toUpperCase() + city.slice(1)}</option>
+            ))}
           </select>
-          <select className={`disc-select ${selectedCat ? "active" : ""}`} value={selectedCat} onChange={(e) => setSelectedCat(e.target.value)}>
+          <select
+            className={`disc-select ${selectedCat ? "active" : ""}`}
+            value={selectedCat}
+            onChange={(e) => setSelectedCat(e.target.value)}
+          >
             <option value="">🎯 All Categories</option>
-            {categories.map((cat, i) => <option key={i} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>)}
+            {categories.map((cat, i) => (
+              <option key={i} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+            ))}
           </select>
-          {(selectedCity || selectedCat) && <button className="disc-clear" onClick={() => { setSelectedCity(""); setSelectedCat(""); }}>✕ Clear</button>}
+          {(selectedCity || selectedCat) && (
+            <button className="disc-clear" onClick={() => { setSelectedCity(""); setSelectedCat(""); }}>
+              ✕ Clear
+            </button>
+          )}
         </div>
 
-        {/* STATS */}
+        {/* ── STATS ── */}
         {!loading && allCampaigns.length > 0 && (
           <div className="disc-stats">
             <span className="disc-stat-count">{filteredCampaigns.length}</span>
@@ -389,14 +461,18 @@ export default function DiscoveryPage() {
           </div>
         )}
 
-        {/* CONTENT */}
+        {/* ── CONTENT ── */}
         {loading ? (
           <div className="disc-loading"><div className="disc-spinner" /></div>
         ) : filteredCampaigns.length === 0 ? (
           <div className="disc-empty">
             <div className="disc-empty-icon">🔍</div>
-            <h3 className="disc-empty-title">{selectedCity || selectedCat ? "No matches found" : "No campaigns yet"}</h3>
-            <p className="disc-empty-sub">{selectedCity || selectedCat ? "Try different filters" : "Check back soon!"}</p>
+            <h3 className="disc-empty-title">
+              {selectedCity || selectedCat ? "No matches found" : "No campaigns yet"}
+            </h3>
+            <p className="disc-empty-sub">
+              {selectedCity || selectedCat ? "Try different filters" : "Check back soon!"}
+            </p>
           </div>
         ) : (
           <>
@@ -405,39 +481,81 @@ export default function DiscoveryPage() {
                 const isBlurred = index >= VISIBLE_COUNT;
                 const isApplied = appliedIds.includes(c._id);
                 const cantApply = coinsEmpty && !isSubscribed;
+
                 return (
-                  <div key={c._id} className={`disc-card ${isBlurred ? "blurred" : ""}`}
-                    onClick={() => !isBlurred && router.push(`/campaigns/campaignsdetail?id=${c._id}`)}>
+                  <div
+                    key={c._id}
+                    className={`disc-card ${isBlurred ? "blurred" : ""}`}
+                    onClick={() => !isBlurred && router.push(`/campaigns/campaignsdetail?id=${c._id}`)}
+                  >
                     <div className="disc-card-top">
                       <h2 className="disc-card-title">{c.title}</h2>
-                      {isApplied ? <span className="disc-badge applied">Applied ✓</span> : <span className="disc-badge">Open</span>}
+                      {isApplied
+                        ? <span className="disc-badge applied">Applied ✓</span>
+                        : <span className="disc-badge">Open</span>}
                     </div>
+
                     {c.description && <p className="disc-desc">{c.description}</p>}
+
                     <div className="disc-meta">
                       {c.budget && <span className="disc-meta-item">💰 ₹{c.budget.toLocaleString()}</span>}
                       {c.city   && <span className="disc-meta-item">📍 {c.city.charAt(0).toUpperCase() + c.city.slice(1)}</span>}
                     </div>
+
                     {c.categories?.length > 0 && (
                       <div className="disc-cats">
-                        {c.categories.map((cat: string, i: number) => <span key={i} className="disc-cat">{cat}</span>)}
+                        {c.categories.map((cat: string, i: number) => (
+                          <span key={i} className="disc-cat">{cat}</span>
+                        ))}
                       </div>
                     )}
+
+                    {/* Coin cost indicator — sirf non-blurred, non-applied, non-subscribed ke liye */}
                     {!isBlurred && !isApplied && !isSubscribed && (
                       <div className={`disc-coin-cost ${cantApply ? "empty-cost" : ""}`}>
-                        🪙 {COINS_PER_APPLY} coins required to apply{cantApply && " — Not enough coins!"}
+                        🪙 {COINS_PER_APPLY} coins required to apply
+                        {cantApply && " — Not enough coins!"}
                       </div>
                     )}
+
+                    {/* ── BUTTONS ── */}
                     {!isBlurred && (
                       isApplied ? (
-                        <button className="disc-apply-btn applied-btn" onClick={(e) => { e.stopPropagation(); router.push(`/campaigns/campaignsdetail?id=${c._id}`); }}>
+                        // ✅ Applied — detail page pe jaao
+                        <button
+                          className="disc-apply-btn applied-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/campaigns/campaignsdetail?id=${c._id}`);
+                          }}
+                        >
                           ✓ Applied — View Details
                         </button>
                       ) : cantApply ? (
-                        <button className="disc-apply-btn no-coins-btn" onClick={(e) => { e.stopPropagation(); setShowCoinModal(true); }}>
+                        // ❌ Coins nahi — upgrade modal
+                        <button
+                          className="disc-apply-btn no-coins-btn"
+                          onClick={(e) => { e.stopPropagation(); setShowCoinModal(true); }}
+                        >
                           🪙 Not enough coins — Upgrade
                         </button>
                       ) : (
-                        <button className="disc-apply-btn" onClick={(e) => { e.stopPropagation(); router.push(`/campaigns/campaignsdetail?id=${c._id}`); }}>
+                        // ✅ Normal — campaignsdetail pe jaao, apply wahan hoga
+                        // Coins wahan deduct honge backend se, response mein bits aayega
+                        // Woh bits localStorage mein save hoga
+                        // Wapas aane pe window focus bits reload kar lega
+                        <button
+                          className="disc-apply-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Coin check
+                            if (!isSubscribed && coins < COINS_PER_APPLY) {
+                              setShowCoinModal(true);
+                              return;
+                            }
+                            router.push(`/campaigns/campaignsdetail?id=${c._id}`);
+                          }}
+                        >
                           View & Apply →
                         </button>
                       )
@@ -446,11 +564,14 @@ export default function DiscoveryPage() {
                 );
               })}
             </div>
+
             {filteredCampaigns.length > VISIBLE_COUNT && (
               <div className="disc-unlock-banner">
                 <p className="disc-unlock-title">🔒 {filteredCampaigns.length - VISIBLE_COUNT} more campaigns locked</p>
                 <p className="disc-unlock-sub">Complete your profile to unlock all campaigns</p>
-                <button className="disc-unlock-btn" onClick={() => router.push("/my-profile")}>Complete Profile →</button>
+                <button className="disc-unlock-btn" onClick={() => router.push("/my-profile")}>
+                  Complete Profile →
+                </button>
               </div>
             )}
           </>
