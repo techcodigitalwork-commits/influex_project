@@ -28,31 +28,6 @@ export default function CampaignBoard() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Fetch bits from backend — try multiple endpoints
-  const fetchBitsFromBackend = (token: string, parsed: any) => {
-    const endpoints = [`${API_BASE}/profile/me`];
-    const tryNext = (i: number) => {
-      if (i >= endpoints.length) return;
-      fetch(endpoints[i], { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(data => {
-          const bits = data?.bits ?? data?.user?.bits ?? data?.profile?.bits ?? data?.data?.bits ?? null;
-          const sub  = data?.isSubscribed ?? data?.profile?.isSubscribed ?? data?.user?.isSubscribed ?? false;
-          console.log(`[coins] ${endpoints[i]} → bits:`, bits);
-          if (bits !== null && bits !== undefined) {
-            setCoins(bits);
-            setIsSubscribed(sub);
-            localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits, coins: bits, isSubscribed: sub }));
-            if (bits < COINS_PER_CAMPAIGN && !sub) setShowCoinModal(true);
-          } else {
-            tryNext(i + 1);
-          }
-        })
-        .catch(() => tryNext(i + 1));
-    };
-    tryNext(0);
-  };
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem("cb_user");
@@ -69,9 +44,6 @@ export default function CampaignBoard() {
 
     fetchCampaigns(token, userRole);
 
-    if (userRole === "brand" || userRole === "admin") {
-      fetchBitsFromBackend(token, parsed);
-    }
   }, []);
 
   const fetchCampaigns = async (token: string, userRole: string) => {

@@ -44,42 +44,10 @@ function CampaignDetailInner() {
     const appliedList = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
     if (appliedList.includes(searchParams?.get("id") || "")) setApplied(true);
 
-    // Load bits from localStorage immediately (fast)
+    // Load coins from localStorage — kept in sync after each apply/create
     const localBits = parsed.bits ?? parsed.coins ?? 100;
     setBits(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
-
-    // Fetch bits from backend via /profile/me
-    const endpoints = [`${API}/profile/me`];
-    const tryNext = (i: number) => {
-      if (i >= endpoints.length) return;
-      fetch(endpoints[i], { headers: { Authorization: `Bearer ${t}` } })
-        .then(r => r.json())
-        .then(data => {
-          const backendBits =
-            data?.bits ??
-            data?.user?.bits ??
-            data?.profile?.bits ??
-            null;
-          const sub =
-            data?.isSubscribed ??
-            data?.profile?.isSubscribed ??
-            data?.user?.isSubscribed ??
-            false;
-          console.log(`[coins] ${endpoints[i]} → bits:`, backendBits);
-          if (backendBits !== null && backendBits !== undefined) {
-            setBits(backendBits);
-            setIsSubscribed(sub);
-            localStorage.setItem("cb_user", JSON.stringify({
-              ...parsed, bits: backendBits, coins: backendBits, isSubscribed: sub
-            }));
-          } else {
-            tryNext(i + 1);
-          }
-        })
-        .catch(() => tryNext(i + 1));
-    };
-    tryNext(0);
   }, []);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 
@@ -36,30 +36,8 @@ export default function DiscoveryPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Fetch bits from backend — try multiple endpoints
-  const refreshCoins = useCallback((token: string, parsed: any) => {
-    const endpoints = [`${API_BASE}/profile/me`];
-    const tryNext = (i: number) => {
-      if (i >= endpoints.length) return;
-      fetch(endpoints[i], { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(data => {
-          const bits = data?.bits ?? data?.user?.bits ?? data?.profile?.bits ?? data?.data?.bits ?? null;
-          const sub  = data?.isSubscribed ?? data?.profile?.isSubscribed ?? data?.user?.isSubscribed ?? false;
-          console.log(`[coins] ${endpoints[i]} → bits:`, bits);
-          if (bits !== null && bits !== undefined) {
-            setCoins(bits);
-            setIsSubscribed(sub);
-            localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits, coins: bits, isSubscribed: sub }));
-            if (!sub && bits <= 0) setTimeout(() => setShowCoinModal(true), 500);
-          } else {
-            tryNext(i + 1);
-          }
-        })
-        .catch(() => tryNext(i + 1));
-    };
-    tryNext(0);
-  }, []);
+
+
 
   /* ===== AUTH ===== */
   useEffect(() => {
@@ -82,8 +60,6 @@ export default function DiscoveryPage() {
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
-    // ✅ Backend se override karo — yahi sahi value hai
-    refreshCoins(t, parsed);
   }, []);
 
   useEffect(() => {
@@ -96,11 +72,13 @@ export default function DiscoveryPage() {
     const handleFocus = () => {
       const saved = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
       setAppliedIds(saved);
+      // Reload coins from localStorage (updated after each apply)
       const stored = localStorage.getItem("cb_user");
-      if (!stored) return;
-      const p = JSON.parse(stored);
-      const t2 = p.token || localStorage.getItem("token");
-      if (t2) refreshCoins(t2, p);
+      if (stored) {
+        const p = JSON.parse(stored);
+        setCoins(p.bits ?? p.coins ?? FREE_COINS);
+        setIsSubscribed(p.isSubscribed ?? false);
+      }
     };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);

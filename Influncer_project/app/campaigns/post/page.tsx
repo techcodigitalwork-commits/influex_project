@@ -36,71 +36,23 @@ export default function PostCampaignPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Fetch bits from backend — try multiple endpoints
-  const fetchBitsFromBackend = (token: string, localBits: number) => {
-    // Fetch bits from /profile/me
-    const tryEndpoints = [
-      `${API_BASE}/profile/me`,
-    ];
-
-    const tryNext = (index: number) => {
-      if (index >= tryEndpoints.length) {
-        // All endpoints failed or returned no bits — keep localStorage value
-        setChecking(false);
-        return;
-      }
-      fetch(tryEndpoints[index], { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(data => {
-          // Search for bits in every possible location
-          const bits =
-            data?.bits ??
-            data?.user?.bits ??
-            data?.profile?.bits ??
-            data?.data?.bits ??
-            null;
-
-          const sub =
-            data?.isSubscribed ??
-            data?.profile?.isSubscribed ??
-            data?.user?.isSubscribed ??
-            false;
-
-          console.log(`[coins] ${tryEndpoints[index]} →`, data, "| bits found:", bits);
-
-          if (bits !== null && bits !== undefined) {
-            setCoins(bits);
-            setIsSubscribed(sub);
-            const stored = localStorage.getItem("cb_user");
-            const p = stored ? JSON.parse(stored) : {};
-            localStorage.setItem("cb_user", JSON.stringify({ ...p, bits, coins: bits, isSubscribed: sub }));
-          } else {
-            // This endpoint didn't have bits — try next
-            tryNext(index + 1);
-          }
-          setChecking(false);
-        })
-        .catch(() => tryNext(index + 1));
-    };
-
-    tryNext(0);
-  };
-
   useEffect(() => {
     const stored = localStorage.getItem("cb_user");
     if (!stored) { router.push("/login"); return; }
     const parsed = JSON.parse(stored);
     if (parsed.role?.toLowerCase() !== "brand") { router.push("/discovery"); return; }
     setUser(parsed);
-    const token = parsed.token || localStorage.getItem("token");
 
-    // Show localStorage value immediately (fast)
+    // Load coins from localStorage — updated after every campaign create
     const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
-    // Then get accurate value from backend
-    fetchBitsFromBackend(token, localBits);
+    if (!parsed.isSubscribed && localBits < COINS_PER_CAM) {
+      setTimeout(() => setShowCoinModal(true), 300);
+    }
+
+    setChecking(false);
   }, []);
 
   const toggleChip = (field: "categories" | "roles", value: string) => {
