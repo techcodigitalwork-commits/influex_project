@@ -106,7 +106,8 @@ function CampaignDetailInner() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ influencerId, proposal, bidAmount: Number(bidAmount) }),
+       // body: JSON.stringify({ influencerId, proposal, bidAmount: Number(bidAmount) }),
+       body: JSON.stringify({ proposal, bidAmount: Number(bidAmount) })
       });
       const data = await res.json();
       console.log("APPLY:", data);
