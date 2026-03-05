@@ -34,6 +34,11 @@ function CampaignDetailInner() {
     const user = localStorage.getItem("cb_user");
     if (!user) { router.push("/login"); return; }
     const parsed = JSON.parse(user);
+    // Remove stale 'coins' field — bits is the source of truth
+    if (parsed.coins !== undefined) {
+      delete parsed.coins;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
     const t = parsed.token || localStorage.getItem("token");
     if (!t) { router.push("/login"); return; }
     setToken(t);

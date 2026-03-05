@@ -40,6 +40,11 @@ export default function PostCampaignPage() {
     const stored = localStorage.getItem("cb_user");
     if (!stored) { router.push("/login"); return; }
     const parsed = JSON.parse(stored);
+    // Remove stale 'coins' field — bits is the source of truth
+    if (parsed.coins !== undefined) {
+      delete parsed.coins;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
     if (parsed.role?.toLowerCase() !== "brand") { router.push("/discovery"); return; }
     setUser(parsed);
 
@@ -91,26 +96,15 @@ export default function PostCampaignPage() {
       }
 
       // Deduct 20 coins locally — backend already deducted from DB
-      // Use backend bits response (SAFE FIX)
-if (!isSubscribed) {
+      if (!isSubscribed) {
+        const newCoins = Math.max(0, coins - COINS_PER_CAM);
+        setCoins(newCoins);
+        const stored2 = localStorage.getItem("cb_user");
+        const p2 = stored2 ? JSON.parse(stored2) : {};
+        localStorage.setItem("cb_user", JSON.stringify(({ ...p2, bits: newCoins, coins: undefined })));
+        if (newCoins < COINS_PER_CAM) setTimeout(() => setShowCoinModal(true), 1200);
+      }
 
-  const newCoins =
-    data?.bits !== undefined && data?.bits !== null
-      ? data.bits
-      : Math.max(0, coins - COINS_PER_CAM);
-
-  setCoins(newCoins);
-
-  const stored2 = JSON.parse(localStorage.getItem("cb_user") || "{}");
-  stored2.bits = newCoins;
-  stored2.coins = newCoins;
-
-  localStorage.setItem("cb_user", JSON.stringify(stored2));
-
-  if (newCoins < COINS_PER_CAM) {
-    setTimeout(() => setShowCoinModal(true), 1200);
-  }
-}
       showToast("Campaign Created Successfully 🚀", "success");
       setTimeout(() => router.push("/campaigns"), 1200);
     } catch (err: any) {

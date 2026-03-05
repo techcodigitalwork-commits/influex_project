@@ -44,6 +44,11 @@ export default function DiscoveryPage() {
     const stored = localStorage.getItem("cb_user");
     if (!stored) { router.push("/login"); return; }
     const parsed = JSON.parse(stored);
+    // Remove stale 'coins' field — bits is the source of truth
+    if (parsed.coins !== undefined) {
+      delete parsed.coins;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
     if (parsed.role?.toLowerCase() === "brand") { router.push("/campaigns"); return; }
     const t = parsed.token || localStorage.getItem("token");
     if (!t) { router.push("/login"); return; }
@@ -60,46 +65,7 @@ export default function DiscoveryPage() {
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
-    // Fetch fresh bits from backend — tries multiple endpoints
-    const freshFetch = () => {
-      const endpoints = [
-        `${API_BASE}/auth/me`,
-        `${API_BASE}/users/me`,
-        `${API_BASE}/profile/me`,
-      ];
-      const tryNext = (i: number) => {
-        if (i >= endpoints.length) return;
-        fetch(endpoints[i], { headers: { Authorization: `Bearer ${t}` } })
-          .then(r => r.json())
-          .then(data => {
-            // Search bits in every possible location in response
-            const b =
-              data?.bits ??
-              data?.user?.bits ??
-              data?.data?.bits ??
-              data?.profile?.bits ??
-              null;
-            const sub =
-              data?.isSubscribed ??
-              data?.user?.isSubscribed ??
-              data?.profile?.isSubscribed ??
-              null;
-            if (b !== null && b !== undefined) {
-              setCoins(b);
-              if (sub !== null) setIsSubscribed(sub);
-              localStorage.setItem("cb_user", JSON.stringify({
-                ...parsed, bits: b, coins: undefined,
-                isSubscribed: sub ?? parsed.isSubscribed ?? false
-              }));
-            } else {
-              tryNext(i + 1);
-            }
-          })
-          .catch(() => tryNext(i + 1));
-      };
-      tryNext(0);
-    };
-    freshFetch();
+
 
   }, []);
 
@@ -492,7 +458,6 @@ export default function DiscoveryPage() {
       </div>
     </>
   );
-  
 }
 
 // "use client";

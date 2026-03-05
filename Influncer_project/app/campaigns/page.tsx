@@ -33,6 +33,11 @@ export default function CampaignBoard() {
     const stored = localStorage.getItem("cb_user");
     if (!stored) { router.push("/login"); return; }
     const parsed = JSON.parse(stored);
+    // Remove stale 'coins' field — bits is the source of truth
+    if (parsed.coins !== undefined) {
+      delete parsed.coins;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
     const userRole = parsed?.role?.toLowerCase();
     setRole(userRole);
     const token = parsed.token || localStorage.getItem("token");
@@ -45,31 +50,7 @@ export default function CampaignBoard() {
 
     fetchCampaigns(token, userRole);
 
-    // Fetch fresh bits from backend for brand users
-    if (userRole === "brand" || userRole === "admin") {
-      const endpoints = [`${API_BASE}/auth/me`, `${API_BASE}/users/me`, `${API_BASE}/profile/me`];
-      const tryNext = (i: number) => {
-        if (i >= endpoints.length) return;
-        fetch(endpoints[i], { headers: { Authorization: `Bearer ${token}` } })
-          .then(r => r.json())
-          .then(data => {
-            const b = data?.bits ?? data?.user?.bits ?? data?.data?.bits ?? data?.profile?.bits ?? null;
-            const sub = data?.isSubscribed ?? data?.user?.isSubscribed ?? data?.profile?.isSubscribed ?? null;
-            if (b !== null && b !== undefined) {
-              setCoins(b);
-              if (sub !== null) setIsSubscribed(sub);
-              localStorage.setItem("cb_user", JSON.stringify({
-                ...parsed, bits: b, coins: undefined,
-                isSubscribed: sub ?? parsed.isSubscribed ?? false
-              }));
-            } else {
-              tryNext(i + 1);
-            }
-          })
-          .catch(() => tryNext(i + 1));
-      };
-      tryNext(0);
-    }
+
 
   }, []);
 
