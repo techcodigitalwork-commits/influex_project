@@ -322,7 +322,7 @@ export default function CampaignBoard() {
         {isBrand && coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner danger">
             <div>
-              <div className="cb-limit-text danger">🚫 Coins khatam! Aur campaigns post nahi ho sakti</div>
+              <div className="cb-limit-text danger">🚫 Out of coins! Can't post any more campaigns</div>
               <div className="cb-limit-sub">Free: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} campaigns</div>
             </div>
             <button className="cb-limit-btn danger" onClick={() => setShowCoinModal(true)}>Upgrade Now →</button>
