@@ -10,22 +10,52 @@ const RAZORPAY_KEY       = "rzp_test_SL7M2uHDyhrU4A";
 const PLAN_ID            = "plan_SKmSEwh4wl4Tv6";
 const FREE_COINS         = 100;
 const COINS_PER_CAMPAIGN = 20;
-const FREE_CAMPAIGN_MAX  = FREE_COINS / COINS_PER_CAMPAIGN; // 5
+const FREE_CAMPAIGN_MAX  = FREE_COINS / COINS_PER_CAMPAIGN;
 
 export default function CampaignBoard() {
   const router = useRouter();
-  const [campaigns, setCampaigns]               = useState<any[]>([]);
-  const [loading, setLoading]                   = useState(true);
-  const [role, setRole]                         = useState<string>("");
-  const [coins, setCoins]                       = useState<number>(FREE_COINS);
-  const [isSubscribed, setIsSubscribed]         = useState(false);
-  const [showCoinModal, setShowCoinModal]       = useState(false);
-  const [loadingPlan, setLoadingPlan]           = useState<string | null>(null);
-  const [toast, setToast]                       = useState<{ msg: string; type: "success" | "error" | "warn" } | null>(null);
+  const [campaigns, setCampaigns]         = useState<any[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [role, setRole]                   = useState<string>("");
+  const [coins, setCoins]                 = useState<number>(FREE_COINS);
+  const [isSubscribed, setIsSubscribed]   = useState(false);
+  const [showCoinModal, setShowCoinModal] = useState(false);
+  const [loadingPlan, setLoadingPlan]     = useState<string | null>(null);
+  const [toast, setToast]                 = useState<{ msg: string; type: "success" | "error" | "warn" } | null>(null);
 
   const showToast = (msg: string, type: "success" | "error" | "warn" = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  // ✅ Backend se bits fetch — profile/me response check all paths
+  const fetchBitsFromBackend = (token: string, parsed: any) => {
+    fetch(`${API_BASE}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        console.log("🪙 CampaignBoard profile/me:", data);
+
+        const liveSub = data?.profile?.isSubscribed ?? data?.isSubscribed ?? data?.user?.isSubscribed ?? false;
+        setIsSubscribed(liveSub);
+
+        // ✅ bits User model pe hai — check every possible path
+        const backendBits =
+          data?.bits ??
+          data?.user?.bits ??
+          data?.profile?.bits ??
+          data?.data?.bits ??
+          null;
+
+        console.log("🪙 backendBits:", backendBits);
+
+        if (backendBits !== null && backendBits !== undefined) {
+          setCoins(backendBits);
+          const updated = { ...parsed, coins: backendBits, bits: backendBits, isSubscribed: liveSub };
+          localStorage.setItem("cb_user", JSON.stringify(updated));
+          if (backendBits < COINS_PER_CAMPAIGN && !liveSub) setShowCoinModal(true);
+        }
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -45,26 +75,7 @@ export default function CampaignBoard() {
     fetchCampaigns(token, userRole);
 
     if (userRole === "brand" || userRole === "admin") {
-      const localCoins = parsed.coins ?? parsed.bits ?? FREE_COINS;
-      fetch(`${API_BASE}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(data => {
-          if (data?.success && data?.profile) {
-            const p = data.profile;
-            const liveSub = p.isSubscribed ?? false;
-            setIsSubscribed(liveSub);
-            // ✅ Coins: backend se sirf tab override karo jab backend strictly kam ho
-            const backendCoins = p.coins ?? p.bits ?? null;
-            let finalCoins = localCoins;
-            if (backendCoins !== null && backendCoins < localCoins) {
-              finalCoins = backendCoins;
-              setCoins(finalCoins);
-            }
-            const updated = { ...parsed, coins: finalCoins, isSubscribed: liveSub };
-            localStorage.setItem("cb_user", JSON.stringify(updated));
-            if (finalCoins < COINS_PER_CAM && !liveSub) setShowCoinModal(true);
-          }
-        }).catch(() => {});
+      fetchBitsFromBackend(token, parsed);
     }
   }, []);
 
@@ -96,7 +107,6 @@ export default function CampaignBoard() {
     if (coins < COINS_PER_CAMPAIGN) { e.preventDefault(); setShowCoinModal(true); }
   };
 
-  // ── Razorpay ──
   const openRazorpay = (subscriptionId: string, planId: string, planName: string) => {
     const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
     const token  = parsed.token || localStorage.getItem("token");
@@ -107,19 +117,16 @@ export default function CampaignBoard() {
       prefill: { name: parsed?.name || "", email: parsed?.email || "" },
       handler: async function (response: any) {
         try {
-          await fetch(`${API_BASE}/subscription/verify`, {
-            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ razorpay_payment_id: response.razorpay_payment_id, razorpay_subscription_id: response.razorpay_subscription_id, razorpay_signature: response.razorpay_signature, plan_id: PLAN_ID, planName }),
-          });
+          await fetch(`${API_BASE}/subscription/verify`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ razorpay_payment_id: response.razorpay_payment_id, razorpay_subscription_id: response.razorpay_subscription_id, razorpay_signature: response.razorpay_signature, plan_id: PLAN_ID, planName }) });
         } catch {}
         const aRes  = await fetch(`${API_BASE}/subscription/activate`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }) });
         const aData = await aRes.json();
         if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, coins: 99999 };
+          const updated = { ...parsed, isSubscribed: true, activePlan: planId, coins: 99999, bits: 99999 };
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
-          showToast(`🎉 ${planName} activated! Post unlimited campaigns!`, "success");
-        } else { showToast("Activation failed. Contact support.", "error"); }
+          showToast(`🎉 ${planName} activated!`, "success");
+        } else { showToast("Activation failed.", "error"); }
         setLoadingPlan(null);
       },
       modal: { ondismiss: () => { showToast("Payment cancelled.", "error"); setLoadingPlan(null); } },
@@ -150,11 +157,8 @@ export default function CampaignBoard() {
 
   if (loading) return (
     <div style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ width: "32px", height: "32px", border: "3px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-        <p style={{ color: "#999", fontSize: "14px", fontFamily: "DM Sans, sans-serif" }}>Loading...</p>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      </div>
+      <div style={{ width: "32px", height: "32px", border: "3px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
@@ -168,17 +172,12 @@ export default function CampaignBoard() {
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
         @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-
         .cb{font-family:'DM Sans',sans-serif;background:#f5f5f0;min-height:100vh}
-
-        /* HEADER */
         .cb-header{background:#fff;border-bottom:1px solid #ebebeb;padding:22px 32px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
         @media(max-width:600px){.cb-header{padding:16px}}
         .cb-title{font-size:20px;font-weight:600;color:#111;margin:0 0 2px}
         .cb-sub{color:#aaa;font-size:13px;margin:0;font-weight:400}
         .cb-header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-
-        /* COIN PILL */
         .cb-coin-pill{display:flex;align-items:center;gap:10px;border:1.5px solid #e8e8e8;border-radius:12px;padding:8px 14px;background:#fff;min-width:185px}
         .cb-coin-pill.warn{border-color:#fbbf24;background:#fffbeb}
         .cb-coin-pill.empty{border-color:#ef4444;background:#fff5f5}
@@ -192,19 +191,12 @@ export default function CampaignBoard() {
         .cb-coin-val.pro-val{color:#16a34a}
         .cb-coin-bar-wrap{height:3px;background:#f0f0f0;border-radius:2px;margin-top:3px;overflow:hidden}
         .cb-coin-bar{height:100%;border-radius:2px;transition:width 0.5s ease}
-        .cb-coin-up-btn{padding:5px 10px;border-radius:7px;background:#4f46e5;color:#fff;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;transition:background 0.2s;white-space:nowrap}
-        .cb-coin-up-btn:hover{background:#4338ca}
+        .cb-coin-up-btn{padding:5px 10px;border-radius:7px;background:#4f46e5;color:#fff;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;white-space:nowrap}
         .cb-coin-up-btn.warn-up{background:#f59e0b}
-        .cb-coin-up-btn.warn-up:hover{background:#d97706}
         .cb-coin-up-btn.empty-up{background:#ef4444}
-        .cb-coin-up-btn.empty-up:hover{background:#dc2626}
-
-        /* CREATE BTN */
-        .cb-create-btn{padding:9px 18px;background:#4f46e5;color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;transition:background 0.2s;white-space:nowrap;flex-shrink:0;font-family:'DM Sans',sans-serif;border:none;cursor:pointer}
+        .cb-create-btn{padding:9px 18px;background:#4f46e5;color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;flex-shrink:0;font-family:'DM Sans',sans-serif;border:none;cursor:pointer}
         .cb-create-btn:hover{background:#4338ca}
         .cb-create-btn.blocked{background:#e5e5e5;color:#aaa;cursor:not-allowed;pointer-events:none}
-
-        /* LIMIT BANNERS */
         .cb-limit-banner{margin:16px 32px 0;border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
         @media(max-width:600px){.cb-limit-banner{margin:12px 12px 0}}
         .cb-limit-banner.danger{background:#fff5f5;border:1.5px solid #fecaca}
@@ -212,19 +204,12 @@ export default function CampaignBoard() {
         .cb-limit-text{font-size:14px;font-weight:500}
         .cb-limit-text.danger{color:#991b1b}
         .cb-limit-text.warn{color:#92400e}
-        .cb-limit-sub{font-size:12px;color:#aaa;margin-top:2px;font-weight:400}
-        .cb-limit-btn{padding:8px 18px;border-radius:10px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all 0.2s;font-family:'DM Sans',sans-serif;white-space:nowrap}
+        .cb-limit-sub{font-size:12px;color:#aaa;margin-top:2px}
+        .cb-limit-btn{padding:8px 18px;border-radius:10px;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap}
         .cb-limit-btn.danger{background:#ef4444;color:#fff}
-        .cb-limit-btn.danger:hover{background:#dc2626}
         .cb-limit-btn.warn{background:#f59e0b;color:#fff}
-        .cb-limit-btn.warn:hover{background:#d97706}
-
-        /* GRID */
         .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding:20px 32px 32px}
         @media(max-width:768px){.cb-grid{grid-template-columns:1fr;padding:14px 16px 24px;gap:12px}}
-        @media(max-width:600px){.cb-grid{padding:12px 12px 20px}}
-
-        /* CARD */
         .cb-card{background:#fff;border-radius:16px;border:1.5px solid #ebebeb;padding:20px;transition:all 0.2s}
         .cb-card:hover{border-color:#d0d0d0;box-shadow:0 6px 24px rgba(0,0,0,0.06);transform:translateY(-1px)}
         .cb-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
@@ -233,35 +218,24 @@ export default function CampaignBoard() {
         .cb-badge-open{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
         .cb-badge-ongoing{background:#fefce8;color:#ca8a04;border:1px solid #fde68a}
         .cb-badge-completed{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
-        .cb-desc{color:#888;font-size:13px;line-height:1.6;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:400}
+        .cb-desc{color:#888;font-size:13px;line-height:1.6;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
         .cb-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
         .cb-meta-item{background:#fafafa;border-radius:10px;padding:10px 12px}
         .cb-meta-label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:0.06em;font-weight:500}
         .cb-meta-val{font-size:13px;font-weight:600;color:#111;margin-top:2px}
         .cb-actions{display:flex;gap:8px;flex-wrap:wrap}
-        .cb-btn{flex:1;min-width:70px;padding:9px 12px;border-radius:10px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;transition:all 0.2s;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;white-space:nowrap}
+        .cb-btn{flex:1;min-width:70px;padding:9px 12px;border-radius:10px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;white-space:nowrap}
         .cb-btn-view{background:#f4f4f4;color:#555}
-        .cb-btn-view:hover{background:#eee}
         .cb-btn-apps{background:#eff6ff;color:#2563eb}
-        .cb-btn-apps:hover{background:#dbeafe}
         .cb-btn-complete{background:#f0fdf4;color:#16a34a}
-        .cb-btn-complete:hover{background:#dcfce7}
-
-        /* COIN COST BADGE on card */
         .cb-card-coin{display:flex;align-items:center;gap:4px;font-size:11px;color:#aaa;font-weight:600;margin-bottom:10px}
-
-        /* EMPTY */
         .cb-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;text-align:center;margin:20px 32px;background:#fff;border-radius:16px;border:1.5px dashed #e0e0e0}
-        @media(max-width:600px){.cb-empty{margin:14px 12px;padding:40px 20px}}
         .cb-empty-icon{font-size:44px;margin-bottom:14px}
         .cb-empty-title{font-size:18px;font-weight:600;color:#111;margin:0 0 6px}
-        .cb-empty-sub{color:#aaa;font-size:13px;margin:0 0 20px;line-height:1.6;font-weight:400}
-
-        /* COIN MODAL */
+        .cb-empty-sub{color:#aaa;font-size:13px;margin:0 0 20px;line-height:1.6}
         .cm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.2s ease}
         .cm-box{background:#fff;border-radius:24px;max-width:420px;width:100%;padding:36px 32px 30px;position:relative;text-align:center;animation:slideUp 0.25s ease}
-        .cm-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;line-height:1;padding:4px}
-        .cm-close:hover{color:#555}
+        .cm-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa}
         .cm-icon{font-size:52px;margin-bottom:14px;line-height:1}
         .cm-title{font-size:22px;font-weight:700;color:#111;margin-bottom:8px}
         .cm-sub{font-size:14px;color:#777;line-height:1.65;margin-bottom:10px}
@@ -269,17 +243,11 @@ export default function CampaignBoard() {
         .cm-prog-top{display:flex;justify-content:space-between;font-size:12px;color:#aaa;margin-bottom:6px}
         .cm-prog{height:8px;background:#f0f0f0;border-radius:100px;overflow:hidden}
         .cm-prog-fill{height:100%;border-radius:100px;transition:width 0.6s ease}
-        .cm-plans{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
-        .cm-plan-btn{padding:14px 20px;border-radius:14px;border:none;font-size:15px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:space-between}
-        .cm-plan-btn.pro{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;box-shadow:0 4px 16px rgba(79,70,229,0.3)}
-        .cm-plan-btn.pro:hover{box-shadow:0 6px 24px rgba(79,70,229,0.4);transform:translateY(-1px)}
-        .cm-plan-btn:disabled{opacity:0.65;cursor:not-allowed;transform:none !important}
+        .cm-plan-btn{width:100%;padding:14px 20px;border-radius:14px;border:none;font-size:15px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;box-shadow:0 4px 16px rgba(79,70,229,0.3)}
+        .cm-plan-btn:disabled{opacity:0.65;cursor:not-allowed}
         .cm-skip{font-size:13px;color:#ccc;cursor:pointer;background:none;border:none;font-family:'DM Sans',sans-serif;text-decoration:underline}
-        .cm-skip:hover{color:#888}
         .cm-secure{font-size:11px;color:#ddd;margin-top:10px}
         .cm-mini-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;margin-right:6px;vertical-align:middle}
-
-        /* TOAST */
         .cb-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 22px;border-radius:12px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;z-index:99999;white-space:nowrap;max-width:90vw;text-align:center;animation:toastIn 0.3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.12)}
         .cb-toast.success{background:#111;color:#fff}
         .cb-toast.error{background:#ef4444;color:#fff}
@@ -288,44 +256,27 @@ export default function CampaignBoard() {
 
       {toast && <div className={`cb-toast ${toast.type}`}>{toast.msg}</div>}
 
-      {/* ── COIN MODAL ── */}
       {showCoinModal && (
         <div className="cm-overlay">
           <div className="cm-box">
             <button className="cm-close" onClick={() => setShowCoinModal(false)}>✕</button>
             <div className="cm-icon">🪙</div>
-            <div className="cm-title">{coinsEmpty ? "Coins Khatam!" : "Coins Khatam Hone Wale Hain!"}</div>
+            <div className="cm-title">{coinsEmpty ? "Coins Khatam!" : "Coins Khatam Hone Wale!"}</div>
             <div className="cm-sub">
               {coinsEmpty
-                ? `Aapke ${FREE_COINS} free coins use ho gaye (${COINS_PER_CAMPAIGN} per campaign = ${FREE_CAMPAIGN_MAX} campaigns). Pro lo — unlimited post karo.`
-                : `Sirf ${coins} coins bache — ${Math.floor(coins / COINS_PER_CAMPAIGN)} aur campaign post ho sakti. Upgrade lo unlimited ke liye.`}
+                ? `${FREE_COINS} free coins use ho gaye (${COINS_PER_CAMPAIGN} per campaign = ${FREE_CAMPAIGN_MAX} campaigns). Pro lo.`
+                : `Sirf ${coins} coins bache — ${Math.floor(coins / COINS_PER_CAMPAIGN)} aur campaigns. Upgrade karo!`}
             </div>
             <div className="cm-prog-wrap">
-              <div className="cm-prog-top">
-                <span>Coins used</span>
-                <span>{FREE_COINS - Math.max(0, coins)} / {FREE_COINS}</span>
-              </div>
+              <div className="cm-prog-top"><span>Coins used</span><span>{FREE_COINS - Math.max(0, coins)} / {FREE_COINS}</span></div>
               <div className="cm-prog">
-                <div className="cm-prog-fill" style={{
-                  width: `${Math.min(100, ((FREE_COINS - Math.max(0, coins)) / FREE_COINS) * 100)}%`,
-                  background: coinsEmpty ? "#ef4444" : "#f59e0b",
-                }} />
+                <div className="cm-prog-fill" style={{ width: `${Math.min(100, ((FREE_COINS - Math.max(0, coins)) / FREE_COINS) * 100)}%`, background: coinsEmpty ? "#ef4444" : "#f59e0b" }} />
               </div>
             </div>
-            <div className="cm-plans">
-              <button
-                className="cm-plan-btn pro"
-                onClick={() => handleSubscribe("pro_monthly", "Pro")}
-                disabled={loadingPlan !== null}
-              >
-                <span>
-                  {loadingPlan === "pro_monthly"
-                    ? <><span className="cm-mini-spin" />Processing...</>
-                    : "⚡ Upgrade to Pro — Unlimited Campaigns"}
-                </span>
-                <span style={{ fontSize: 13, opacity: 0.85 }}>₹999/mo</span>
-              </button>
-            </div>
+            <button className="cm-plan-btn" onClick={() => handleSubscribe("pro_monthly", "Pro")} disabled={loadingPlan !== null}>
+              <span>{loadingPlan === "pro_monthly" ? <><span className="cm-mini-spin" />Processing...</> : "⚡ Upgrade to Pro — Unlimited Campaigns"}</span>
+              <span style={{ fontSize: 13, opacity: 0.85 }}>₹999/mo</span>
+            </button>
             <button className="cm-skip" onClick={() => setShowCoinModal(false)}>Maybe later</button>
             <div className="cm-secure">🔒 Secured by Razorpay</div>
           </div>
@@ -333,14 +284,12 @@ export default function CampaignBoard() {
       )}
 
       <div className="cb">
-        {/* HEADER */}
         <div className="cb-header">
           <div>
             <h1 className="cb-title">{isBrand ? "My Campaigns" : "All Campaigns"}</h1>
             <p className="cb-sub">{campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""} found</p>
           </div>
           <div className="cb-header-right">
-            {/* COIN PILL */}
             {isBrand && (
               <div className={`cb-coin-pill ${isSubscribed ? "pro" : coinsEmpty ? "empty" : coinsLow ? "warn" : ""}`}>
                 <div className="cb-coin-icon">🪙</div>
@@ -362,7 +311,6 @@ export default function CampaignBoard() {
                 )}
               </div>
             )}
-
             {isBrand && (
               <Link href="/campaigns/post" className={`cb-create-btn ${!isSubscribed && coinsEmpty ? "blocked" : ""}`} onClick={handleCreateClick}>
                 + Create Campaign
@@ -371,12 +319,11 @@ export default function CampaignBoard() {
           </div>
         </div>
 
-        {/* LIMIT BANNERS */}
         {isBrand && coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner danger">
             <div>
               <div className="cb-limit-text danger">🚫 Coins khatam! Aur campaigns post nahi ho sakti</div>
-              <div className="cb-limit-sub">Free plan: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} campaigns</div>
+              <div className="cb-limit-sub">Free: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} campaigns</div>
             </div>
             <button className="cb-limit-btn danger" onClick={() => setShowCoinModal(true)}>Upgrade Now →</button>
           </div>
@@ -384,14 +331,13 @@ export default function CampaignBoard() {
         {isBrand && coinsLow && !coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner warn">
             <div>
-              <div className="cb-limit-text warn">⚡ Sirf {Math.floor(coins / COINS_PER_CAMPAIGN)} campaign{Math.floor(coins / COINS_PER_CAMPAIGN) !== 1 ? "s" : ""} post ho sakti hai!</div>
-              <div className="cb-limit-sub">Coins: {coins} remaining — unlimited ke liye upgrade karo</div>
+              <div className="cb-limit-text warn">⚡ Sirf {Math.floor(coins / COINS_PER_CAMPAIGN)} campaign{Math.floor(coins / COINS_PER_CAMPAIGN) !== 1 ? "s" : ""} baaki!</div>
+              <div className="cb-limit-sub">Coins: {coins} remaining</div>
             </div>
             <button className="cb-limit-btn warn" onClick={() => setShowCoinModal(true)}>Upgrade →</button>
           </div>
         )}
 
-        {/* CAMPAIGNS */}
         {campaigns.length === 0 ? (
           <div className="cb-empty">
             <div className="cb-empty-icon">📋</div>
@@ -405,17 +351,10 @@ export default function CampaignBoard() {
               <div key={c._id} className="cb-card">
                 <div className="cb-card-top">
                   <h3 className="cb-card-title">{c.title || "Untitled"}</h3>
-                  <span className={`cb-badge ${c.status === "completed" ? "cb-badge-completed" : c.status === "ongoing" ? "cb-badge-ongoing" : "cb-badge-open"}`}>
-                    {c.status || "open"}
-                  </span>
+                  <span className={`cb-badge ${c.status === "completed" ? "cb-badge-completed" : c.status === "ongoing" ? "cb-badge-ongoing" : "cb-badge-open"}`}>{c.status || "open"}</span>
                 </div>
                 {c.description && <p className="cb-desc">{c.description}</p>}
-
-                {/* Coin cost indicator on each card (for brand creating new) */}
-                {isBrand && !isSubscribed && (
-                  <div className="cb-card-coin">🪙 {COINS_PER_CAMPAIGN} coins per campaign post</div>
-                )}
-
+                {isBrand && !isSubscribed && <div className="cb-card-coin">🪙 {COINS_PER_CAMPAIGN} coins per campaign post</div>}
                 <div className="cb-meta">
                   <div className="cb-meta-item"><div className="cb-meta-label">Budget</div><div className="cb-meta-val">₹{(c.budget || 0).toLocaleString()}</div></div>
                   <div className="cb-meta-item"><div className="cb-meta-label">City</div><div className="cb-meta-val">{c.city || "—"}</div></div>
@@ -427,9 +366,7 @@ export default function CampaignBoard() {
                   {isBrand && (
                     <>
                       <Link href={`/campaigns/${c._id}/applications`} className="cb-btn cb-btn-apps">Applications</Link>
-                      {c.status !== "completed" && (
-                        <button className="cb-btn cb-btn-complete" onClick={() => completeCampaign(c._id)}>Complete ✓</button>
-                      )}
+                      {c.status !== "completed" && <button className="cb-btn cb-btn-complete" onClick={() => completeCampaign(c._id)}>Complete ✓</button>}
                     </>
                   )}
                 </div>
