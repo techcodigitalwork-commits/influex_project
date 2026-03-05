@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Script from "next/script";
 
 const API          = "http://54.252.201.93:5000/api";
+const API_BASE     = "http://54.252.201.93:5000/api";
 const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
 const PLAN_ID      = "plan_SKmSEwh4wl4Tv6";
 const FREE_COINS      = 100;
@@ -35,41 +36,29 @@ export default function DiscoveryPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // ✅ Backend se fresh coins fetch karo
-  const refreshCoins = useCallback((t: string, parsed: any) => {
-    fetch(`${API}/profile/me`, { headers: { Authorization: `Bearer ${t}` } })
-      .then(r => r.json())
-      .then(data => {
-        console.log("🪙 profile/me raw response:", data);
-
-        // bits User model mein hoti hai, profile model mein nahi
-        // Check all possible locations
-        const p = data?.profile || data?.data || data;
-        const liveSub = p?.isSubscribed ?? data?.isSubscribed ?? false;
-        setIsSubscribed(liveSub);
-
-        // ✅ bits field: User model pe hoti hai — check every possible path
-        const backendBits =
-          data?.bits ??           // flat response
-          data?.user?.bits ??     // nested user
-          p?.bits ??              // profile object
-          data?.profile?.bits ??  // profile nested
-          null;
-
-        console.log("🪙 backendBits found:", backendBits, "| liveSub:", liveSub);
-
-        if (backendBits !== null && backendBits !== undefined) {
-          setCoins(backendBits);
-          const updated = { ...parsed, coins: backendBits, bits: backendBits, isSubscribed: liveSub };
-          localStorage.setItem("cb_user", JSON.stringify(updated));
-          if (!liveSub && backendBits <= 0) setTimeout(() => setShowCoinModal(true), 500);
-        } else {
-          // bits nahi mila — subscription status to update karo
-          setIsSubscribed(liveSub);
-          console.warn("⚠️ bits field not found in profile/me response — check backend");
-        }
-      })
-      .catch((err) => console.error("refreshCoins error:", err));
+  // Fetch bits from backend — try multiple endpoints
+  const refreshCoins = useCallback((token: string, parsed: any) => {
+    const endpoints = [`${API_BASE}/users/bits`, `${API_BASE}/profile/me`];
+    const tryNext = (i: number) => {
+      if (i >= endpoints.length) return;
+      fetch(endpoints[i], { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+          const bits = data?.bits ?? data?.user?.bits ?? data?.profile?.bits ?? data?.data?.bits ?? null;
+          const sub  = data?.isSubscribed ?? data?.profile?.isSubscribed ?? data?.user?.isSubscribed ?? false;
+          console.log(`[coins] ${endpoints[i]} → bits:`, bits);
+          if (bits !== null && bits !== undefined) {
+            setCoins(bits);
+            setIsSubscribed(sub);
+            localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits, coins: bits, isSubscribed: sub }));
+            if (!sub && bits <= 0) setTimeout(() => setShowCoinModal(true), 500);
+          } else {
+            tryNext(i + 1);
+          }
+        })
+        .catch(() => tryNext(i + 1));
+    };
+    tryNext(0);
   }, []);
 
   /* ===== AUTH ===== */

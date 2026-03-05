@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent, useCallback } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 
@@ -36,41 +36,56 @@ export default function PostCampaignPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // ✅ Backend se fresh coins — bits User model pe hoti hai
-  const refreshCoins = useCallback((token: string, parsed: any) => {
-    fetch(`${API_BASE}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => {
-        console.log("🪙 [PostPage] profile/me response:", data);
+  // Fetch bits from backend — try multiple endpoints
+  const fetchBitsFromBackend = (token: string, localBits: number) => {
+    // Try /users/bits first, fallback to /profile/me
+    const tryEndpoints = [
+      `${API_BASE}/users/bits`,
+      `${API_BASE}/profile/me`,
+    ];
 
-        const p = data?.profile || data?.data || data;
-        const liveSub = p?.isSubscribed ?? data?.isSubscribed ?? false;
-        setIsSubscribed(liveSub);
+    const tryNext = (index: number) => {
+      if (index >= tryEndpoints.length) {
+        // All endpoints failed or returned no bits — keep localStorage value
+        setChecking(false);
+        return;
+      }
+      fetch(tryEndpoints[index], { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+          // Search for bits in every possible location
+          const bits =
+            data?.bits ??
+            data?.user?.bits ??
+            data?.profile?.bits ??
+            data?.data?.bits ??
+            null;
 
-        // ✅ bits check — every possible path
-        const backendBits =
-          data?.bits ??
-          data?.user?.bits ??
-          p?.bits ??
-          data?.profile?.bits ??
-          null;
+          const sub =
+            data?.isSubscribed ??
+            data?.profile?.isSubscribed ??
+            data?.user?.isSubscribed ??
+            false;
 
-        console.log("🪙 [PostPage] backendBits:", backendBits, "liveSub:", liveSub);
+          console.log(`[coins] ${tryEndpoints[index]} →`, data, "| bits found:", bits);
 
-        if (backendBits !== null && backendBits !== undefined) {
-          setCoins(backendBits);
-          const updated = { ...parsed, coins: backendBits, bits: backendBits, isSubscribed: liveSub };
-          localStorage.setItem("cb_user", JSON.stringify(updated));
-          if (!liveSub && backendBits < COINS_PER_CAM) {
-            setTimeout(() => setShowCoinModal(true), 300);
+          if (bits !== null && bits !== undefined) {
+            setCoins(bits);
+            setIsSubscribed(sub);
+            const stored = localStorage.getItem("cb_user");
+            const p = stored ? JSON.parse(stored) : {};
+            localStorage.setItem("cb_user", JSON.stringify({ ...p, bits, coins: bits, isSubscribed: sub }));
+          } else {
+            // This endpoint didn't have bits — try next
+            tryNext(index + 1);
           }
-        } else {
-          console.warn("⚠️ bits field not in profile/me — check backend controller");
-        }
-      })
-      .catch(err => console.error("refreshCoins error:", err))
-      .finally(() => setChecking(false));
-  }, []);
+          setChecking(false);
+        })
+        .catch(() => tryNext(index + 1));
+    };
+
+    tryNext(0);
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem("cb_user");
@@ -78,16 +93,15 @@ export default function PostCampaignPage() {
     const parsed = JSON.parse(stored);
     if (parsed.role?.toLowerCase() !== "brand") { router.push("/discovery"); return; }
     setUser(parsed);
+    const token = parsed.token || localStorage.getItem("token");
 
-    // Fast local load
+    // Show localStorage value immediately (fast)
     const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
-    const token = parsed.token || localStorage.getItem("token");
-
-    // ✅ Backend se fresh coins
-    refreshCoins(token, parsed);
+    // Then get accurate value from backend
+    fetchBitsFromBackend(token, localBits);
   }, []);
 
   const toggleChip = (field: "categories" | "roles", value: string) => {
@@ -125,14 +139,17 @@ export default function PostCampaignPage() {
         throw new Error(data.message || "Failed to create campaign");
       }
 
-      // ✅ Backend response se bits lo (most accurate)
+      // Deduct coins immediately — backend already deducted, sync localStorage
       if (!isSubscribed) {
-        const newCoins = data.bits !== undefined ? data.bits : Math.max(0, coins - COINS_PER_CAM);
+        // If backend returned updated bits use it, else subtract locally
+        const newCoins = (data.bits !== undefined && data.bits !== null)
+          ? data.bits
+          : Math.max(0, coins - COINS_PER_CAM);
         setCoins(newCoins);
-        const stored = localStorage.getItem("cb_user");
-        const parsed = JSON.parse(stored || "{}");
-        localStorage.setItem("cb_user", JSON.stringify({ ...parsed, coins: newCoins, bits: newCoins }));
-        console.log("🪙 Campaign created — backend bits:", data.bits, "→ showing:", newCoins);
+        const stored2 = localStorage.getItem("cb_user");
+        const p2 = stored2 ? JSON.parse(stored2) : {};
+        localStorage.setItem("cb_user", JSON.stringify({ ...p2, bits: newCoins, coins: newCoins }));
+        console.log("[coins] Campaign created. New bits:", newCoins);
         if (newCoins < COINS_PER_CAM) setTimeout(() => setShowCoinModal(true), 1200);
       }
 
@@ -443,7 +460,6 @@ export default function PostCampaignPage() {
     </>
   );
 }
-
 
 // "use client";
 

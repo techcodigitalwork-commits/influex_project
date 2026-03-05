@@ -28,34 +28,29 @@ export default function CampaignBoard() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // ✅ Backend se bits fetch — profile/me response check all paths
+  // Fetch bits from backend — try multiple endpoints
   const fetchBitsFromBackend = (token: string, parsed: any) => {
-    fetch(`${API_BASE}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => {
-        console.log("🪙 CampaignBoard profile/me:", data);
-
-        const liveSub = data?.profile?.isSubscribed ?? data?.isSubscribed ?? data?.user?.isSubscribed ?? false;
-        setIsSubscribed(liveSub);
-
-        // ✅ bits User model pe hai — check every possible path
-        const backendBits =
-          data?.bits ??
-          data?.user?.bits ??
-          data?.profile?.bits ??
-          data?.data?.bits ??
-          null;
-
-        console.log("🪙 backendBits:", backendBits);
-
-        if (backendBits !== null && backendBits !== undefined) {
-          setCoins(backendBits);
-          const updated = { ...parsed, coins: backendBits, bits: backendBits, isSubscribed: liveSub };
-          localStorage.setItem("cb_user", JSON.stringify(updated));
-          if (backendBits < COINS_PER_CAMPAIGN && !liveSub) setShowCoinModal(true);
-        }
-      })
-      .catch(() => {});
+    const endpoints = [`${API_BASE}/users/bits`, `${API_BASE}/profile/me`];
+    const tryNext = (i: number) => {
+      if (i >= endpoints.length) return;
+      fetch(endpoints[i], { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+          const bits = data?.bits ?? data?.user?.bits ?? data?.profile?.bits ?? data?.data?.bits ?? null;
+          const sub  = data?.isSubscribed ?? data?.profile?.isSubscribed ?? data?.user?.isSubscribed ?? false;
+          console.log(`[coins] ${endpoints[i]} → bits:`, bits);
+          if (bits !== null && bits !== undefined) {
+            setCoins(bits);
+            setIsSubscribed(sub);
+            localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits, coins: bits, isSubscribed: sub }));
+            if (bits < COINS_PER_CAMPAIGN && !sub) setShowCoinModal(true);
+          } else {
+            tryNext(i + 1);
+          }
+        })
+        .catch(() => tryNext(i + 1));
+    };
+    tryNext(0);
   };
 
   useEffect(() => {
@@ -322,7 +317,7 @@ export default function CampaignBoard() {
         {isBrand && coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner danger">
             <div>
-              <div className="cb-limit-text danger">🚫 Out of coins! Can't post any more campaigns</div>
+              <div className="cb-limit-text danger">🚫 Coins khatam! Aur campaigns post nahi ho sakti</div>
               <div className="cb-limit-sub">Free: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} campaigns</div>
             </div>
             <button className="cb-limit-btn danger" onClick={() => setShowCoinModal(true)}>Upgrade Now →</button>
