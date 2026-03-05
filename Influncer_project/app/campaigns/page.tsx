@@ -44,18 +44,25 @@ export default function CampaignBoard() {
 
     fetchCampaigns(token, userRole);
 
-    if (userRole === "brand") {
+    if (userRole === "brand" || userRole === "admin") {
+      const localCoins = parsed.coins ?? parsed.bits ?? FREE_COINS;
       fetch(`${API_BASE}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.json())
         .then(data => {
           if (data?.success && data?.profile) {
             const p = data.profile;
-            const liveCoins = p.coins ?? p.bits ?? FREE_COINS;
-            setCoins(liveCoins);
-            setIsSubscribed(p.isSubscribed ?? false);
-            const updated = { ...parsed, coins: liveCoins, isSubscribed: p.isSubscribed ?? false };
+            const liveSub = p.isSubscribed ?? false;
+            setIsSubscribed(liveSub);
+            // ✅ Coins: backend se sirf tab override karo jab backend strictly kam ho
+            const backendCoins = p.coins ?? p.bits ?? null;
+            let finalCoins = localCoins;
+            if (backendCoins !== null && backendCoins < localCoins) {
+              finalCoins = backendCoins;
+              setCoins(finalCoins);
+            }
+            const updated = { ...parsed, coins: finalCoins, isSubscribed: liveSub };
             localStorage.setItem("cb_user", JSON.stringify(updated));
-            if (liveCoins <= 0 && !(p.isSubscribed ?? false)) setShowCoinModal(true);
+            if (finalCoins < COINS_PER_CAM && !liveSub) setShowCoinModal(true);
           }
         }).catch(() => {});
     }

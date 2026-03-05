@@ -59,19 +59,25 @@ export default function PostCampaignPage() {
 
     const token = parsed.token || localStorage.getItem("token");
 
-    // Live check
+    // Live check — sirf subscription status update karo, coins override mat karo
     fetch(`${API_BASE}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
         if (data.success && data.profile) {
           const p = data.profile;
-          const liveCoins = p.coins ?? p.bits ?? FREE_COINS;
-          setCoins(liveCoins);
-          setIsSubscribed(p.isSubscribed ?? false);
-          if (!p.isSubscribed && liveCoins < COINS_PER_CAM) {
+          const liveSub = p.isSubscribed ?? false;
+          setIsSubscribed(liveSub);
+          // ✅ Coins: backend se sirf tab override karo jab strictly kam ho
+          const backendCoins = p.coins ?? p.bits ?? null;
+          let finalCoins = localCoins;
+          if (backendCoins !== null && backendCoins < localCoins) {
+            finalCoins = backendCoins;
+            setCoins(finalCoins);
+          }
+          if (!liveSub && finalCoins < COINS_PER_CAM) {
             setTimeout(() => setShowCoinModal(true), 300);
           }
-          const updated = { ...parsed, coins: liveCoins, isSubscribed: p.isSubscribed ?? false };
+          const updated = { ...parsed, coins: finalCoins, isSubscribed: liveSub };
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setUser(updated);
         }

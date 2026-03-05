@@ -21,7 +21,6 @@ export default function DiscoveryPage() {
   const [categories, setCategories]       = useState<string[]>([]);
   const [loading, setLoading]             = useState(true);
   const [appliedIds, setAppliedIds]       = useState<string[]>([]);
-  const [applyingId, setApplyingId]       = useState<string | null>(null);
   const [selectedCity, setSelectedCity]   = useState("");
   const [selectedCat, setSelectedCat]     = useState("");
   const [token, setToken]                 = useState("");
@@ -51,21 +50,34 @@ export default function DiscoveryPage() {
     const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
     setAppliedIds(savedApplied);
 
-    // Coins from localStorage first (fast)
-    setCoins(parsed.coins ?? parsed.bits ?? FREE_COINS);
+    // ── Coins: always trust localStorage (user ne locally deduct kiye hain)
+    const localCoins = parsed.coins ?? parsed.bits ?? FREE_COINS;
+    setCoins(localCoins);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
-    // Then verify live from backend
+    // Backend se sirf subscription status lo, coins override mat karo
+    // (backend coins reliable nahi — 100 return karta rehta hai agar backend deduct nahi kar raha)
     fetch(`${API}/profile/me`, { headers: { Authorization: `Bearer ${t}` } })
       .then(r => r.json())
       .then(data => {
         if (data?.success && data?.profile) {
           const p = data.profile;
-          const liveCoins = p.coins ?? p.bits ?? FREE_COINS;
-          setCoins(liveCoins);
-          setIsSubscribed(p.isSubscribed ?? false);
-          // Sync to localStorage
-          const updated = { ...parsed, coins: liveCoins, isSubscribed: p.isSubscribed ?? false };
+          // Subscription status backend se lo (reliable hai)
+          const liveSub = p.isSubscribed ?? false;
+          setIsSubscribed(liveSub);
+
+          // Coins: backend value sirf tab use karo jab woh localStorage se STRICTLY KAM ho
+          // (backend ne deduct kiya) — warna localStorage hi sahi hai
+          const backendCoins = p.coins ?? p.bits ?? null;
+          let finalCoins = localCoins;
+          if (backendCoins !== null && backendCoins < localCoins) {
+            // Backend ne deduct kiya tha — usse use karo
+            finalCoins = backendCoins;
+            setCoins(finalCoins);
+          }
+
+          // Sync updated state
+          const updated = { ...parsed, coins: finalCoins, isSubscribed: liveSub };
           localStorage.setItem("cb_user", JSON.stringify(updated));
         }
       })
@@ -142,63 +154,6 @@ export default function DiscoveryPage() {
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
-  };
-
-  // ── APPLY ──
-  const applyCampaign = async (campaignId: string) => {
-    if (!influencerId) { showToast("Influencer ID missing ❌", "error"); return; }
-    if (appliedIds.includes(campaignId)) { showToast("Already Applied ✅"); return; }
-
-    // Coin check — block if out of coins and not subscribed
-    if (!isSubscribed && coins < COINS_PER_APPLY) {
-      setShowCoinModal(true);
-      return;
-    }
-
-    setApplyingId(campaignId);
-    try {
-      const res  = await fetch(`${API}/campaigns/${campaignId}/apply`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ influencerId }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.message || "Apply failed", "error"); return; }
-
-      // Deduct coins locally (backend should also deduct)
-      if (!isSubscribed) {
-        const newCoins = Math.max(0, coins - COINS_PER_APPLY);
-        setCoins(newCoins);
-        const stored  = localStorage.getItem("cb_user");
-        const parsed  = JSON.parse(stored || "{}");
-        const updated = { ...parsed, coins: newCoins };
-        localStorage.setItem("cb_user", JSON.stringify(updated));
-
-        // Show coin toast
-        setShowCoinToast(`🪙 ${COINS_PER_APPLY} coins used — ${newCoins} remaining`);
-        setTimeout(() => setShowCoinToast(null), 3000);
-
-        // Auto-show plan modal when coins hit 0 or <= 20 for last warning
-        if (newCoins <= 0) {
-          setTimeout(() => setShowCoinModal(true), 800);
-        } else if (newCoins <= 20) {
-          setShowCoinToast(`⚠️ Sirf ${newCoins} coins bache! Jaldi upgrade karo`);
-          setTimeout(() => setShowCoinToast(null), 4000);
-        }
-      }
-
-      showToast("Applied Successfully 🎉");
-      setAppliedIds((prev) => {
-        const updated = [...prev, campaignId];
-        localStorage.setItem("appliedCampaigns", JSON.stringify(updated));
-        return updated;
-      });
-    } catch (err) {
-      console.error(err);
-      showToast("Network error", "error");
-    } finally {
-      setApplyingId(null);
-    }
   };
 
   // ── RAZORPAY ──
@@ -673,7 +628,6 @@ export default function DiscoveryPage() {
               {filteredCampaigns.map((c, index) => {
                 const isBlurred  = index >= VISIBLE_COUNT;
                 const isApplied  = appliedIds.includes(c._id);
-                const isApplying = applyingId === c._id;
                 const cantApply  = coinsEmpty && !isSubscribed;
 
                 return (
@@ -715,7 +669,10 @@ export default function DiscoveryPage() {
 
                     {!isBlurred && (
                       isApplied ? (
-                        <button className="disc-apply-btn applied-btn" disabled>✓ Applied</button>
+                        <button
+                          className="disc-apply-btn applied-btn"
+                          onClick={(e) => { e.stopPropagation(); router.push(`/campaigns/campaignsdetail?id=${c._id}`); }}
+                        >✓ Applied — View Details</button>
                       ) : cantApply ? (
                         <button
                           className="disc-apply-btn no-coins-btn"
@@ -724,14 +681,12 @@ export default function DiscoveryPage() {
                           🪙 Coins Khatam — Upgrade karo
                         </button>
                       ) : (
+                        // ✅ Redirect to campaignsdetail — apply wahan hoga
                         <button
                           className="disc-apply-btn"
-                          disabled={isApplying}
-                          onClick={(e) => { e.stopPropagation(); applyCampaign(c._id); }}
+                          onClick={(e) => { e.stopPropagation(); router.push(`/campaigns/campaignsdetail?id=${c._id}`); }}
                         >
-                          {isApplying
-                            ? <><span className="disc-mini-spin" />Applying...</>
-                            : "View & Apply →"}
+                          View & Apply →
                         </button>
                       )
                     )}
