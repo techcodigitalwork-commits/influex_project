@@ -1,4 +1,7 @@
 "use client";
+// FILE: app/campaigns/page.tsx
+// KEY FIX: Reads bits from localStorage only — NO profile/me call
+// profile/me returns stale 100 always — that was the reset bug
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -23,35 +26,33 @@ export default function CampaignBoard() {
   const [loadingPlan, setLoadingPlan]     = useState<string | null>(null);
   const [toast, setToast]                 = useState<{ msg: string; type: "success" | "error" | "warn" } | null>(null);
 
-  const showToast = (msg: string, type: "success" | "error" | "warn" = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const showToast = (msg: string, type: "success" | "error" | "warn" = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem("cb_user");
     if (!stored) { router.push("/login"); return; }
     const parsed = JSON.parse(stored);
-    // Remove stale 'coins' field — bits is the source of truth
-    if (parsed.coins !== undefined) {
-      delete parsed.coins;
-      localStorage.setItem("cb_user", JSON.stringify(parsed));
-    }
+
+    // ✅ Clean stale 'coins' key — bits is source of truth
+    if (parsed.coins !== undefined) { delete parsed.coins; localStorage.setItem("cb_user", JSON.stringify(parsed)); }
+
     const userRole = parsed?.role?.toLowerCase();
     setRole(userRole);
     const token = parsed.token || localStorage.getItem("token");
     if (!token) { router.push("/login"); return; }
 
-    // Load from localStorage first
+    // ✅ Read bits ONLY from localStorage
+    // NO profile/me call — it returns stale 100 and was overriding correct value
     const localBits = parsed.bits ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
     fetchCampaigns(token, userRole);
 
-
-
+    if (!(parsed.isSubscribed) && localBits < COINS_PER_CAMPAIGN && (userRole === "brand" || userRole === "admin")) {
+      setTimeout(() => setShowCoinModal(true), 500);
+    }
   }, []);
 
   const fetchCampaigns = async (token: string, userRole: string) => {
@@ -86,21 +87,16 @@ export default function CampaignBoard() {
     const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
     const token  = parsed.token || localStorage.getItem("token");
     const options = {
-      key: RAZORPAY_KEY, subscription_id: subscriptionId,
-      name: "Influex Premium", description: `${planName} Plan`,
-      theme: { color: "#4f46e5" },
+      key: RAZORPAY_KEY, subscription_id: subscriptionId, name: "Influex Premium", description: `${planName} Plan`, theme: { color: "#4f46e5" },
       prefill: { name: parsed?.name || "", email: parsed?.email || "" },
       handler: async function (response: any) {
-        try {
-          await fetch(`${API_BASE}/subscription/verify`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ razorpay_payment_id: response.razorpay_payment_id, razorpay_subscription_id: response.razorpay_subscription_id, razorpay_signature: response.razorpay_signature, plan_id: PLAN_ID, planName }) });
-        } catch {}
-        const aRes  = await fetch(`${API_BASE}/subscription/activate`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }) });
-        const aData = await aRes.json();
+        try { await fetch(`${API_BASE}/subscription/verify`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ razorpay_payment_id: response.razorpay_payment_id, razorpay_subscription_id: response.razorpay_subscription_id, razorpay_signature: response.razorpay_signature, plan_id: PLAN_ID, planName }) }); } catch {}
+        const aData = await (await fetch(`${API_BASE}/subscription/activate`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }) })).json();
         if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999, coins: undefined };
+          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999 }; delete updated.coins;
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
-          showToast(`🎉 ${planName} activated!`, "success");
+          showToast(`🎉 ${planName} activated! Unlimited campaigns!`, "success");
         } else { showToast("Activation failed.", "error"); }
         setLoadingPlan(null);
       },
@@ -126,16 +122,11 @@ export default function CampaignBoard() {
 
   const isBrand       = role === "brand" || role === "admin";
   const coinsPercent  = Math.max(0, Math.min(100, (coins / FREE_COINS) * 100));
-  const coinsLow      = !isSubscribed && coins <= 40 && coins > 0;
-  const coinsEmpty    = !isSubscribed && coins <= 0;
+  const coinsLow      = !isSubscribed && coins <= 40 && coins >= COINS_PER_CAMPAIGN;
+  const coinsEmpty    = !isSubscribed && coins < COINS_PER_CAMPAIGN;
   const campaignsLeft = isSubscribed ? "∞" : Math.floor(coins / COINS_PER_CAMPAIGN);
 
-  if (loading) return (
-    <div style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ width: "32px", height: "32px", border: "3px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
+  if (loading) return <div style={{ minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center" }}><div style={{ width:"32px",height:"32px",border:"3px solid #e0e0e0",borderTopColor:"#4f46e5",borderRadius:"50%",animation:"spin 0.8s linear infinite" }}/><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   return (
     <>
@@ -143,119 +134,51 @@ export default function CampaignBoard() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap');
         *,*::before,*::after{box-sizing:border-box}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-        @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
-        @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+        @keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}} @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
         .cb{font-family:'DM Sans',sans-serif;background:#f5f5f0;min-height:100vh}
-        .cb-header{background:#fff;border-bottom:1px solid #ebebeb;padding:22px 32px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
-        @media(max-width:600px){.cb-header{padding:16px}}
-        .cb-title{font-size:20px;font-weight:600;color:#111;margin:0 0 2px}
-        .cb-sub{color:#aaa;font-size:13px;margin:0;font-weight:400}
+        .cb-header{background:#fff;border-bottom:1px solid #ebebeb;padding:22px 32px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap} @media(max-width:600px){.cb-header{padding:16px}}
+        .cb-title{font-size:20px;font-weight:600;color:#111;margin:0 0 2px} .cb-sub{color:#aaa;font-size:13px;margin:0}
         .cb-header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-        .cb-coin-pill{display:flex;align-items:center;gap:10px;border:1.5px solid #e8e8e8;border-radius:12px;padding:8px 14px;background:#fff;min-width:185px}
-        .cb-coin-pill.warn{border-color:#fbbf24;background:#fffbeb}
-        .cb-coin-pill.empty{border-color:#ef4444;background:#fff5f5}
-        .cb-coin-pill.pro{border-color:#86efac;background:#f0fdf4}
-        .cb-coin-icon{font-size:18px}
-        .cb-coin-body{flex:1;min-width:0}
-        .cb-coin-label{font-size:10px;color:#aaa;font-weight:500}
-        .cb-coin-val{font-size:16px;font-weight:700;color:#4f46e5;line-height:1}
-        .cb-coin-val.warn-val{color:#d97706}
-        .cb-coin-val.empty-val{color:#ef4444}
-        .cb-coin-val.pro-val{color:#16a34a}
-        .cb-coin-bar-wrap{height:3px;background:#f0f0f0;border-radius:2px;margin-top:3px;overflow:hidden}
-        .cb-coin-bar{height:100%;border-radius:2px;transition:width 0.5s ease}
-        .cb-coin-up-btn{padding:5px 10px;border-radius:7px;background:#4f46e5;color:#fff;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;white-space:nowrap}
-        .cb-coin-up-btn.warn-up{background:#f59e0b}
-        .cb-coin-up-btn.empty-up{background:#ef4444}
-        .cb-create-btn{padding:9px 18px;background:#4f46e5;color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;flex-shrink:0;font-family:'DM Sans',sans-serif;border:none;cursor:pointer}
-        .cb-create-btn:hover{background:#4338ca}
-        .cb-create-btn.blocked{background:#e5e5e5;color:#aaa;cursor:not-allowed;pointer-events:none}
-        .cb-limit-banner{margin:16px 32px 0;border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
-        @media(max-width:600px){.cb-limit-banner{margin:12px 12px 0}}
-        .cb-limit-banner.danger{background:#fff5f5;border:1.5px solid #fecaca}
-        .cb-limit-banner.warn{background:#fffbeb;border:1.5px solid #fde68a}
-        .cb-limit-text{font-size:14px;font-weight:500}
-        .cb-limit-text.danger{color:#991b1b}
-        .cb-limit-text.warn{color:#92400e}
-        .cb-limit-sub{font-size:12px;color:#aaa;margin-top:2px}
-        .cb-limit-btn{padding:8px 18px;border-radius:10px;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap}
-        .cb-limit-btn.danger{background:#ef4444;color:#fff}
-        .cb-limit-btn.warn{background:#f59e0b;color:#fff}
-        .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding:20px 32px 32px}
-        @media(max-width:768px){.cb-grid{grid-template-columns:1fr;padding:14px 16px 24px;gap:12px}}
-        .cb-card{background:#fff;border-radius:16px;border:1.5px solid #ebebeb;padding:20px;transition:all 0.2s}
-        .cb-card:hover{border-color:#d0d0d0;box-shadow:0 6px 24px rgba(0,0,0,0.06);transform:translateY(-1px)}
-        .cb-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
-        .cb-card-title{font-size:15px;font-weight:600;color:#111;margin:0;flex:1;line-height:1.4}
-        .cb-badge{padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600;flex-shrink:0}
-        .cb-badge-open{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
-        .cb-badge-ongoing{background:#fefce8;color:#ca8a04;border:1px solid #fde68a}
-        .cb-badge-completed{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+        .cb-coin-pill{display:flex;align-items:center;gap:10px;border:1.5px solid #e8e8e8;border-radius:12px;padding:8px 14px;background:#fff;min-width:185px;cursor:pointer} .cb-coin-pill.warn{border-color:#fbbf24;background:#fffbeb} .cb-coin-pill.empty{border-color:#ef4444;background:#fff5f5} .cb-coin-pill.pro{border-color:#86efac;background:#f0fdf4;cursor:default}
+        .cb-coin-icon{font-size:18px} .cb-coin-body{flex:1;min-width:0} .cb-coin-label{font-size:10px;color:#aaa;font-weight:500} .cb-coin-val{font-size:16px;font-weight:700;color:#4f46e5;line-height:1} .cb-coin-val.warn-val{color:#d97706} .cb-coin-val.empty-val{color:#ef4444} .cb-coin-val.pro-val{color:#16a34a} .cb-coin-bar-wrap{height:3px;background:#f0f0f0;border-radius:2px;margin-top:3px;overflow:hidden} .cb-coin-bar{height:100%;border-radius:2px;transition:width 0.5s ease}
+        .cb-coin-up-btn{padding:5px 10px;border-radius:7px;background:#4f46e5;color:#fff;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;white-space:nowrap} .cb-coin-up-btn.warn-up{background:#f59e0b} .cb-coin-up-btn.empty-up{background:#ef4444}
+        .cb-create-btn{padding:9px 18px;background:#4f46e5;color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;flex-shrink:0;font-family:'DM Sans',sans-serif;border:none;cursor:pointer} .cb-create-btn:hover{background:#4338ca} .cb-create-btn.blocked{background:#e5e5e5;color:#aaa;cursor:not-allowed;pointer-events:none}
+        .cb-limit-banner{margin:16px 32px 0;border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px} @media(max-width:600px){.cb-limit-banner{margin:12px 12px 0}} .cb-limit-banner.danger{background:#fff5f5;border:1.5px solid #fecaca} .cb-limit-banner.warn{background:#fffbeb;border:1.5px solid #fde68a}
+        .cb-limit-text{font-size:14px;font-weight:500} .cb-limit-text.danger{color:#991b1b} .cb-limit-text.warn{color:#92400e} .cb-limit-sub{font-size:12px;color:#aaa;margin-top:2px} .cb-limit-btn{padding:8px 18px;border-radius:10px;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap} .cb-limit-btn.danger{background:#ef4444;color:#fff} .cb-limit-btn.warn{background:#f59e0b;color:#fff}
+        .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding:20px 32px 32px} @media(max-width:768px){.cb-grid{grid-template-columns:1fr;padding:14px 16px 24px;gap:12px}}
+        .cb-card{background:#fff;border-radius:16px;border:1.5px solid #ebebeb;padding:20px;transition:all 0.2s} .cb-card:hover{border-color:#d0d0d0;box-shadow:0 6px 24px rgba(0,0,0,0.06);transform:translateY(-1px)}
+        .cb-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px} .cb-card-title{font-size:15px;font-weight:600;color:#111;margin:0;flex:1;line-height:1.4}
+        .cb-badge{padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600;flex-shrink:0} .cb-badge-open{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe} .cb-badge-ongoing{background:#fefce8;color:#ca8a04;border:1px solid #fde68a} .cb-badge-completed{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
         .cb-desc{color:#888;font-size:13px;line-height:1.6;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-        .cb-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-        .cb-meta-item{background:#fafafa;border-radius:10px;padding:10px 12px}
-        .cb-meta-label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:0.06em;font-weight:500}
-        .cb-meta-val{font-size:13px;font-weight:600;color:#111;margin-top:2px}
-        .cb-actions{display:flex;gap:8px;flex-wrap:wrap}
-        .cb-btn{flex:1;min-width:70px;padding:9px 12px;border-radius:10px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;white-space:nowrap}
-        .cb-btn-view{background:#f4f4f4;color:#555}
-        .cb-btn-apps{background:#eff6ff;color:#2563eb}
-        .cb-btn-complete{background:#f0fdf4;color:#16a34a}
-        .cb-card-coin{display:flex;align-items:center;gap:4px;font-size:11px;color:#aaa;font-weight:600;margin-bottom:10px}
-        .cb-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;text-align:center;margin:20px 32px;background:#fff;border-radius:16px;border:1.5px dashed #e0e0e0}
-        .cb-empty-icon{font-size:44px;margin-bottom:14px}
-        .cb-empty-title{font-size:18px;font-weight:600;color:#111;margin:0 0 6px}
-        .cb-empty-sub{color:#aaa;font-size:13px;margin:0 0 20px;line-height:1.6}
-        .cm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.2s ease}
-        .cm-box{background:#fff;border-radius:24px;max-width:420px;width:100%;padding:36px 32px 30px;position:relative;text-align:center;animation:slideUp 0.25s ease}
-        .cm-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa}
-        .cm-icon{font-size:52px;margin-bottom:14px;line-height:1}
-        .cm-title{font-size:22px;font-weight:700;color:#111;margin-bottom:8px}
-        .cm-sub{font-size:14px;color:#777;line-height:1.65;margin-bottom:10px}
-        .cm-prog-wrap{margin:16px 0 22px}
-        .cm-prog-top{display:flex;justify-content:space-between;font-size:12px;color:#aaa;margin-bottom:6px}
-        .cm-prog{height:8px;background:#f0f0f0;border-radius:100px;overflow:hidden}
-        .cm-prog-fill{height:100%;border-radius:100px;transition:width 0.6s ease}
-        .cm-plan-btn{width:100%;padding:14px 20px;border-radius:14px;border:none;font-size:15px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;box-shadow:0 4px 16px rgba(79,70,229,0.3)}
-        .cm-plan-btn:disabled{opacity:0.65;cursor:not-allowed}
-        .cm-skip{font-size:13px;color:#ccc;cursor:pointer;background:none;border:none;font-family:'DM Sans',sans-serif;text-decoration:underline}
-        .cm-secure{font-size:11px;color:#ddd;margin-top:10px}
-        .cm-mini-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;margin-right:6px;vertical-align:middle}
-        .cb-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 22px;border-radius:12px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;z-index:99999;white-space:nowrap;max-width:90vw;text-align:center;animation:toastIn 0.3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.12)}
-        .cb-toast.success{background:#111;color:#fff}
-        .cb-toast.error{background:#ef4444;color:#fff}
-        .cb-toast.warn{background:#f59e0b;color:#fff}
+        .cb-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px} .cb-meta-item{background:#fafafa;border-radius:10px;padding:10px 12px} .cb-meta-label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:0.06em;font-weight:500} .cb-meta-val{font-size:13px;font-weight:600;color:#111;margin-top:2px}
+        .cb-actions{display:flex;gap:8px;flex-wrap:wrap} .cb-btn{flex:1;min-width:70px;padding:9px 12px;border-radius:10px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;white-space:nowrap} .cb-btn-view{background:#f4f4f4;color:#555} .cb-btn-apps{background:#eff6ff;color:#2563eb} .cb-btn-complete{background:#f0fdf4;color:#16a34a}
+        .cb-card-coin{display:flex;align-items:center;gap:4px;font-size:11px;color:#aaa;font-weight:500;margin-bottom:10px}
+        .cb-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;text-align:center;margin:20px 32px;background:#fff;border-radius:16px;border:1.5px dashed #e0e0e0} .cb-empty-icon{font-size:44px;margin-bottom:14px} .cb-empty-title{font-size:18px;font-weight:600;color:#111;margin:0 0 6px} .cb-empty-sub{color:#aaa;font-size:13px;margin:0 0 20px;line-height:1.6}
+        .cm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.2s ease} .cm-box{background:#fff;border-radius:24px;max-width:420px;width:100%;padding:36px 32px 30px;position:relative;text-align:center;animation:slideUp 0.25s ease} .cm-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa} .cm-icon{font-size:52px;margin-bottom:14px;line-height:1} .cm-title{font-size:22px;font-weight:700;color:#111;margin-bottom:8px} .cm-sub{font-size:14px;color:#777;line-height:1.65;margin-bottom:10px} .cm-prog-wrap{margin:16px 0 22px} .cm-prog-top{display:flex;justify-content:space-between;font-size:12px;color:#aaa;margin-bottom:6px} .cm-prog{height:8px;background:#f0f0f0;border-radius:100px;overflow:hidden} .cm-prog-fill{height:100%;border-radius:100px;transition:width 0.6s ease}
+        .cm-plan-btn{width:100%;padding:14px 20px;border-radius:14px;border:none;font-size:15px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;box-shadow:0 4px 16px rgba(79,70,229,0.3)} .cm-plan-btn:disabled{opacity:0.65;cursor:not-allowed}
+        .cm-skip{font-size:13px;color:#ccc;cursor:pointer;background:none;border:none;font-family:'DM Sans',sans-serif;text-decoration:underline} .cm-secure{font-size:11px;color:#ddd;margin-top:10px} .cm-mini-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;margin-right:6px;vertical-align:middle}
+        .cb-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 22px;border-radius:12px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;z-index:99999;white-space:nowrap;max-width:90vw;text-align:center;animation:toastIn 0.3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.12)} .cb-toast.success{background:#111;color:#fff} .cb-toast.error{background:#ef4444;color:#fff} .cb-toast.warn{background:#f59e0b;color:#fff}
       `}</style>
 
       {toast && <div className={`cb-toast ${toast.type}`}>{toast.msg}</div>}
 
       {showCoinModal && (
-        <div className="cm-overlay">
-          <div className="cm-box">
-            <button className="cm-close" onClick={() => setShowCoinModal(false)}>✕</button>
-            <div className="cm-icon">🪙</div>
-            <div className="cm-title">{coinsEmpty ? "Coins Khatam!" : "Coins Khatam Hone Wale!"}</div>
-            <div className="cm-sub">
-              {coinsEmpty
-                ? `${FREE_COINS} free coins use ho gaye (${COINS_PER_CAMPAIGN} per campaign = ${FREE_CAMPAIGN_MAX} campaigns). Pro lo.`
-                : `Sirf ${coins} coins bache — ${Math.floor(coins / COINS_PER_CAMPAIGN)} aur campaigns. Upgrade karo!`}
-            </div>
-            <div className="cm-prog-wrap">
-              <div className="cm-prog-top"><span>Coins used</span><span>{FREE_COINS - Math.max(0, coins)} / {FREE_COINS}</span></div>
-              <div className="cm-prog">
-                <div className="cm-prog-fill" style={{ width: `${Math.min(100, ((FREE_COINS - Math.max(0, coins)) / FREE_COINS) * 100)}%`, background: coinsEmpty ? "#ef4444" : "#f59e0b" }} />
-              </div>
-            </div>
-            <button className="cm-plan-btn" onClick={() => handleSubscribe("pro_monthly", "Pro")} disabled={loadingPlan !== null}>
-              <span>{loadingPlan === "pro_monthly" ? <><span className="cm-mini-spin" />Processing...</> : "⚡ Upgrade to Pro — Unlimited Campaigns"}</span>
-              <span style={{ fontSize: 13, opacity: 0.85 }}>₹999/mo</span>
-            </button>
-            <button className="cm-skip" onClick={() => setShowCoinModal(false)}>Maybe later</button>
-            <div className="cm-secure">🔒 Secured by Razorpay</div>
+        <div className="cm-overlay"><div className="cm-box">
+          <button className="cm-close" onClick={() => setShowCoinModal(false)}>✕</button>
+          <div className="cm-icon">🪙</div>
+          <div className="cm-title">{coinsEmpty ? "Coins Khatam!" : "Coins Khatam Hone Wale!"}</div>
+          <div className="cm-sub">{coinsEmpty ? `${FREE_COINS} coins use ho gaye (${COINS_PER_CAMPAIGN}/campaign = ${FREE_CAMPAIGN_MAX} total). Pro lo.` : `Sirf ${coins} coins bache — ${Math.floor(coins/COINS_PER_CAMPAIGN)} aur campaigns.`}</div>
+          <div className="cm-prog-wrap">
+            <div className="cm-prog-top"><span>Coins used</span><span>{FREE_COINS - Math.max(0, coins)} / {FREE_COINS}</span></div>
+            <div className="cm-prog"><div className="cm-prog-fill" style={{ width: `${Math.min(100, ((FREE_COINS - Math.max(0, coins)) / FREE_COINS) * 100)}%`, background: coinsEmpty ? "#ef4444" : "#f59e0b" }} /></div>
           </div>
-        </div>
+          <button className="cm-plan-btn" onClick={() => handleSubscribe("pro_monthly", "Pro")} disabled={loadingPlan !== null}>
+            <span>{loadingPlan === "pro_monthly" ? <><span className="cm-mini-spin" />Processing...</> : "⚡ Upgrade to Pro — Unlimited Campaigns"}</span>
+            <span style={{ fontSize: 13, opacity: 0.85 }}>₹999/mo</span>
+          </button>
+          <button className="cm-skip" onClick={() => setShowCoinModal(false)}>Maybe later</button>
+          <div className="cm-secure">🔒 Secured by Razorpay</div>
+        </div></div>
       )}
 
       <div className="cb">
@@ -266,49 +189,29 @@ export default function CampaignBoard() {
           </div>
           <div className="cb-header-right">
             {isBrand && (
-              <div className={`cb-coin-pill ${isSubscribed ? "pro" : coinsEmpty ? "empty" : coinsLow ? "warn" : ""}`}>
+              <div className={`cb-coin-pill ${isSubscribed ? "pro" : coinsEmpty ? "empty" : coinsLow ? "warn" : ""}`} onClick={() => !isSubscribed && setShowCoinModal(true)}>
                 <div className="cb-coin-icon">🪙</div>
                 <div className="cb-coin-body">
                   <div className="cb-coin-label">{isSubscribed ? "Unlimited" : `${campaignsLeft} campaigns left`}</div>
-                  <div className={`cb-coin-val ${isSubscribed ? "pro-val" : coinsEmpty ? "empty-val" : coinsLow ? "warn-val" : ""}`}>
-                    {isSubscribed ? "∞" : coins}
-                  </div>
-                  {!isSubscribed && (
-                    <div className="cb-coin-bar-wrap">
-                      <div className="cb-coin-bar" style={{ width: `${coinsPercent}%`, background: coinsEmpty ? "#ef4444" : coinsLow ? "#f59e0b" : "#4f46e5" }} />
-                    </div>
-                  )}
+                  <div className={`cb-coin-val ${isSubscribed ? "pro-val" : coinsEmpty ? "empty-val" : coinsLow ? "warn-val" : ""}`}>{isSubscribed ? "∞" : coins}</div>
+                  {!isSubscribed && <div className="cb-coin-bar-wrap"><div className="cb-coin-bar" style={{ width: `${coinsPercent}%`, background: coinsEmpty ? "#ef4444" : coinsLow ? "#f59e0b" : "#4f46e5" }} /></div>}
                 </div>
-                {!isSubscribed && (
-                  <button className={`cb-coin-up-btn ${coinsEmpty ? "empty-up" : coinsLow ? "warn-up" : ""}`} onClick={() => setShowCoinModal(true)}>
-                    {coinsEmpty ? "Upgrade!" : "Upgrade"}
-                  </button>
-                )}
+                {!isSubscribed && <button className={`cb-coin-up-btn ${coinsEmpty ? "empty-up" : coinsLow ? "warn-up" : ""}`} onClick={(e) => { e.stopPropagation(); setShowCoinModal(true); }}>{coinsEmpty ? "Upgrade!" : "Upgrade"}</button>}
               </div>
             )}
-            {isBrand && (
-              <Link href="/campaigns/post" className={`cb-create-btn ${!isSubscribed && coinsEmpty ? "blocked" : ""}`} onClick={handleCreateClick}>
-                + Create Campaign
-              </Link>
-            )}
+            {isBrand && <Link href="/campaigns/post" className={`cb-create-btn ${!isSubscribed && coinsEmpty ? "blocked" : ""}`} onClick={handleCreateClick}>+ Create Campaign</Link>}
           </div>
         </div>
 
         {isBrand && coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner danger">
-            <div>
-              <div className="cb-limit-text danger">🚫 No coins left! Cannot post more campaigns</div>
-              <div className="cb-limit-sub">Free plan: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} campaigns</div>
-            </div>
+            <div><div className="cb-limit-text danger">🚫 No coins left! Cannot post more campaigns</div><div className="cb-limit-sub">Free plan: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} total</div></div>
             <button className="cb-limit-btn danger" onClick={() => setShowCoinModal(true)}>Upgrade Now →</button>
           </div>
         )}
         {isBrand && coinsLow && !coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner warn">
-            <div>
-              <div className="cb-limit-text warn">⚡ Only {Math.floor(coins / COINS_PER_CAMPAIGN)} campaign{Math.floor(coins / COINS_PER_CAMPAIGN) !== 1 ? "s" : ""} left!</div>
-              <div className="cb-limit-sub">Coins remaining: {coins}</div>
-            </div>
+            <div><div className="cb-limit-text warn">⚡ Only {Math.floor(coins/COINS_PER_CAMPAIGN)} campaign{Math.floor(coins/COINS_PER_CAMPAIGN)!==1?"s":""} left!</div><div className="cb-limit-sub">Coins remaining: {coins}</div></div>
             <button className="cb-limit-btn warn" onClick={() => setShowCoinModal(true)}>Upgrade →</button>
           </div>
         )}
@@ -331,19 +234,14 @@ export default function CampaignBoard() {
                 {c.description && <p className="cb-desc">{c.description}</p>}
                 {isBrand && !isSubscribed && <div className="cb-card-coin">🪙 {COINS_PER_CAMPAIGN} coins per campaign post</div>}
                 <div className="cb-meta">
-                  <div className="cb-meta-item"><div className="cb-meta-label">Budget</div><div className="cb-meta-val">₹{(c.budget || 0).toLocaleString()}</div></div>
-                  <div className="cb-meta-item"><div className="cb-meta-label">City</div><div className="cb-meta-val">{c.city || "—"}</div></div>
-                  <div className="cb-meta-item"><div className="cb-meta-label">Category</div><div className="cb-meta-val" style={{ fontSize: "12px" }}>{Array.isArray(c.categories) ? c.categories.join(", ") : c.categories || "—"}</div></div>
-                  <div className="cb-meta-item"><div className="cb-meta-label">Applications</div><div className="cb-meta-val">{c.applicationsCount || 0}</div></div>
+                  <div className="cb-meta-item"><div className="cb-meta-label">Budget</div><div className="cb-meta-val">₹{(c.budget||0).toLocaleString()}</div></div>
+                  <div className="cb-meta-item"><div className="cb-meta-label">City</div><div className="cb-meta-val">{c.city||"—"}</div></div>
+                  <div className="cb-meta-item"><div className="cb-meta-label">Category</div><div className="cb-meta-val" style={{fontSize:"12px"}}>{Array.isArray(c.categories)?c.categories.join(", "):c.categories||"—"}</div></div>
+                  <div className="cb-meta-item"><div className="cb-meta-label">Applications</div><div className="cb-meta-val">{c.applicationsCount||0}</div></div>
                 </div>
                 <div className="cb-actions">
                   <Link href={`/campaigns/${c._id}`} className="cb-btn cb-btn-view">View</Link>
-                  {isBrand && (
-                    <>
-                      <Link href={`/campaigns/${c._id}/applications`} className="cb-btn cb-btn-apps">Applications</Link>
-                      {c.status !== "completed" && <button className="cb-btn cb-btn-complete" onClick={() => completeCampaign(c._id)}>Complete ✓</button>}
-                    </>
-                  )}
+                  {isBrand && (<><Link href={`/campaigns/${c._id}/applications`} className="cb-btn cb-btn-apps">Applications</Link>{c.status !== "completed" && <button className="cb-btn cb-btn-complete" onClick={() => completeCampaign(c._id)}>Complete ✓</button>}</>)}
                 </div>
               </div>
             ))}

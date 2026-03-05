@@ -4,10 +4,10 @@ import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 
-const API          = "http://54.252.201.93:5000/api/campaigns";
-const API_BASE     = "http://54.252.201.93:5000/api";
-const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
-const PLAN_ID      = "plan_SKmSEwh4wl4Tv6";
+const API           = "http://54.252.201.93:5000/api/campaigns";
+const API_BASE      = "http://54.252.201.93:5000/api";
+const RAZORPAY_KEY  = "rzp_test_SL7M2uHDyhrU4A";
+const PLAN_ID       = "plan_SKmSEwh4wl4Tv6";
 const FREE_COINS    = 100;
 const COINS_PER_CAM = 20;
 
@@ -22,10 +22,10 @@ export default function PostCampaignPage() {
   const [loading, setLoading]     = useState(false);
   const [checking, setChecking]   = useState(true);
   const [coins, setCoins]         = useState<number>(FREE_COINS);
-  const [isSubscribed, setIsSubscribed]     = useState(false);
-  const [showCoinModal, setShowCoinModal]   = useState(false);
-  const [loadingPlan, setLoadingPlan]       = useState<string | null>(null);
-  const [formData, setFormData]   = useState({
+  const [isSubscribed, setIsSubscribed]   = useState(false);
+  const [showCoinModal, setShowCoinModal] = useState(false);
+  const [loadingPlan, setLoadingPlan]     = useState<string | null>(null);
+  const [formData, setFormData] = useState({
     title: "", description: "", budget: "", city: "",
     categories: [] as string[], roles: [] as string[],
   });
@@ -37,27 +37,31 @@ export default function PostCampaignPage() {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem("cb_user");
-    if (!stored) { router.push("/login"); return; }
-    const parsed = JSON.parse(stored);
-    // Remove stale 'coins' field — bits is the source of truth
+    const raw = localStorage.getItem("cb_user");
+    if (!raw) { router.push("/login"); return; }
+    const parsed = JSON.parse(raw);
+
+    // ✅ Clean up stale 'coins' field — 'bits' is source of truth
     if (parsed.coins !== undefined) {
       delete parsed.coins;
       localStorage.setItem("cb_user", JSON.stringify(parsed));
     }
+
     if (parsed.role?.toLowerCase() !== "brand") { router.push("/discovery"); return; }
     setUser(parsed);
 
-    // Load coins from localStorage — updated after every campaign create
+    // ✅ Read from bits — this is set by backend response after campaign create
     const localBits = parsed.bits ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
+    // Show modal if not enough coins
     if (!parsed.isSubscribed && localBits < COINS_PER_CAM) {
       setTimeout(() => setShowCoinModal(true), 300);
     }
 
     setChecking(false);
+    // ✅ NO profile/me call here — it would override our correct bits value with 100
   }, []);
 
   const toggleChip = (field: "categories" | "roles", value: string) => {
@@ -71,6 +75,8 @@ export default function PostCampaignPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    // Coin gate
     if (!isSubscribed && coins < COINS_PER_CAM) { setShowCoinModal(true); return; }
     if (!formData.title || !formData.description || !formData.budget || !formData.city) {
       showToast("Please fill all required fields", "error"); return;
@@ -84,25 +90,53 @@ export default function PostCampaignPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          title: formData.title.trim(), description: formData.description.trim(),
-          budget: Number(formData.budget), city: formData.city,
-          categories: formData.categories, roles: formData.roles,
+          title: formData.title.trim(),
+          description: formData.description.trim(),
+          budget: Number(formData.budget),
+          city: formData.city,
+          categories: formData.categories,
+          roles: formData.roles,
         }),
       });
       const data = await res.json();
+
       if (!res.ok) {
-        if (res.status === 403) { setShowCoinModal(true); setLoading(false); return; }
+        // 403 = coin limit reached on backend
+        if (res.status === 403) {
+          // ✅ Backend ka bits value sync karo agar available ho
+          if (data.bits !== undefined) {
+            const raw2   = localStorage.getItem("cb_user");
+            const parsed = raw2 ? JSON.parse(raw2) : {};
+            const updated = { ...parsed, bits: data.bits };
+            delete updated.coins;
+            localStorage.setItem("cb_user", JSON.stringify(updated));
+            setCoins(data.bits);
+          }
+          setShowCoinModal(true);
+          setLoading(false);
+          return;
+        }
         throw new Error(data.message || "Failed to create campaign");
       }
 
-      // Deduct 20 coins locally — backend already deducted from DB
+      // ✅ SUCCESS — backend ne bits deduct karke response mein bheja
+      // data.bits = updated bits after deduction (e.g. 80 after 1st campaign)
+      // YAHI SAHI VALUE HAI — localStorage mein save karo
       if (!isSubscribed) {
-        const newCoins = Math.max(0, coins - COINS_PER_CAM);
-        setCoins(newCoins);
-        const stored2 = localStorage.getItem("cb_user");
-        const p2 = stored2 ? JSON.parse(stored2) : {};
-        localStorage.setItem("cb_user", JSON.stringify(({ ...p2, bits: newCoins, coins: undefined })));
-        if (newCoins < COINS_PER_CAM) setTimeout(() => setShowCoinModal(true), 1200);
+        const newBits = data.bits !== undefined ? data.bits : Math.max(0, coins - COINS_PER_CAM);
+        setCoins(newBits);
+
+        const raw2   = localStorage.getItem("cb_user");
+        const parsed = raw2 ? JSON.parse(raw2) : {};
+        const updated = { ...parsed, bits: newBits };
+        delete updated.coins; // stale field hata do
+        localStorage.setItem("cb_user", JSON.stringify(updated));
+        setUser(updated);
+
+        // Auto-show plan modal agar agle campaign ke liye bhi coins nahi
+        if (newBits < COINS_PER_CAM) {
+          setTimeout(() => setShowCoinModal(true), 1300);
+        }
       }
 
       showToast("Campaign Created Successfully 🚀", "success");
@@ -116,8 +150,7 @@ export default function PostCampaignPage() {
 
   // ── Razorpay ──
   const openRazorpay = (subscriptionId: string, planId: string, planName: string) => {
-    const stored = localStorage.getItem("cb_user");
-    const parsed = JSON.parse(stored || "{}");
+    const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
     const token  = parsed.token || localStorage.getItem("token");
     const options = {
       key: RAZORPAY_KEY, subscription_id: subscriptionId,
@@ -127,43 +160,55 @@ export default function PostCampaignPage() {
       handler: async function (response: any) {
         try {
           await fetch(`${API_BASE}/subscription/verify`, {
-            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ razorpay_payment_id: response.razorpay_payment_id, razorpay_subscription_id: response.razorpay_subscription_id, razorpay_signature: response.razorpay_signature, plan_id: PLAN_ID, planName }),
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              razorpay_payment_id:      response.razorpay_payment_id,
+              razorpay_subscription_id: response.razorpay_subscription_id,
+              razorpay_signature:       response.razorpay_signature,
+              plan_id: PLAN_ID, planName,
+            }),
           });
         } catch {}
         const aRes  = await fetch(`${API_BASE}/subscription/activate`, {
-          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }),
         });
         const aData = await aRes.json();
         if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999, coins: undefined };
+          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999 };
+          delete updated.coins;
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setUser(updated); setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
-          showToast(`🎉 ${planName} activated!`, "success");
+          showToast(`🎉 ${planName} activated! Unlimited campaigns!`, "success");
         } else { showToast("Activation failed.", "error"); }
         setLoadingPlan(null);
       },
       modal: { ondismiss: () => { showToast("Payment cancelled.", "error"); setLoadingPlan(null); } },
     };
     const rzp = new (window as any).Razorpay(options);
-    rzp.on("payment.failed", (r: any) => { showToast(`Payment failed: ${r.error.description}`, "error"); setLoadingPlan(null); });
+    rzp.on("payment.failed", (r: any) => {
+      showToast(`Payment failed: ${r.error.description}`, "error"); setLoadingPlan(null);
+    });
     rzp.open();
   };
 
   const handleSubscribe = async (planId: string, planName: string) => {
-    const stored = localStorage.getItem("cb_user");
-    const parsed = JSON.parse(stored || "{}");
+    const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
     const t      = parsed.token || localStorage.getItem("token");
     if (!t) { showToast("Session expired.", "error"); return; }
     setLoadingPlan(planId);
     try {
       const res  = await fetch(`${API_BASE}/subscription/create`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
         body: JSON.stringify({ plan_id: PLAN_ID }),
       });
       const data = await res.json();
-      if (!data.success || !data.subscription?.id) { showToast(data.message || "Failed.", "error"); setLoadingPlan(null); return; }
+      if (!data.success || !data.subscription?.id) {
+        showToast(data.message || "Failed.", "error"); setLoadingPlan(null); return;
+      }
       openRazorpay(data.subscription.id, planId, planName);
     } catch { showToast("Something went wrong.", "error"); setLoadingPlan(null); }
   };
@@ -192,7 +237,6 @@ export default function PostCampaignPage() {
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
         @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-
         .pcp{font-family:'DM Sans',sans-serif;background:#f5f5f0;min-height:100vh}
         .pcp-inner{max-width:720px;margin:0 auto;padding:40px 20px 80px}
         @media(max-width:600px){.pcp-inner{padding:24px 16px 60px}}
@@ -200,7 +244,6 @@ export default function PostCampaignPage() {
         @media(max-width:600px){.pcp-card{padding:24px 20px;border-radius:18px}}
         .pcp-title{font-size:26px;font-weight:600;color:#111;margin:0 0 6px}
         .pcp-sub{font-size:14px;color:#999;margin:0 0 28px}
-
         .pcp-coin-bar{display:flex;align-items:center;gap:14px;background:#fafafa;border:1.5px solid #ebebeb;border-radius:14px;padding:14px 18px;margin-bottom:28px;cursor:pointer;transition:border-color 0.2s}
         .pcp-coin-bar:hover{border-color:#4f46e5}
         .pcp-coin-bar.warn{background:#fffbeb;border-color:#fde68a}
@@ -212,10 +255,10 @@ export default function PostCampaignPage() {
         .pcp-coin-track{height:5px;background:#e8e8e8;border-radius:100px;overflow:hidden;margin-bottom:4px}
         .pcp-coin-fill{height:100%;border-radius:100px;transition:width 0.5s}
         .pcp-coin-count{font-size:12px;font-weight:500}
-        .pcp-upgrade-tag{font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;color:#4f46e5;background:#eef2ff;white-space:nowrap}
+        .pcp-upgrade-tag{font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;color:#4f46e5;background:#eef2ff;white-space:nowrap;transition:background 0.2s}
+        .pcp-upgrade-tag:hover{background:#e0e7ff}
         .pcp-upgrade-tag.warn-tag{color:#d97706;background:#fef3c7}
         .pcp-upgrade-tag.empty-tag{color:#dc2626;background:#fee2e2}
-
         .pcp-form{display:flex;flex-direction:column;gap:0}
         .pcp-section{margin-bottom:28px}
         .pcp-section-label{font-size:11px;font-weight:600;color:#bbb;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #f3f4f6}
@@ -234,28 +277,25 @@ export default function PostCampaignPage() {
         .pcp-chip{padding:8px 16px;border-radius:100px;border:1.5px solid #e5e7eb;background:#fff;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;color:#6b7280;cursor:pointer;transition:all 0.15s;text-transform:capitalize}
         .pcp-chip:hover{border-color:#4f46e5;color:#4f46e5}
         .pcp-chip.sel{background:#4f46e5;border-color:#4f46e5;color:#fff}
-
         .pcp-coin-cost-note{display:flex;align-items:center;gap:6px;background:#fafafa;border:1px solid #f0f0f0;border-radius:10px;padding:10px 14px;font-size:13px;color:#888;margin-top:4px}
         .pcp-coin-cost-note.low-note{background:#fffbeb;border-color:#fde68a;color:#92400e}
-
         .pcp-actions{display:flex;justify-content:space-between;align-items:center;padding-top:28px;border-top:1px solid #f3f4f6;gap:12px}
-        .pcp-btn-cancel{padding:12px 24px;border-radius:12px;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;color:#6b7280;background:#f3f4f6;border:none;cursor:pointer}
+        .pcp-btn-cancel{padding:12px 24px;border-radius:12px;font-size:14px;font-weight:500;font-family:'DM Sans',sans-serif;color:#6b7280;background:#f3f4f6;border:none;cursor:pointer;transition:background 0.2s}
         .pcp-btn-cancel:hover{background:#e5e7eb}
         .pcp-btn-submit{padding:12px 32px;border-radius:12px;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;color:#fff;background:#4f46e5;border:none;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:8px}
         .pcp-btn-submit:hover:not(:disabled){background:#4338ca;transform:translateY(-1px)}
         .pcp-btn-submit:disabled{opacity:0.5;cursor:not-allowed;transform:none}
         .pcp-spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite}
-
         .pcp-blocked{text-align:center;padding:56px 24px}
         .pcp-blocked-icon{font-size:52px;margin-bottom:18px}
         .pcp-blocked-title{font-size:22px;font-weight:600;color:#111;margin:0 0 10px}
         .pcp-blocked-sub{font-size:14px;color:#888;line-height:1.7;margin:0 0 28px}
-        .pcp-blocked-btn{display:inline-flex;align-items:center;gap:6px;padding:13px 32px;border-radius:12px;background:#4f46e5;color:#fff;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer}
-        .pcp-blocked-btn:hover{background:#4338ca}
-
+        .pcp-blocked-btn{display:inline-flex;align-items:center;gap:6px;padding:13px 32px;border-radius:12px;background:#4f46e5;color:#fff;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;border:none;cursor:pointer;transition:all 0.2s}
+        .pcp-blocked-btn:hover{background:#4338ca;transform:translateY(-1px)}
         .coin-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn 0.2s ease}
         .coin-modal{background:#fff;border-radius:24px;max-width:420px;width:100%;padding:36px 32px 30px;position:relative;text-align:center;animation:slideUp 0.25s ease}
-        .coin-modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa}
+        .coin-modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#aaa;padding:4px}
+        .coin-modal-close:hover{color:#555}
         .coin-modal-icon{font-size:52px;margin-bottom:14px;line-height:1}
         .coin-modal-title{font-size:22px;font-weight:700;color:#111;margin-bottom:8px}
         .coin-modal-sub{font-size:14px;color:#777;line-height:1.65;margin-bottom:10px}
@@ -264,12 +304,12 @@ export default function PostCampaignPage() {
         .coin-modal-prog{height:8px;background:#f0f0f0;border-radius:100px;overflow:hidden}
         .coin-modal-prog-fill{height:100%;border-radius:100px;transition:width 0.6s ease}
         .coin-plan-btn{width:100%;padding:14px 20px;border-radius:14px;border:none;font-size:15px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;box-shadow:0 4px 16px rgba(79,70,229,0.3)}
-        .coin-plan-btn:hover{box-shadow:0 6px 24px rgba(79,70,229,0.4);transform:translateY(-1px)}
+        .coin-plan-btn:hover:not(:disabled){box-shadow:0 6px 24px rgba(79,70,229,0.4);transform:translateY(-1px)}
         .coin-plan-btn:disabled{opacity:0.65;cursor:not-allowed;transform:none}
         .coin-modal-skip{font-size:13px;color:#ccc;cursor:pointer;background:none;border:none;font-family:'DM Sans',sans-serif;text-decoration:underline}
+        .coin-modal-skip:hover{color:#888}
         .coin-modal-secure{font-size:11px;color:#ddd;margin-top:10px}
         .mini-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;margin-right:6px;vertical-align:middle}
-
         .pcp-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;z-index:99999;white-space:nowrap;max-width:90vw;text-align:center;animation:toastIn 0.3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.14)}
         .pcp-toast.success{background:#111;color:#fff}
         .pcp-toast.error{background:#ef4444;color:#fff}
@@ -282,7 +322,7 @@ export default function PostCampaignPage() {
           <div className="coin-modal">
             <button className="coin-modal-close" onClick={() => setShowCoinModal(false)}>✕</button>
             <div className="coin-modal-icon">🪙</div>
-            <div className="coin-modal-title">{coins <= 0 ? "Coins Exhausted!" : "Low Coins!"}</div>
+            <div className="coin-modal-title">{coins <= 0 ? "Coins Khatam!" : "Coins Khatam Hone Wale!"}</div>
             <div className="coin-modal-sub">
               {coins <= 0
                 ? `Saare ${FREE_COINS} coins use ho gaye. Pro plan lo — unlimited campaigns post karo.`
@@ -314,8 +354,10 @@ export default function PostCampaignPage() {
             <p className="pcp-sub">Find the right creators for your brand</p>
 
             {/* COIN BAR */}
-            <div className={`pcp-coin-bar ${isSubscribed ? "pro" : coinsEmpty ? "empty" : coinsLow ? "warn" : ""}`}
-              onClick={() => !isSubscribed && setShowCoinModal(true)}>
+            <div
+              className={`pcp-coin-bar ${isSubscribed ? "pro" : coinsEmpty ? "empty" : coinsLow ? "warn" : ""}`}
+              onClick={() => !isSubscribed && setShowCoinModal(true)}
+            >
               <div className="pcp-coin-icon">🪙</div>
               <div className="pcp-coin-info">
                 <div className="pcp-coin-label">{isSubscribed ? "Unlimited Coins (Pro)" : `Coins — ${COINS_PER_CAM} per campaign`}</div>
@@ -331,8 +373,10 @@ export default function PostCampaignPage() {
                 </div>
               </div>
               {!isSubscribed && (
-                <button className={`pcp-upgrade-tag ${coinsEmpty ? "empty-tag" : coinsLow ? "warn-tag" : ""}`}
-                  onClick={(e) => { e.stopPropagation(); setShowCoinModal(true); }}>
+                <button
+                  className={`pcp-upgrade-tag ${coinsEmpty ? "empty-tag" : coinsLow ? "warn-tag" : ""}`}
+                  onClick={(e) => { e.stopPropagation(); setShowCoinModal(true); }}
+                >
                   {coinsEmpty ? "Upgrade!" : "Upgrade ✦"}
                 </button>
               )}
@@ -342,7 +386,10 @@ export default function PostCampaignPage() {
               <div className="pcp-blocked">
                 <div className="pcp-blocked-icon">🚫</div>
                 <h2 className="pcp-blocked-title">Coins Khatam!</h2>
-                <p className="pcp-blocked-sub">Free plan mein <strong>{FREE_COINS / COINS_PER_CAM} campaigns</strong> allowed hain.<br />Pro upgrade karo aur unlimited post karo.</p>
+                <p className="pcp-blocked-sub">
+                  Free plan mein <strong>{FREE_COINS / COINS_PER_CAM} campaigns</strong> allowed hain.<br />
+                  Pro upgrade karo aur unlimited post karo.
+                </p>
                 <button className="pcp-blocked-btn" onClick={() => setShowCoinModal(true)}>⚡ Upgrade to Pro →</button>
               </div>
             ) : (
@@ -351,20 +398,24 @@ export default function PostCampaignPage() {
                   <div className="pcp-section-label">Campaign Info</div>
                   <div className="pcp-field">
                     <label className="pcp-label">Title <span className="req">*</span></label>
-                    <input className="pcp-input" type="text" placeholder="e.g. Summer Fashion Shoot" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} required />
+                    <input className="pcp-input" type="text" placeholder="e.g. Summer Fashion Shoot"
+                      value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} required />
                   </div>
                   <div className="pcp-field">
                     <label className="pcp-label">Description <span className="req">*</span></label>
-                    <textarea className="pcp-input pcp-textarea" rows={4} placeholder="Describe your campaign..." value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} required />
+                    <textarea className="pcp-input pcp-textarea" rows={4} placeholder="Describe your campaign..."
+                      value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} required />
                   </div>
                   <div className="pcp-row">
                     <div className="pcp-field">
                       <label className="pcp-label">Budget (₹) <span className="req">*</span></label>
-                      <input className="pcp-input" type="number" min={0} placeholder="e.g. 5000" value={formData.budget} onChange={e => setFormData({ ...formData, budget: e.target.value })} required />
+                      <input className="pcp-input" type="number" min={0} placeholder="e.g. 5000"
+                        value={formData.budget} onChange={e => setFormData({ ...formData, budget: e.target.value })} required />
                     </div>
                     <div className="pcp-field">
                       <label className="pcp-label">City <span className="req">*</span></label>
-                      <select className="pcp-select" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} required>
+                      <select className="pcp-select" value={formData.city}
+                        onChange={e => setFormData({ ...formData, city: e.target.value })} required>
                         <option value="">Select City</option>
                         {CITY_OPTIONS.map(city => <option key={city} value={city}>{city}</option>)}
                       </select>
@@ -384,7 +435,10 @@ export default function PostCampaignPage() {
                     <label className="pcp-label">Categories</label>
                     <div className="pcp-chips">
                       {CATEGORY_OPTIONS.map(cat => (
-                        <button key={cat} type="button" className={`pcp-chip ${formData.categories.includes(cat) ? "sel" : ""}`} onClick={() => toggleChip("categories", cat)}>{cat}</button>
+                        <button key={cat} type="button"
+                          className={`pcp-chip ${formData.categories.includes(cat) ? "sel" : ""}`}
+                          onClick={() => toggleChip("categories", cat)}>{cat}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -392,7 +446,10 @@ export default function PostCampaignPage() {
                     <label className="pcp-label">Target Roles <span className="req">*</span></label>
                     <div className="pcp-chips">
                       {ROLE_OPTIONS.map(r => (
-                        <button key={r} type="button" className={`pcp-chip ${formData.roles.includes(r) ? "sel" : ""}`} onClick={() => toggleChip("roles", r)}>{r}</button>
+                        <button key={r} type="button"
+                          className={`pcp-chip ${formData.roles.includes(r) ? "sel" : ""}`}
+                          onClick={() => toggleChip("roles", r)}>{r}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -401,7 +458,9 @@ export default function PostCampaignPage() {
                 <div className="pcp-actions">
                   <button type="button" className="pcp-btn-cancel" onClick={() => router.push("/campaigns")}>Cancel</button>
                   <button type="submit" className="pcp-btn-submit" disabled={loading}>
-                    {loading ? <><span className="pcp-spinner" /> Creating...</> : `Create Campaign 🚀${!isSubscribed ? ` (−${COINS_PER_CAM} 🪙)` : ""}`}
+                    {loading
+                      ? <><span className="pcp-spinner" /> Creating...</>
+                      : `Create Campaign 🚀${!isSubscribed ? ` (−${COINS_PER_CAM} 🪙)` : ""}`}
                   </button>
                 </div>
               </form>
