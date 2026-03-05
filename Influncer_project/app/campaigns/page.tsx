@@ -38,11 +38,43 @@ export default function CampaignBoard() {
     const token = parsed.token || localStorage.getItem("token");
     if (!token) { router.push("/login"); return; }
 
-    // Fast local load
-    setCoins(parsed.coins ?? parsed.bits ?? FREE_COINS);
+    // Load from localStorage first
+    const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
+    setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
+    // Sync stale coins field with bits (coins field may be outdated)
+    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
+      parsed.coins = parsed.bits;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
 
     fetchCampaigns(token, userRole);
+
+    // Fetch fresh bits from backend for brand users
+    if (userRole === "brand" || userRole === "admin") {
+      const endpoints = [`${API_BASE}/auth/me`, `${API_BASE}/users/me`, `${API_BASE}/profile/me`];
+      const tryNext = (i: number) => {
+        if (i >= endpoints.length) return;
+        fetch(endpoints[i], { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(data => {
+            const b = data?.bits ?? data?.user?.bits ?? data?.data?.bits ?? data?.profile?.bits ?? null;
+            const sub = data?.isSubscribed ?? data?.user?.isSubscribed ?? data?.profile?.isSubscribed ?? null;
+            if (b !== null && b !== undefined) {
+              setCoins(b);
+              if (sub !== null) setIsSubscribed(sub);
+              localStorage.setItem("cb_user", JSON.stringify({
+                ...parsed, bits: b, coins: b,
+                isSubscribed: sub ?? parsed.isSubscribed ?? false
+              }));
+            } else {
+              tryNext(i + 1);
+            }
+          })
+          .catch(() => tryNext(i + 1));
+      };
+      tryNext(0);
+    }
 
   }, []);
 
@@ -289,8 +321,8 @@ export default function CampaignBoard() {
         {isBrand && coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner danger">
             <div>
-              <div className="cb-limit-text danger">🚫 Coins khatam! Aur campaigns post nahi ho sakti</div>
-              <div className="cb-limit-sub">Free: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} campaigns</div>
+              <div className="cb-limit-text danger">🚫 No coins left! Cannot post more campaigns</div>
+              <div className="cb-limit-sub">Free plan: {FREE_COINS} coins, {COINS_PER_CAMPAIGN} per campaign = {FREE_CAMPAIGN_MAX} campaigns</div>
             </div>
             <button className="cb-limit-btn danger" onClick={() => setShowCoinModal(true)}>Upgrade Now →</button>
           </div>
@@ -298,8 +330,8 @@ export default function CampaignBoard() {
         {isBrand && coinsLow && !coinsEmpty && !isSubscribed && (
           <div className="cb-limit-banner warn">
             <div>
-              <div className="cb-limit-text warn">⚡ Sirf {Math.floor(coins / COINS_PER_CAMPAIGN)} campaign{Math.floor(coins / COINS_PER_CAMPAIGN) !== 1 ? "s" : ""} baaki!</div>
-              <div className="cb-limit-sub">Coins: {coins} remaining</div>
+              <div className="cb-limit-text warn">⚡ Only {Math.floor(coins / COINS_PER_CAMPAIGN)} campaign{Math.floor(coins / COINS_PER_CAMPAIGN) !== 1 ? "s" : ""} left!</div>
+              <div className="cb-limit-sub">Coins remaining: {coins}</div>
             </div>
             <button className="cb-limit-btn warn" onClick={() => setShowCoinModal(true)}>Upgrade →</button>
           </div>

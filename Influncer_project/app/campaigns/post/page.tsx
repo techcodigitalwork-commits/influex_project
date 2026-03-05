@@ -47,6 +47,11 @@ export default function PostCampaignPage() {
     const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
+    // Sync stale coins field with bits (coins field may be outdated)
+    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
+      parsed.coins = parsed.bits;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
 
     if (!parsed.isSubscribed && localBits < COINS_PER_CAM) {
       setTimeout(() => setShowCoinModal(true), 300);
@@ -90,17 +95,13 @@ export default function PostCampaignPage() {
         throw new Error(data.message || "Failed to create campaign");
       }
 
-      // Deduct coins immediately — backend already deducted, sync localStorage
+      // Deduct 20 coins locally — backend already deducted from DB
       if (!isSubscribed) {
-        // If backend returned updated bits use it, else subtract locally
-        const newCoins = (data.bits !== undefined && data.bits !== null)
-          ? data.bits
-          : Math.max(0, coins - COINS_PER_CAM);
+        const newCoins = Math.max(0, coins - COINS_PER_CAM);
         setCoins(newCoins);
         const stored2 = localStorage.getItem("cb_user");
         const p2 = stored2 ? JSON.parse(stored2) : {};
         localStorage.setItem("cb_user", JSON.stringify({ ...p2, bits: newCoins, coins: newCoins }));
-        console.log("[coins] Campaign created. New bits:", newCoins);
         if (newCoins < COINS_PER_CAM) setTimeout(() => setShowCoinModal(true), 1200);
       }
 
@@ -281,7 +282,7 @@ export default function PostCampaignPage() {
           <div className="coin-modal">
             <button className="coin-modal-close" onClick={() => setShowCoinModal(false)}>✕</button>
             <div className="coin-modal-icon">🪙</div>
-            <div className="coin-modal-title">{coins <= 0 ? "Coins Khatam Ho Gaye!" : "Coins Kam Hain!"}</div>
+            <div className="coin-modal-title">{coins <= 0 ? "Coins Exhausted!" : "Low Coins!"}</div>
             <div className="coin-modal-sub">
               {coins <= 0
                 ? `Saare ${FREE_COINS} coins use ho gaye. Pro plan lo — unlimited campaigns post karo.`
@@ -325,7 +326,7 @@ export default function PostCampaignPage() {
                 )}
                 <div className="pcp-coin-count" style={{ color: isSubscribed ? "#15803d" : usageColor }}>
                   {isSubscribed ? "✓ Pro — Unlimited campaigns"
-                    : coinsEmpty ? "⚠️ Coins nahi hain — upgrade karo"
+                    : coinsEmpty ? "⚠️ No coins left — please upgrade"
                     : `${coins} coins remaining · ${camsLeft} campaigns left`}
                 </div>
               </div>

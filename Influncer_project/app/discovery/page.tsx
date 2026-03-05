@@ -55,10 +55,56 @@ export default function DiscoveryPage() {
     const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
     setAppliedIds(savedApplied);
 
-    // Fast local load
+    // Load from localStorage first
     const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
+    // Sync stale coins field with bits (coins field may be outdated)
+    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
+      parsed.coins = parsed.bits;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
+
+    // Fetch fresh bits from backend — tries multiple endpoints
+    const freshFetch = () => {
+      const endpoints = [
+        `${API_BASE}/auth/me`,
+        `${API_BASE}/users/me`,
+        `${API_BASE}/profile/me`,
+      ];
+      const tryNext = (i: number) => {
+        if (i >= endpoints.length) return;
+        fetch(endpoints[i], { headers: { Authorization: `Bearer ${t}` } })
+          .then(r => r.json())
+          .then(data => {
+            // Search bits in every possible location in response
+            const b =
+              data?.bits ??
+              data?.user?.bits ??
+              data?.data?.bits ??
+              data?.profile?.bits ??
+              null;
+            const sub =
+              data?.isSubscribed ??
+              data?.user?.isSubscribed ??
+              data?.profile?.isSubscribed ??
+              null;
+            if (b !== null && b !== undefined) {
+              setCoins(b);
+              if (sub !== null) setIsSubscribed(sub);
+              localStorage.setItem("cb_user", JSON.stringify({
+                ...parsed, bits: b, coins: b,
+                isSubscribed: sub ?? parsed.isSubscribed ?? false
+              }));
+            } else {
+              tryNext(i + 1);
+            }
+          })
+          .catch(() => tryNext(i + 1));
+      };
+      tryNext(0);
+    };
+    freshFetch();
 
   }, []);
 
@@ -307,7 +353,7 @@ export default function DiscoveryPage() {
           <div className="coin-modal">
             <button className="coin-modal-close" onClick={() => setShowCoinModal(false)}>✕</button>
             <div className="coin-modal-icon">🪙</div>
-            <div className="coin-modal-title">{coinsEmpty ? "Coins Khatam Ho Gaye!" : "Coins Khatam Hone Wale Hain!"}</div>
+            <div className="coin-modal-title">{coinsEmpty ? "Coins Exhausted!" : "Coins Khatam Hone Wale Hain!"}</div>
             <div className="coin-modal-sub">
               {coinsEmpty
                 ? `Saare ${FREE_COINS} coins use ho gaye. Pro plan lo — unlimited applies karo.`
@@ -417,7 +463,7 @@ export default function DiscoveryPage() {
                     )}
                     {!isBlurred && !isApplied && !isSubscribed && (
                       <div className={`disc-coin-cost ${cantApply ? "empty-cost" : ""}`}>
-                        🪙 {COINS_PER_APPLY} coins to apply{cantApply && " — Coins khatam!"}
+                        🪙 {COINS_PER_APPLY} coins required to apply{cantApply && " — Not enough coins!"}
                       </div>
                     )}
                     {!isBlurred && (
@@ -427,7 +473,7 @@ export default function DiscoveryPage() {
                         </button>
                       ) : cantApply ? (
                         <button className="disc-apply-btn no-coins-btn" onClick={(e) => { e.stopPropagation(); setShowCoinModal(true); }}>
-                          🪙 Coins Khatam — Upgrade karo
+                          🪙 Not enough coins — Upgrade
                         </button>
                       ) : (
                         <button className="disc-apply-btn" onClick={(e) => { e.stopPropagation(); router.push(`/campaigns/campaignsdetail?id=${c._id}`); }}>
@@ -441,7 +487,7 @@ export default function DiscoveryPage() {
             </div>
             {filteredCampaigns.length > VISIBLE_COUNT && (
               <div className="disc-unlock-banner">
-                <p className="disc-unlock-title">🔒 {filteredCampaigns.length - VISIBLE_COUNT} more campaigns available</p>
+                <p className="disc-unlock-title">🔒 {filteredCampaigns.length - VISIBLE_COUNT} more campaigns locked</p>
                 <p className="disc-unlock-sub">Complete your profile to unlock all campaigns</p>
                 <button className="disc-unlock-btn" onClick={() => router.push("/my-profile")}>Complete Profile →</button>
               </div>
@@ -452,7 +498,6 @@ export default function DiscoveryPage() {
     </>
   );
 }
-
 
 // "use client";
 

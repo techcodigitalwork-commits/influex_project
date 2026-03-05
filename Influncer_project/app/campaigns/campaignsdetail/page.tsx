@@ -48,6 +48,11 @@ function CampaignDetailInner() {
     const localBits = parsed.bits ?? parsed.coins ?? 100;
     setBits(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
+    // Sync stale coins field with bits (coins field may be outdated)
+    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
+      parsed.coins = parsed.bits;
+      localStorage.setItem("cb_user", JSON.stringify(parsed));
+    }
   }, []);
 
   useEffect(() => {
@@ -107,16 +112,13 @@ function CampaignDetailInner() {
         return;
       }
 
-      // Deduct bits immediately — backend already deducted
+      // Deduct 10 coins locally — backend already deducted from DB
       if (!isSubscribed) {
-        const newBits = (data?.bits !== undefined && data?.bits !== null)
-          ? data.bits
-          : Math.max(0, bits - 10);
+        const newBits = Math.max(0, bits - 10);
         setBits(newBits);
         const stored = localStorage.getItem("cb_user");
         const p = stored ? JSON.parse(stored) : {};
         localStorage.setItem("cb_user", JSON.stringify({ ...p, bits: newBits, coins: newBits }));
-        console.log("[coins] Applied — new bits:", newBits);
       }
 
       // Save applied state
