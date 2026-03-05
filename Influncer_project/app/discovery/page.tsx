@@ -56,14 +56,9 @@ export default function DiscoveryPage() {
     setAppliedIds(savedApplied);
 
     // Load from localStorage first
-    const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
+    const localBits = parsed.bits ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
-    // Sync stale coins field with bits (coins field may be outdated)
-    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
-      parsed.coins = parsed.bits;
-      localStorage.setItem("cb_user", JSON.stringify(parsed));
-    }
 
     // Fetch fresh bits from backend — tries multiple endpoints
     const freshFetch = () => {
@@ -93,7 +88,7 @@ export default function DiscoveryPage() {
               setCoins(b);
               if (sub !== null) setIsSubscribed(sub);
               localStorage.setItem("cb_user", JSON.stringify({
-                ...parsed, bits: b, coins: b,
+                ...parsed, bits: b, coins: undefined,
                 isSubscribed: sub ?? parsed.isSubscribed ?? false
               }));
             } else {
@@ -122,7 +117,7 @@ export default function DiscoveryPage() {
       const stored = localStorage.getItem("cb_user");
       if (stored) {
         const p = JSON.parse(stored);
-        setCoins(p.bits ?? p.coins ?? FREE_COINS);
+        setCoins(p.bits ?? FREE_COINS);
         setIsSubscribed(p.isSubscribed ?? false);
       }
     };
@@ -195,7 +190,7 @@ export default function DiscoveryPage() {
         const aRes  = await fetch(`${API}/subscription/activate`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` }, body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }) });
         const aData = await aRes.json();
         if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, coins: 99999, bits: 99999 };
+          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999, coins: undefined };
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
           showToast(`🎉 ${planName} activated! Unlimited applies!`, "success");
@@ -497,6 +492,7 @@ export default function DiscoveryPage() {
       </div>
     </>
   );
+  
 }
 
 // "use client";

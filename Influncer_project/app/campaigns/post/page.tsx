@@ -44,14 +44,9 @@ export default function PostCampaignPage() {
     setUser(parsed);
 
     // Load coins from localStorage — updated after every campaign create
-    const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
+    const localBits = parsed.bits ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
-    // Sync stale coins field with bits (coins field may be outdated)
-    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
-      parsed.coins = parsed.bits;
-      localStorage.setItem("cb_user", JSON.stringify(parsed));
-    }
 
     if (!parsed.isSubscribed && localBits < COINS_PER_CAM) {
       setTimeout(() => setShowCoinModal(true), 300);
@@ -96,15 +91,26 @@ export default function PostCampaignPage() {
       }
 
       // Deduct 20 coins locally — backend already deducted from DB
-      if (!isSubscribed) {
-        const newCoins = Math.max(0, coins - COINS_PER_CAM);
-        setCoins(newCoins);
-        const stored2 = localStorage.getItem("cb_user");
-        const p2 = stored2 ? JSON.parse(stored2) : {};
-        localStorage.setItem("cb_user", JSON.stringify({ ...p2, bits: newCoins, coins: newCoins }));
-        if (newCoins < COINS_PER_CAM) setTimeout(() => setShowCoinModal(true), 1200);
-      }
+      // Use backend bits response (SAFE FIX)
+if (!isSubscribed) {
 
+  const newCoins =
+    data?.bits !== undefined && data?.bits !== null
+      ? data.bits
+      : Math.max(0, coins - COINS_PER_CAM);
+
+  setCoins(newCoins);
+
+  const stored2 = JSON.parse(localStorage.getItem("cb_user") || "{}");
+  stored2.bits = newCoins;
+  stored2.coins = newCoins;
+
+  localStorage.setItem("cb_user", JSON.stringify(stored2));
+
+  if (newCoins < COINS_PER_CAM) {
+    setTimeout(() => setShowCoinModal(true), 1200);
+  }
+}
       showToast("Campaign Created Successfully 🚀", "success");
       setTimeout(() => router.push("/campaigns"), 1200);
     } catch (err: any) {
@@ -137,7 +143,7 @@ export default function PostCampaignPage() {
         });
         const aData = await aRes.json();
         if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, coins: 99999, bits: 99999 };
+          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999, coins: undefined };
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setUser(updated); setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
           showToast(`🎉 ${planName} activated!`, "success");

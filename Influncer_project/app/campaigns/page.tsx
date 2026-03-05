@@ -39,14 +39,9 @@ export default function CampaignBoard() {
     if (!token) { router.push("/login"); return; }
 
     // Load from localStorage first
-    const localBits = parsed.bits ?? parsed.coins ?? FREE_COINS;
+    const localBits = parsed.bits ?? FREE_COINS;
     setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
-    // Sync stale coins field with bits (coins field may be outdated)
-    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
-      parsed.coins = parsed.bits;
-      localStorage.setItem("cb_user", JSON.stringify(parsed));
-    }
 
     fetchCampaigns(token, userRole);
 
@@ -64,7 +59,7 @@ export default function CampaignBoard() {
               setCoins(b);
               if (sub !== null) setIsSubscribed(sub);
               localStorage.setItem("cb_user", JSON.stringify({
-                ...parsed, bits: b, coins: b,
+                ...parsed, bits: b, coins: undefined,
                 isSubscribed: sub ?? parsed.isSubscribed ?? false
               }));
             } else {
@@ -121,7 +116,7 @@ export default function CampaignBoard() {
         const aRes  = await fetch(`${API_BASE}/subscription/activate`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }) });
         const aData = await aRes.json();
         if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, coins: 99999, bits: 99999 };
+          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999, coins: undefined };
           localStorage.setItem("cb_user", JSON.stringify(updated));
           setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
           showToast(`🎉 ${planName} activated!`, "success");
@@ -377,7 +372,6 @@ export default function CampaignBoard() {
     </>
   );
 }
-
 
 // "use client";
 

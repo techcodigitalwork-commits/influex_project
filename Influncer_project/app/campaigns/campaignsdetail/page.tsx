@@ -45,14 +45,9 @@ function CampaignDetailInner() {
     if (appliedList.includes(searchParams?.get("id") || "")) setApplied(true);
 
     // Load coins from localStorage — kept in sync after each apply/create
-    const localBits = parsed.bits ?? parsed.coins ?? 100;
+    const localBits = parsed.bits ?? 100;
     setBits(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
-    // Sync stale coins field with bits (coins field may be outdated)
-    if (parsed.bits !== undefined && parsed.bits !== parsed.coins) {
-      parsed.coins = parsed.bits;
-      localStorage.setItem("cb_user", JSON.stringify(parsed));
-    }
   }, []);
 
   useEffect(() => {
@@ -118,7 +113,7 @@ function CampaignDetailInner() {
         setBits(newBits);
         const stored = localStorage.getItem("cb_user");
         const p = stored ? JSON.parse(stored) : {};
-        localStorage.setItem("cb_user", JSON.stringify({ ...p, bits: newBits, coins: newBits }));
+        localStorage.setItem("cb_user", JSON.stringify(({ ...p, bits: newBits, coins: undefined })));
       }
 
       // Save applied state
