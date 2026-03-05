@@ -30,7 +30,7 @@ export default function CampaignBoard() {
 
   // Fetch bits from backend — try multiple endpoints
   const fetchBitsFromBackend = (token: string, parsed: any) => {
-    const endpoints = [`${API_BASE}/users/bits`, `${API_BASE}/profile/me`];
+    const endpoints = [`${API_BASE}/profile/me`];
     const tryNext = (i: number) => {
       if (i >= endpoints.length) return;
       fetch(endpoints[i], { headers: { Authorization: `Bearer ${token}` } })

@@ -38,9 +38,8 @@ export default function PostCampaignPage() {
 
   // Fetch bits from backend — try multiple endpoints
   const fetchBitsFromBackend = (token: string, localBits: number) => {
-    // Try /users/bits first, fallback to /profile/me
+    // Fetch bits from /profile/me
     const tryEndpoints = [
-      `${API_BASE}/users/bits`,
       `${API_BASE}/profile/me`,
     ];
 
