@@ -125,13 +125,14 @@ export default function PostCampaignPage() {
         throw new Error(data.message || "Failed to create campaign");
       }
 
-      // ✅ Backend deduct karta hai — fresh coins lo
+      // ✅ Backend response se bits lo (most accurate)
       if (!isSubscribed) {
-        const newCoins = Math.max(0, coins - COINS_PER_CAM);
+        const newCoins = data.bits !== undefined ? data.bits : Math.max(0, coins - COINS_PER_CAM);
         setCoins(newCoins);
         const stored = localStorage.getItem("cb_user");
         const parsed = JSON.parse(stored || "{}");
         localStorage.setItem("cb_user", JSON.stringify({ ...parsed, coins: newCoins, bits: newCoins }));
+        console.log("🪙 Campaign created — backend bits:", data.bits, "→ showing:", newCoins);
         if (newCoins < COINS_PER_CAM) setTimeout(() => setShowCoinModal(true), 1200);
       }
 
