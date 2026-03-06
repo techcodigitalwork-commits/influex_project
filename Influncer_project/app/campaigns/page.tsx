@@ -47,7 +47,7 @@ export default function CampaignBoard() {
     if (!token) { router.push("/login"); return; }
 
     const localBits = parsed.bits ?? FREE_COINS;
-    setCoins(localBits);
+    //setCoins(localBits);
     setIsSubscribed(parsed.isSubscribed ?? false);
 
     fetchCampaigns(token, userRole);
