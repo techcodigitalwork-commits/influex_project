@@ -2,13 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import Script from "next/script";
 
-const API          = "http://54.252.201.93:5000/api";
-const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
-const PLAN_ID      = "plan_SKmSEwh4wl4Tv6";
-const FREE_COINS      = 100;
-const COINS_PER_APPLY = 10;
+const API = "http://54.252.201.93:5000/api";
 
 export default function DiscoveryPage() {
   const router = useRouter();
@@ -19,55 +14,19 @@ export default function DiscoveryPage() {
   const [loading, setLoading]           = useState(true);
   const [appliedIds, setAppliedIds]     = useState<string[]>([]);
   const [selectedCity, setSelectedCity] = useState("");
-  const [selectedCat, setSelectedCat]   = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [token, setToken]               = useState("");
 
-  const [coins, setCoins]               = useState<number>(FREE_COINS);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [showCoinModal, setShowCoinModal] = useState(false);
-  const [loadingPlan, setLoadingPlan]   = useState<string | null>(null);
-  const [toast, setToast]               = useState<{ msg: string; type: "success" | "error" } | null>(null);
-
-  const showToast = (msg: string, type: "success" | "error" = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
   useEffect(() => {
-    const raw = localStorage.getItem("cb_user");
-    if (!raw) { router.push("/login"); return; }
-    const parsed = JSON.parse(raw);
-
-    if (parsed.coins !== undefined) {
-      delete parsed.coins;
-      localStorage.setItem("cb_user", JSON.stringify(parsed));
-    }
-
+    const user = localStorage.getItem("cb_user");
+    if (!user) { router.push("/login"); return; }
+    const parsed = JSON.parse(user);
     if (parsed.role?.toLowerCase() === "brand") { router.push("/campaigns"); return; }
     const t = parsed.token || localStorage.getItem("token");
     if (!t) { router.push("/login"); return; }
     setToken(t);
-
     const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
     setAppliedIds(savedApplied);
-
-    const localBits = parsed.bits ?? FREE_COINS;
-    setCoins(localBits);
-    setIsSubscribed(parsed.isSubscribed ?? false);
-
-    // profile/me se sirf isSubscribed lo
-    fetch(`${API}/profile/me`, { headers: { Authorization: `Bearer ${t}` } })
-      .then(r => r.json())
-      .then(data => {
-        if (data?.success && data?.profile) {
-          const liveSub = data.profile.isSubscribed ?? false;
-          setIsSubscribed(liveSub);
-          const updated = { ...parsed, isSubscribed: liveSub };
-          delete updated.coins;
-          localStorage.setItem("cb_user", JSON.stringify(updated));
-        }
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -75,17 +34,10 @@ export default function DiscoveryPage() {
     fetchAllCampaigns();
   }, [token]);
 
-  // Window focus pe bits reload karo (apply karke wapas aane pe)
   useEffect(() => {
     const handleFocus = () => {
-      const saved = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
-      setAppliedIds(saved);
-      const raw = localStorage.getItem("cb_user");
-      if (raw) {
-        const p = JSON.parse(raw);
-        setCoins(p.bits ?? FREE_COINS);
-        setIsSubscribed(p.isSubscribed ?? false);
-      }
+      const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
+      setAppliedIds(savedApplied);
     };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
@@ -94,7 +46,9 @@ export default function DiscoveryPage() {
   const fetchAllCampaigns = async () => {
     try {
       setLoading(true);
-      const res  = await fetch(`${API}/campaigns/all`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API}/campaigns/all`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       if (!res.ok) return;
       const campaigns = Array.isArray(data.data) ? data.data
@@ -102,7 +56,7 @@ export default function DiscoveryPage() {
         : Array.isArray(data) ? data : [];
       setAllCampaigns(campaigns);
 
-      const applied      = campaigns.filter((c: any) => c.hasApplied || c.applied).map((c: any) => c._id);
+      const applied = campaigns.filter((c: any) => c.hasApplied || c.applied).map((c: any) => c._id);
       const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
       setAppliedIds([...new Set([...applied, ...savedApplied])]);
 
@@ -112,6 +66,8 @@ export default function DiscoveryPage() {
         if (camp.city?.trim()) citySet.add(camp.city.toLowerCase().trim());
         if (Array.isArray(camp.categories)) {
           camp.categories.forEach((cat: string) => { if (cat?.trim()) catSet.add(cat.toLowerCase().trim()); });
+        } else if (camp.category?.trim()) {
+          catSet.add(camp.category.toLowerCase().trim());
         }
       });
       setCities([...citySet]);
@@ -125,134 +81,55 @@ export default function DiscoveryPage() {
 
   const filteredCampaigns = useMemo(() => {
     return allCampaigns.filter((c) => {
-      const cityMatch = selectedCity ? c.city?.toLowerCase() === selectedCity : true;
-      const catMatch  = selectedCat
+      const cityMatch = selectedCity ? c.city?.toLowerCase() === selectedCity.toLowerCase() : true;
+      const catMatch  = selectedCategory
         ? Array.isArray(c.categories)
-          ? c.categories.some((cat: string) => cat.toLowerCase() === selectedCat)
-          : c.category?.toLowerCase() === selectedCat
+          ? c.categories.some((cat: string) => cat.toLowerCase() === selectedCategory.toLowerCase())
+          : c.category?.toLowerCase() === selectedCategory.toLowerCase()
         : true;
       return cityMatch && catMatch;
     });
-  }, [allCampaigns, selectedCity, selectedCat]);
+  }, [allCampaigns, selectedCity, selectedCategory]);
 
-  const openRazorpay = (subscriptionId: string, planId: string, planName: string) => {
-    const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
-    const tok    = parsed.token || localStorage.getItem("token");
-    const options = {
-      key: RAZORPAY_KEY, subscription_id: subscriptionId,
-      name: "Influex Premium", description: `${planName} Plan`,
-      theme: { color: "#4f46e5" },
-      prefill: { name: parsed?.name || "", email: parsed?.email || "" },
-      handler: async function (response: any) {
-        try {
-          await fetch(`${API}/subscription/verify`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-            body: JSON.stringify({
-              razorpay_payment_id:      response.razorpay_payment_id,
-              razorpay_subscription_id: response.razorpay_subscription_id,
-              razorpay_signature:       response.razorpay_signature,
-              plan_id: PLAN_ID, planName,
-            }),
-          });
-        } catch {}
-        const aRes  = await fetch(`${API}/subscription/activate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
-          body: JSON.stringify({ plan_id: PLAN_ID, planId, planName }),
-        });
-        const aData = await aRes.json();
-        if (aData.success) {
-          const updated = { ...parsed, isSubscribed: true, activePlan: planId, bits: 99999 };
-          delete updated.coins;
-          localStorage.setItem("cb_user", JSON.stringify(updated));
-          setIsSubscribed(true); setCoins(99999); setShowCoinModal(false);
-          showToast(`🎉 ${planName} activated! Unlimited applies!`, "success");
-        } else { showToast("Activation failed. Contact support.", "error"); }
-        setLoadingPlan(null);
-      },
-      modal: { ondismiss: () => { showToast("Payment cancelled.", "error"); setLoadingPlan(null); } },
-    };
-    const rzp = new (window as any).Razorpay(options);
-    rzp.on("payment.failed", (r: any) => { showToast(`Payment failed: ${r.error.description}`, "error"); setLoadingPlan(null); });
-    rzp.open();
-  };
-
-  const handleSubscribe = async (planId: string, planName: string) => {
-    const parsed = JSON.parse(localStorage.getItem("cb_user") || "{}");
-    const t      = parsed.token || localStorage.getItem("token");
-    if (!t) { showToast("Session expired.", "error"); return; }
-    setLoadingPlan(planId);
-    try {
-      const res  = await fetch(`${API}/subscription/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
-        body: JSON.stringify({ plan_id: PLAN_ID }),
-      });
-      const data = await res.json();
-      if (!data.success || !data.subscription?.id) {
-        showToast(data.message || "Failed.", "error"); setLoadingPlan(null); return;
-      }
-      openRazorpay(data.subscription.id, planId, planName);
-    } catch { showToast("Something went wrong.", "error"); setLoadingPlan(null); }
-  };
-
-  const coinsPercent = Math.max(0, Math.min(100, (coins / FREE_COINS) * 100));
-  const coinsLow     = !isSubscribed && coins <= 20 && coins > 0;
-  const coinsEmpty   = !isSubscribed && coins <= 0;
-  const appliesLeft  = isSubscribed ? "∞" : Math.floor(coins / COINS_PER_APPLY);
-
-  const goToDetail = (campaignId: string) => {
-    router.push(`/campaigns/campaignsdetail?id=${campaignId}`);
+  const goToDetail = (id: string) => {
+    router.push(`/campaigns/campaignsdetail?id=${id}`);
   };
 
   return (
     <>
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
-
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         *, *::before, *::after { box-sizing: border-box; }
-        @keyframes spin     { to { transform: rotate(360deg); } }
-        @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp  { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        @keyframes toastIn  { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-        @keyframes miniSpin { to { transform: rotate(360deg); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .disc-page { font-family: 'Plus Jakarta Sans', sans-serif; background: #f5f5f0; min-height: 100vh; }
-
-        .disc-header { padding: 40px 40px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .disc-header { padding: 40px 40px 0; }
         @media(max-width:600px){ .disc-header { padding: 24px 16px 0; } }
         .disc-title { font-size: 30px; font-weight: 800; color: #4f46e5; margin: 0 0 4px; }
         .disc-sub   { color: #999; font-size: 14px; margin: 0; }
 
-        .disc-coin-pill { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #e8e8e8; border-radius: 14px; padding: 10px 16px; min-width: 200px; flex-shrink: 0; transition: border-color 0.2s; }
-        .disc-coin-pill.warn  { border-color: #fbbf24; background: #fffbeb; }
-        .disc-coin-pill.empty { border-color: #ef4444; background: #fff5f5; }
-        .disc-coin-pill.pro   { border-color: #86efac; background: #f0fdf4; }
-        .disc-coin-icon { font-size: 20px; }
-        .disc-coin-info { flex: 1; min-width: 0; }
-        .disc-coin-label { font-size: 11px; color: #aaa; font-weight: 500; }
-        .disc-coin-val { font-size: 17px; font-weight: 800; color: #4f46e5; line-height: 1; }
-        .disc-coin-val.warn-val  { color: #d97706; }
-        .disc-coin-val.empty-val { color: #ef4444; }
-        .disc-coin-val.pro-val   { color: #16a34a; }
-        .disc-coin-sub { font-size: 11px; color: #aaa; margin-top: 2px; }
-        .disc-coin-bar-wrap { width: 100%; height: 3px; background: #f0f0f0; border-radius: 2px; margin-top: 4px; overflow: hidden; }
-        .disc-coin-bar { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
-        .disc-coin-upgrade-btn { padding: 7px 12px; border-radius: 8px; background: #4f46e5; color: #fff; font-size: 11px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
-        .disc-coin-upgrade-btn:hover { background: #4338ca; }
-        .disc-coin-upgrade-btn.warn-btn  { background: #f59e0b; }
-        .disc-coin-upgrade-btn.warn-btn:hover  { background: #d97706; }
-        .disc-coin-upgrade-btn.empty-btn { background: #ef4444; }
-        .disc-coin-upgrade-btn.empty-btn:hover { background: #dc2626; }
-
         .disc-filters { display: flex; gap: 10px; padding: 20px 40px; flex-wrap: wrap; }
         @media(max-width:600px){ .disc-filters { padding: 16px; } }
-        .disc-select { padding: 10px 36px 10px 14px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fff; font-size: 13px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 500; color: #555; outline: none; cursor: pointer; transition: all 0.2s; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-color: #fff; }
+        .disc-select {
+          padding: 10px 36px 10px 14px; border-radius: 100px;
+          border: 1.5px solid #e8e8e8; background: #fff;
+          font-size: 13px; font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 500; color: #555; outline: none; cursor: pointer;
+          transition: all 0.2s; appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+          background-repeat: no-repeat; background-position: right 12px center; background-color: #fff;
+        }
         .disc-select:focus { border-color: #4f46e5; }
-        .disc-select.active { border-color: #4f46e5; background-color: #4f46e5; color: #fff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); }
-        .disc-clear { padding: 10px 16px; border-radius: 100px; border: 1.5px solid #e8e8e8; background: #fafafa; font-size: 13px; color: #999; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.2s; }
+        .disc-select.active {
+          border-color: #4f46e5; background-color: #4f46e5; color: #fff;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+        }
+        .disc-clear {
+          padding: 10px 16px; border-radius: 100px;
+          border: 1.5px solid #e8e8e8; background: #fafafa;
+          font-size: 13px; color: #999; cursor: pointer;
+          font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.2s;
+        }
         .disc-clear:hover { border-color: #ef4444; color: #ef4444; }
 
         .disc-stats { display: flex; gap: 6px; align-items: center; padding: 0 40px 16px; }
@@ -260,138 +137,57 @@ export default function DiscoveryPage() {
         .disc-stat-text  { font-size: 13px; color: #999; }
         .disc-stat-count { font-size: 13px; font-weight: 700; color: #4f46e5; }
 
-        .disc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; padding: 0 40px 32px; }
+        .disc-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 18px; padding: 0 40px 32px;
+        }
         @media(max-width:600px){ .disc-grid { grid-template-columns: 1fr; padding: 0 16px 24px; gap: 14px; } }
 
-        .disc-card { background: #fff; border-radius: 18px; border: 1.5px solid #ebebeb; padding: 22px; transition: all 0.2s; cursor: pointer; }
+        .disc-card {
+          background: #fff; border-radius: 18px;
+          border: 1.5px solid #ebebeb; padding: 22px;
+          transition: all 0.2s; cursor: pointer;
+        }
         .disc-card:hover { border-color: #c7d2fe; box-shadow: 0 8px 30px rgba(79,70,229,0.08); transform: translateY(-2px); }
+
         .disc-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 10px; }
         .disc-card-title { font-size: 16px; font-weight: 700; color: #111; margin: 0; line-height: 1.3; }
         .disc-badge { padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: 700; background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; white-space: nowrap; flex-shrink: 0; }
         .disc-badge.applied { background: #eff6ff; color: #4f46e5; border-color: #c7d2fe; }
+
         .disc-desc { color: #777; font-size: 13px; line-height: 1.6; margin: 0 0 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
         .disc-meta { display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
         .disc-meta-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #999; font-weight: 500; }
+
         .disc-cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
         .disc-cat { padding: 3px 10px; border-radius: 100px; background: #f0eeff; font-size: 11px; color: #4f46e5; font-weight: 600; }
-        .disc-coin-cost { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #aaa; font-weight: 600; margin-bottom: 10px; background: #fafafa; border-radius: 8px; padding: 6px 10px; }
-        .disc-coin-cost.empty-cost { color: #ef4444; background: #fff5f5; }
-        .disc-apply-btn { width: 100%; padding: 11px; border-radius: 11px; font-size: 13px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; transition: all 0.2s; background: #4f46e5; color: #fff; display: flex; align-items: center; justify-content: center; gap: 6px; }
-        .disc-apply-btn:hover:not(:disabled) { background: #4338ca; transform: translateY(-1px); }
-        .disc-apply-btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
-        .disc-apply-btn.applied-btn  { background: #f0fdf4; color: #16a34a; border: 1.5px solid #bbf7d0; }
+
+        .disc-apply-btn {
+          width: 100%; padding: 11px; border-radius: 11px;
+          font-size: 13px; font-weight: 700;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          border: none; cursor: pointer; transition: all 0.2s;
+          background: #4f46e5; color: #fff;
+        }
+        .disc-apply-btn:hover { background: #4338ca; transform: translateY(-1px); }
+        .disc-apply-btn.applied-btn { background: #f0fdf4; color: #16a34a; border: 1.5px solid #bbf7d0; }
         .disc-apply-btn.applied-btn:hover { background: #dcfce7; transform: none; }
-        .disc-apply-btn.no-coins-btn { background: #fff5f5; color: #ef4444; border: 1.5px solid #fecaca; }
-        .disc-apply-btn.no-coins-btn:hover { background: #fee2e2; transform: none; }
 
         .disc-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 40px; text-align: center; }
         .disc-empty-icon  { font-size: 48px; margin-bottom: 16px; }
         .disc-empty-title { font-size: 20px; font-weight: 700; color: #111; margin: 0 0 8px; }
         .disc-empty-sub   { color: #aaa; font-size: 14px; margin: 0; }
+
         .disc-loading { display: flex; align-items: center; justify-content: center; padding: 80px; }
         .disc-spinner { width: 32px; height: 32px; border: 3px solid #f0f0f0; border-top-color: #4f46e5; border-radius: 50%; animation: spin 0.8s linear infinite; }
-
-        .coin-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.2s ease; }
-        .coin-modal { background: #fff; border-radius: 24px; max-width: 420px; width: 100%; padding: 36px 32px 30px; position: relative; text-align: center; animation: slideUp 0.25s ease; }
-        .coin-modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; font-size: 20px; cursor: pointer; color: #aaa; padding: 4px; }
-        .coin-modal-close:hover { color: #555; }
-        .coin-modal-icon  { font-size: 56px; margin-bottom: 16px; line-height: 1; }
-        .coin-modal-title { font-size: 22px; font-weight: 700; color: #111; margin-bottom: 8px; }
-        .coin-modal-sub   { font-size: 14px; color: #777; line-height: 1.65; margin-bottom: 10px; }
-        .coin-prog-wrap { margin: 16px 0 24px; }
-        .coin-prog-top  { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 6px; }
-        .coin-prog      { height: 8px; background: #f0f0f0; border-radius: 100px; overflow: hidden; }
-        .coin-prog-fill { height: 100%; border-radius: 100px; transition: width 0.6s ease; }
-        .coin-plan-btn { width: 100%; padding: 14px 20px; border-radius: 14px; border: none; font-size: 15px; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; box-shadow: 0 4px 16px rgba(79,70,229,0.3); }
-        .coin-plan-btn:hover:not(:disabled) { box-shadow: 0 6px 24px rgba(79,70,229,0.4); transform: translateY(-1px); }
-        .coin-plan-btn:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
-        .coin-skip   { font-size: 13px; color: #ccc; cursor: pointer; background: none; border: none; font-family: 'Plus Jakarta Sans', sans-serif; text-decoration: underline; }
-        .coin-skip:hover { color: #888; }
-        .coin-secure { font-size: 11px; color: #ddd; margin-top: 10px; }
-        .disc-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); padding: 12px 22px; border-radius: 12px; font-size: 14px; font-weight: 500; font-family: 'Plus Jakarta Sans', sans-serif; z-index: 99999; box-shadow: 0 4px 20px rgba(0,0,0,0.15); animation: toastIn 0.3s ease; white-space: nowrap; max-width: 90vw; text-align: center; }
-        .disc-toast.success { background: #16a34a; color: #fff; }
-        .disc-toast.error   { background: #ef4444; color: #fff; }
-        .mini-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%; animation: miniSpin 0.7s linear infinite; margin-right: 6px; vertical-align: middle; }
       `}</style>
 
-      {toast && <div className={`disc-toast ${toast.type}`}>{toast.msg}</div>}
-
-      {/* COIN MODAL */}
-      {showCoinModal && (
-        <div className="coin-overlay">
-          <div className="coin-modal">
-            <button className="coin-modal-close" onClick={() => setShowCoinModal(false)}>✕</button>
-            <div className="coin-modal-icon">🪙</div>
-            <div className="coin-modal-title">{coinsEmpty ? "Coins Khatam Ho Gaye!" : "Coins Khatam Hone Wale Hain!"}</div>
-            <div className="coin-modal-sub">
-              {coinsEmpty
-                ? `Saare ${FREE_COINS} coins use ho gaye. Pro plan lo — unlimited campaigns apply karo.`
-                : `Sirf ${coins} coins bache — ${Math.floor(coins / COINS_PER_APPLY)} aur applies. Upgrade karo!`}
-            </div>
-            <div className="coin-prog-wrap">
-              <div className="coin-prog-top">
-                <span>Coins used</span>
-                <span>{FREE_COINS - Math.max(0, coins)} / {FREE_COINS}</span>
-              </div>
-              <div className="coin-prog">
-                <div className="coin-prog-fill" style={{
-                  width: `${Math.min(100, ((FREE_COINS - Math.max(0, coins)) / FREE_COINS) * 100)}%`,
-                  background: coinsEmpty ? "#ef4444" : "#f59e0b",
-                }} />
-              </div>
-            </div>
-            <button className="coin-plan-btn" onClick={() => handleSubscribe("pro_monthly", "Pro")} disabled={loadingPlan !== null}>
-              <span>
-                {loadingPlan === "pro_monthly"
-                  ? <><span className="mini-spin" />Processing...</>
-                  : "⚡ Upgrade to Pro — Unlimited Applies"}
-              </span>
-              <span style={{ fontSize: 13, opacity: 0.85 }}>₹999/mo</span>
-            </button>
-            <button className="coin-skip" onClick={() => setShowCoinModal(false)}>Maybe later</button>
-            <div className="coin-secure">🔒 Secured by Razorpay</div>
-          </div>
-        </div>
-      )}
-
       <div className="disc-page">
-        {/* HEADER */}
         <div className="disc-header">
-          <div>
-            <h1 className="disc-title">Discover Campaigns</h1>
-            <p className="disc-sub">Find brand campaigns that match your vibe</p>
-          </div>
-
-          <div className={`disc-coin-pill ${isSubscribed ? "pro" : coinsEmpty ? "empty" : coinsLow ? "warn" : ""}`}>
-            <div className="disc-coin-icon">🪙</div>
-            <div className="disc-coin-info">
-              <div className="disc-coin-label">
-                {isSubscribed ? "Unlimited Coins" : `Coins • ${appliesLeft} applies left`}
-              </div>
-              <div className={`disc-coin-val ${isSubscribed ? "pro-val" : coinsEmpty ? "empty-val" : coinsLow ? "warn-val" : ""}`}>
-                {isSubscribed ? "∞" : coins}
-              </div>
-              <div className="disc-coin-sub">
-                {isSubscribed ? "Pro Plan" : `${COINS_PER_APPLY} coins per apply`}
-              </div>
-              {!isSubscribed && (
-                <div className="disc-coin-bar-wrap">
-                  <div className="disc-coin-bar" style={{
-                    width: `${coinsPercent}%`,
-                    background: coinsEmpty ? "#ef4444" : coinsLow ? "#f59e0b" : "#4f46e5",
-                  }} />
-                </div>
-              )}
-            </div>
-            {!isSubscribed && (
-              <button
-                className={`disc-coin-upgrade-btn ${coinsEmpty ? "empty-btn" : coinsLow ? "warn-btn" : ""}`}
-                onClick={() => setShowCoinModal(true)}
-              >
-                {coinsEmpty ? "Upgrade!" : coinsLow ? "Upgrade ⚡" : "Upgrade"}
-              </button>
-            )}
-          </div>
+          <h1 className="disc-title">Discover Campaigns</h1>
+          <p className="disc-sub">Find brand campaigns that match your vibe</p>
         </div>
 
         {/* FILTERS */}
@@ -406,18 +202,20 @@ export default function DiscoveryPage() {
               <option key={i} value={city}>{city.charAt(0).toUpperCase() + city.slice(1)}</option>
             ))}
           </select>
+
           <select
-            className={`disc-select ${selectedCat ? "active" : ""}`}
-            value={selectedCat}
-            onChange={(e) => setSelectedCat(e.target.value)}
+            className={`disc-select ${selectedCategory ? "active" : ""}`}
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
           >
             <option value="">🎯 All Categories</option>
             {categories.map((cat, i) => (
               <option key={i} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
             ))}
           </select>
-          {(selectedCity || selectedCat) && (
-            <button className="disc-clear" onClick={() => { setSelectedCity(""); setSelectedCat(""); }}>
+
+          {(selectedCity || selectedCategory) && (
+            <button className="disc-clear" onClick={() => { setSelectedCity(""); setSelectedCategory(""); }}>
               ✕ Clear
             </button>
           )}
@@ -427,7 +225,7 @@ export default function DiscoveryPage() {
         {!loading && allCampaigns.length > 0 && (
           <div className="disc-stats">
             <span className="disc-stat-count">{filteredCampaigns.length}</span>
-            <span className="disc-stat-text">campaigns {selectedCity || selectedCat ? "found" : "available"}</span>
+            <span className="disc-stat-text">campaigns {selectedCity || selectedCategory ? "found" : "available"}</span>
           </div>
         )}
 
@@ -438,18 +236,16 @@ export default function DiscoveryPage() {
           <div className="disc-empty">
             <div className="disc-empty-icon">🔍</div>
             <h3 className="disc-empty-title">
-              {selectedCity || selectedCat ? "No matches found" : "No campaigns yet"}
+              {selectedCity || selectedCategory ? "No matches found" : "No campaigns yet"}
             </h3>
             <p className="disc-empty-sub">
-              {selectedCity || selectedCat ? "Try different filters" : "Check back soon!"}
+              {selectedCity || selectedCategory ? "Try different filters or clear to see all" : "Check back soon!"}
             </p>
           </div>
         ) : (
           <div className="disc-grid">
             {filteredCampaigns.map((c) => {
               const isApplied = appliedIds.includes(c._id);
-              const cantApply = coinsEmpty && !isSubscribed;
-
               return (
                 <div
                   key={c._id}
@@ -478,26 +274,12 @@ export default function DiscoveryPage() {
                     </div>
                   )}
 
-                  {!isApplied && !isSubscribed && (
-                    <div className={`disc-coin-cost ${cantApply ? "empty-cost" : ""}`}>
-                      🪙 {COINS_PER_APPLY} coins required to apply
-                      {cantApply && " — Not enough coins!"}
-                    </div>
-                  )}
-
                   {isApplied ? (
                     <button
                       className="disc-apply-btn applied-btn"
                       onClick={(e) => { e.stopPropagation(); goToDetail(c._id); }}
                     >
                       ✓ Applied — View Details
-                    </button>
-                  ) : cantApply ? (
-                    <button
-                      className="disc-apply-btn no-coins-btn"
-                      onClick={(e) => { e.stopPropagation(); setShowCoinModal(true); }}
-                    >
-                      🪙 Not enough coins — Upgrade
                     </button>
                   ) : (
                     <button
@@ -516,7 +298,6 @@ export default function DiscoveryPage() {
     </>
   );
 }
-
 
 
 // "use client";
