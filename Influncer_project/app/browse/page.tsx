@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const API = "http://54.252.201.93:5000/api";
-const FREE_LIMIT = 4;
+const FREE_LIMIT = 0;
 
 interface Creator {
   _id: string;
@@ -333,7 +333,7 @@ export default function BrowsePage() {
                 const followers    = getFollowers(creator);
                 // const isBlurred    = index >= FREE_LIMIT;
                 const isBlurred = false;
-                
+
 
                 return (
                   <div key={id} className={`cc ${isBlurred ? "cc-blurred" : ""}`}
