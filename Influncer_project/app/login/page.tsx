@@ -62,6 +62,8 @@ export default function LoginPage() {
         ...userWithoutCoins,
         token,
         hasProfile,
+        bits: data.user.bits ?? 100,
+        isSubscribed: data.user.isSubscribed ?? false,
         // bits comes from data.user.bits (set by backend) — coins field removed
       };
 
