@@ -123,7 +123,7 @@ function CampaignDetailInner() {
       setApplied(true);
       setShowModal(false);
       showToast("Applied successfully! 🎉", "success");
-      setTimeout(() => router.push("/campaigns/discovery"), 2000);
+      setTimeout(() => router.push("/discovery"), 2000);
     } catch {
       showToast("Network error. Please try again.", "error");
     } finally {
