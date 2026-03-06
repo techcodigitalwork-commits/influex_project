@@ -412,7 +412,7 @@ export default function LandingPage() {
             <div className="hero-btns">
               {isLoggedIn ? (
                 <>
-                  <Link href="/campaigns" className="hbtn-primary">Go to Dashboard →</Link>
+                  <Link href="/discovery" className="hbtn-primary">Go to Dashboard →</Link>
                   <Link href="/discovery" className="hbtn-outline">Browse Campaigns</Link>
                 </>
               ) : (
