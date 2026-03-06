@@ -331,7 +331,9 @@ export default function BrowsePage() {
                 const city         = getCity(creator);
                 const cats         = getCats(creator);
                 const followers    = getFollowers(creator);
-                const isBlurred    = index >= FREE_LIMIT;
+                // const isBlurred    = index >= FREE_LIMIT;
+                const isBlurred = false;
+                
 
                 return (
                   <div key={id} className={`cc ${isBlurred ? "cc-blurred" : ""}`}
