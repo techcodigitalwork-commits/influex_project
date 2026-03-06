@@ -27,7 +27,7 @@ function MessagesInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvRef = useRef<any>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
+  const fetchedConversations = useRef(false);
   /* ── AUTH ── */
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -74,26 +74,58 @@ function MessagesInner() {
     return () => { socket.disconnect(); socketRef.current = null; };
   }, [token, myId]);
 
-  /* ── LOAD CONVERSATIONS ── */
-  useEffect(() => {
-    if (!token) return;
-    setLoadingConvs(true);
-    fetch(`${API}/conversations/my`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => {
-        const convs = data?.data || [];
-        setConversations(convs);
-        const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
-        if (targetUserId && convs.length > 0) {
-          const matched = convs.find((c: any) =>
-            c.participants?.some((p: any) => (p?._id || p)?.toString() === targetUserId)
-          );
-          if (matched) { setActiveConv(matched); setShowSidebar(false); }
+ 
+ /* ── LOAD CONVERSATIONS ── */
+ useEffect(() => {
+  if (!token || fetchedConversations.current) return;
+
+  fetchedConversations.current = true;
+  setLoadingConvs(true);
+
+  fetch(`${API}/conversations/my`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then(r => r.json())
+    .then(data => {
+      const convs = data?.data || [];
+      setConversations(convs);
+
+      const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
+
+      if (targetUserId && convs.length > 0) {
+        const matched = convs.find((c: any) =>
+          c.participants?.some((p: any) => (p?._id || p)?.toString() === targetUserId)
+        );
+
+        if (matched) {
+          setActiveConv(matched);
+          setShowSidebar(false);
         }
-      })
-      .catch(console.error)
-      .finally(() => setLoadingConvs(false));
-  }, [token]);
+      }
+    })
+    .catch(console.error)
+    .finally(() => setLoadingConvs(false));
+
+}, [token]);
+  // useEffect(() => {
+  //   if (!token) return;
+  //   setLoadingConvs(true);
+  //   fetch(`${API}/conversations/my`, { headers: { Authorization: `Bearer ${token}` } })
+  //     .then(r => r.json())
+  //     .then(data => {
+  //       const convs = data?.data || [];
+  //       setConversations(convs);
+  //       const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
+  //       if (targetUserId && convs.length > 0) {
+  //         const matched = convs.find((c: any) =>
+  //           c.participants?.some((p: any) => (p?._id || p)?.toString() === targetUserId)
+  //         );
+  //         if (matched) { setActiveConv(matched); setShowSidebar(false); }
+  //       }
+  //     })
+  //     .catch(console.error)
+  //     .finally(() => setLoadingConvs(false));
+  // }, [token]);
 
   /* ── LOAD MESSAGES ── */
   useEffect(() => {
