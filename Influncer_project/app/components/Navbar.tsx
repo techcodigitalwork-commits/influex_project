@@ -248,7 +248,7 @@ export default function Navbar() {
                         <Link href="/campaigns/post" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📢 Post Campaign</Link>
                       )}
                       {isBrand && (
-                        <Link href="/browse" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🔍 Browse Creators</Link>
+                        <Link href="/browse" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🔍 Discover</Link>
                       )}
                       <div className="nav-dd-sep" />
                       <button className="nav-dd-item danger" onClick={handleLogout}>🚪 Logout</button>
