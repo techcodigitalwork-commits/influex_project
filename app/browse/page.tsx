@@ -219,7 +219,7 @@ export default function BrowsePage() {
   // ── Blur helpers ──
   // Name: show first half visible, second half blurred via CSS
   const blurNameHalf = (name: string): { visible: string; blurred: string } => {
-    if (!name) return name;
+    if (!name) return { visible: "", blurred: "" };
     const half = Math.ceil(name.length / 2);
     return { visible: name.slice(0, half), blurred: name.slice(half) };
   };
