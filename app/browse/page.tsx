@@ -373,7 +373,11 @@ export default function BrowsePage() {
                   {isAccepted ? gName(modalCreator) : (
                     <>
                       {blurNameHalf(gName(modalCreator)).visible}
-                      <span style={{filter:"blur(6px)",userSelect:"none"}}>{blurNameHalf(gName(modalCreator)).blurred}</span>
+                      {/* <span style={{filter:"blur(6px)",userSelect:"none"}}>{blurNameHalf(gName(modalCreator)).blurred}</span> */}
+                            <span style={{filter:"blur(6px)",userSelect:"none"}}>
+        {name.blurred}
+      </span>
+
                     </>
                   )}
                 </div>
