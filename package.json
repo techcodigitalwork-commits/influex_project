@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
   "name": "influencer-platform",
   "version": "0.1.0",
   "private": true,
@@ -28,9 +27,3 @@
     "typescript": "^5"
   }
 }
-=======
-  "dependencies": {
-    "socket.io-client": "^4.8.3"
-  }
-}
->>>>>>> 0f799d077266bdb29f6c3de3470ca59249009710

@@ -621,7 +621,7 @@ export default function UpgradePage() {
                       className={`plan-card ${i === 1 && !isThisActive ? "featured" : ""} ${isThisActive ? "active-plan" : ""}`}
                     >
                       {isThisActive
-                        ? <div className="plan-active-badge">✓ Your Current Plan</div>
+                        ? <div className="plan-active-badge">✓ Your Current Plana</div>
                         : plan.badge
                           ? <div className={`plan-badge ${i === 2 ? "best" : ""}`}>{plan.badge}</div>
                           : null
