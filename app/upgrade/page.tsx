@@ -570,7 +570,7 @@ export default function UpgradePage() {
         <div className="up-hero">
           <div className="up-hero-label">✦ CreatorBridge Platform</div>
           <h1 className="up-hero-title">
-            ,<br />security is guaranteed
+            Close deals on platform,<br />security is guaranteed
           </h1>
           <p className="up-hero-sub">
             Escrow payments, verified creators, smart contracts — all in one platform.
