@@ -110,7 +110,7 @@ export default function CampaignView() {
           </div>
         </div>
 
-        {/* BUTTONS */}
+        {/* BUTTONS */}3
         <div className="mt-10 flex gap-4">
           <Link
             href={`/campaigns/${campaign._id}/applications`}
