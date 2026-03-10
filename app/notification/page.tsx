@@ -33,19 +33,62 @@ export default function NotificationsPage() {
       const connectDecided = JSON.parse(localStorage.getItem("connectDecisions") || "{}");
       const localRead: string[] = JSON.parse(localStorage.getItem("readNotifIds") || "[]");
 
-      const merged = notifs.map((n: any) => ({
+      let merged = notifs.map((n: any) => ({
         ...n,
         applicationStatus: decided[n.applicationId] || n.applicationStatus || n.status,
         connectStatus: connectDecided[n._id] || n.connectStatus,
         read: n.read === true || localRead.includes(n._id),
       }));
 
+      // ✅ For apply notifications — fetch creator info from applications API
+      const applyNotifs = merged.filter((n: any) =>
+        n.type === "campaign_apply" || n.type === "new_application" || n.type === "application"
+      );
+
+      if (applyNotifs.length > 0) {
+        // Get unique campaign IDs from notification links
+        const campaignIds = [...new Set(
+          applyNotifs.map((n: any) => n.link?.split("/").filter(Boolean).pop()).filter(Boolean)
+        )] as string[];
+
+        // Fetch applications for each campaign
+        const appMap: Record<string, any> = {}; // applicationId -> creator profile
+        await Promise.allSettled(
+          campaignIds.map(async (cid) => {
+            try {
+              const r = await fetch(`${API}/campaigns/${cid}/applications`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const d = await r.json();
+              const apps: any[] = d.applications || d.data || [];
+              apps.forEach((app: any) => {
+                const appId = app._id;
+                const profile = app.influencer || app;
+                appMap[appId] = {
+                  creatorName: profile.name || null,
+                  creatorImage: profile.profileImage || null,
+                  creatorFollowers: profile.followers || null,
+                  creatorPlatform: profile.platform || null,
+                };
+              });
+            } catch { /* skip */ }
+          })
+        );
+
+        // Merge creator info into notifications
+        merged = merged.map((n: any) => {
+          if (n.applicationId && appMap[n.applicationId]) {
+            return { ...n, ...appMap[n.applicationId] };
+          }
+          return n;
+        });
+      }
+
       setNotifications(merged);
 
       const unreadIds = merged.filter((n: any) => !n.read).map((n: any) => n._id);
       if (unreadIds.length > 0) markAllAsRead(token, unreadIds, merged);
 
-      // ✅ Signal navbar to reset count
       localStorage.setItem("notif_all_read", Date.now().toString());
     } catch (err) {
       console.error(err);
@@ -350,9 +393,9 @@ export default function NotificationsPage() {
                     {!senderName && <div className="np-time">{timeAgo(n.createdAt)}</div>}
 
                     {isApply && (() => {
-                      const cName = n.applicantName || n.creatorName || n.from?.name || n.sender?.name || getSenderName(n) || null;
-                      const cImg  = n.applicantImage || n.creatorImage || n.from?.profileImage || n.sender?.profileImage || getSenderAvatar(n) || null;
-                      const cFollowers = n.followers || n.applicantFollowers || null;
+                      const cName = n.creatorName || n.applicantName || n.from?.name || n.sender?.name || getSenderName(n) || null;
+                      const cImg  = n.creatorImage || n.applicantImage || n.from?.profileImage || n.sender?.profileImage || getSenderAvatar(n) || null;
+                      const cFollowers = n.creatorFollowers || n.followers || n.applicantFollowers || null;
                       return (
                         <div className="np-creator-strip" onClick={() => viewCreatorProfile(n)}>
                           <div className="np-avatar">
@@ -460,12 +503,17 @@ export default function NotificationsPage() {
                 <div className="pm-stat"><div className="pm-stat-num">{selectedProfile.platform ? "✓" : "—"}</div><div className="pm-stat-label">Platform</div></div>
               </div>
               {selectedProfile.bio && <div><div className="pm-label">About</div><div className="pm-bio">{selectedProfile.bio}</div></div>}
-              {selectedProfile.platform && <div><div className="pm-label">Platform</div>
+              <div><div className="pm-label">Platform</div>
                 {selectedProfile.status === "accepted"
-                  ? <a href={selectedProfile.platform} target="_blank" rel="noopener noreferrer" className="pm-platform">📸 {selectedProfile.platform}</a>
-                  : <div className="pm-platform" style={{cursor:"default"}}><span style={{filter:"blur(5px)",userSelect:"none",pointerEvents:"none"}}>instagram.com/hidden_until_accepted</span> 🔒</div>
+                  ? (selectedProfile.platform
+                      ? <a href={selectedProfile.platform} target="_blank" rel="noopener noreferrer" className="pm-platform">📸 {selectedProfile.platform}</a>
+                      : <div className="pm-platform" style={{cursor:"default",color:"#aaa"}}>Not provided</div>)
+                  : <div className="pm-platform" style={{cursor:"default",alignItems:"center",gap:8}}>
+                      <span style={{filter:"blur(6px)",userSelect:"none",pointerEvents:"none",flex:1}}>instagram.com/hidden_profile</span>
+                      <span style={{fontSize:16}}>🔒</span>
+                    </div>
                 }
-              </div>}
+              </div>
             </div>
             {selectedProfile.status === "accepted" && <div className="pm-banner pm-banner-accepted">✅ You've accepted this creator!</div>}
             {selectedProfile.status === "rejected" && <div className="pm-banner pm-banner-rejected">❌ You've rejected this creator</div>}
@@ -485,7 +533,6 @@ export default function NotificationsPage() {
     </>
   );
 }
-
 
 // "use client";
 
