@@ -113,7 +113,7 @@ export default function CampaignView() {
         {/* BUTTONS */}
         <div className="mt-10 flex gap-4">
           <Link
-            href={`/campaigns/${campaign._id}/application`}
+            href={`/campaigns/${campaign._id}/applications`}
             className="flex-1 text-center py-3 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-bold hover:opacity-90 transition"
           >
             View Applications ({totalApps})
