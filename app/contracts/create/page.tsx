@@ -33,7 +33,7 @@ function CreateContractPageInner() {
   const [toast, setToast] = useState<{msg:string;type:"success"|"error"}|null>(null);
 
   const [form, setForm] = useState({
-    campaignId: "", influencerId: "", creatorName: "",
+    campaignId: "", influencerId: "", creatorName: "", dealId: "",
     title: "", amount: "", deadline: "",
     deliverables: [""],
     terms: DEFAULT_TERMS,
