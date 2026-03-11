@@ -55,12 +55,19 @@ export default function RewardsPage() {
   };
 
   useEffect(() => {
-    const raw = localStorage.getItem("cb_user");
-    if (!raw) { router.push("/login"); return; }
-    const p = JSON.parse(raw);
-    setToken(p.token);
-    setRole(p.role?.toLowerCase()||"");
-    fetchData(p.token);
+    try {
+      if (typeof window === "undefined") return;
+      const raw = localStorage.getItem("cb_user");
+      if (!raw) { router.push("/login"); return; }
+      const p = JSON.parse(raw);
+      if (!p?.token) { router.push("/login"); return; }
+      setToken(p.token);
+      setRole(p.role?.toLowerCase() || "");
+      fetchData(p.token);
+    } catch (e) {
+      console.error("Rewards init error:", e);
+      router.push("/login");
+    }
   }, []);
 
   const fetchData = async (t:string) => {
@@ -82,10 +89,10 @@ export default function RewardsPage() {
   };
 
   const points      = profile?.points || profile?.rewardPoints || 0;
-  const earnedBadges: string[] = profile?.badges || [];
+  const earnedBadges: string[] = Array.isArray(profile?.badges) ? profile.badges : [];
   const currentLevel = LEVELS.find(l => points >= l.min && points <= l.max) || LEVELS[0];
   const nextLevel    = LEVELS[LEVELS.indexOf(currentLevel) + 1];
-  const levelPct     = nextLevel ? Math.round(((points - currentLevel.min) / (nextLevel.min - currentLevel.min)) * 100) : 100;
+  const levelPct     = nextLevel && (nextLevel.min - currentLevel.min) > 0 ? Math.min(100, Math.round(((points - currentLevel.min) / (nextLevel.min - currentLevel.min)) * 100)) : 100;
 
   if (loading) return (
     <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center"}}>

@@ -33,7 +33,7 @@ function CreateContractPageInner() {
   const [toast, setToast] = useState<{msg:string;type:"success"|"error"}|null>(null);
 
   const [form, setForm] = useState({
-    campaignId: "", creatorId: "", creatorName: "",
+    campaignId: "", influencerId: "", creatorName: "",
     title: "", amount: "", deadline: "",
     deliverables: [""],
     terms: DEFAULT_TERMS,
@@ -61,8 +61,7 @@ function CreateContractPageInner() {
       setForm(f => ({...f, campaignId: campId}));
       fetchApplications(campId, p.token);
     }
-    if (creatorId) setForm(f => ({...f, creatorId}));
-    const dealId = searchParams.get("dealId") || "";
+    if (creatorId) setForm(f => ({...f, influencerId: creatorId}));
     if (dealId) setForm(f => ({...f, dealId}));
   }, []);
 
@@ -86,14 +85,14 @@ function CreateContractPageInner() {
 
   const handleCampaignChange = (cid:string) => {
     const camp = campaigns.find(c=>c._id===cid);
-    setForm(f=>({...f, campaignId:cid, title: camp?`Contract — ${camp.title}`:"", creatorId:"", creatorName:""}));
+    setForm(f=>({...f, campaignId:cid, title: camp?`Contract — ${camp.title}`:"", influencerId:"", creatorName:""}));
     if (cid) fetchApplications(cid);
     else setApplications([]);
   };
 
   const handleCreatorChange = (cid:string) => {
     const app = applications.find(a=>(a.influencer?._id||a._id)===cid);
-    setForm(f=>({...f, creatorId:cid, creatorName: app?.influencer?.name||app?.name||""}));
+    setForm(f=>({...f, influencerId:cid, creatorName: app?.influencer?.name||app?.name||""}));
   };
 
   const addDeliverable    = () => setForm(f=>({...f, deliverables:[...f.deliverables,""]}));
@@ -101,7 +100,7 @@ function CreateContractPageInner() {
   const removeDeliverable = (i:number) => setForm(f=>({...f, deliverables:f.deliverables.filter((_,idx)=>idx!==i)}));
 
   const handleSubmit = async () => {
-    if (!form.campaignId || !form.creatorId || !form.title) {
+    if (!form.campaignId || !form.influencerId || !form.title) {
       showToast("Fill all required fields", "error"); return;
     }
     setSubmitting(true);
@@ -111,7 +110,7 @@ function CreateContractPageInner() {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           dealId: form.dealId || undefined,
-          influencerId: form.creatorId,
+          influencerId: form.influencerId,
           deliverables: form.deliverables.filter(Boolean).join("\n"),
           timeline: form.deadline || "",
           amount: Number(form.amount) || 0,
@@ -217,7 +216,7 @@ function CreateContractPageInner() {
                   ? <div style={{fontSize:13,color:"#aaa",padding:"10px 0"}}>Loading...</div>
                   : applications.length === 0
                     ? <div style={{fontSize:13,color:"#aaa",padding:"10px 0"}}>No applications found</div>
-                    : <select className="cc-select" value={form.creatorId} onChange={e=>handleCreatorChange(e.target.value)}>
+                    : <select className="cc-select" value={form.influencerId} onChange={e=>handleCreatorChange(e.target.value)}>
                         <option value="">Select creator...</option>
                         {applications.map(a => {
                           const id = a.influencer?._id || a._id;

@@ -69,8 +69,10 @@ function MessagesInner() {
       const tok = parsed.token || parsed.accessToken || "";
       setToken(tok);
       const id = parsed._id || parsed.id || parsed.user?._id || parsed.user?.id || "";
-      setMyId(id.toString());
-      myIdRef.current = id.toString();
+      const idStr = id.toString();
+      setMyId(idStr);
+      myIdRef.current = idStr;
+      console.log("[Messages] myId set:", idStr);
       return;
     }
     const t = localStorage.getItem("token") || "";
@@ -79,18 +81,20 @@ function MessagesInner() {
     if (u) {
       const parsed = JSON.parse(u);
       const id = parsed._id || parsed.id || parsed.user?._id || "";
-      setMyId(id.toString());
-      myIdRef.current = id.toString();
+      const idStr = id.toString();
+      setMyId(idStr);
+      myIdRef.current = idStr;
     }
   }, []);
 
   /* ── SOCKET ── */
   useEffect(() => {
-    if (!token || !myId) return;
+    if (!token) return;
+    if (!myId && !myIdRef.current) return;
     if (socketRef.current) return;
     const socket = io(SOCKET_URL, { transports: ["websocket"], auth: { token } });
     socketRef.current = socket;
-    socket.on("connect", () => socket.emit("join", myId));
+    socket.on("connect", () => { if (myIdRef.current) socket.emit("join", myIdRef.current); });
     socket.on("newMessage", (msg: any) => {
       const conv = activeConvRef.current;
       const msgConvId = (msg.conversationId || msg.conversation)?.toString();
@@ -116,6 +120,14 @@ function MessagesInner() {
         }
       } else if (!isMe && msgConvId) {
         setUnreadCounts(prev => ({ ...prev, [msgConvId]: (prev[msgConvId] || 0) + 1 }));
+        // Move conversation to top
+        setConversations(prev => {
+          const idx = prev.findIndex(c => c._id?.toString() === msgConvId);
+          if (idx <= 0) return prev;
+          const updated = [...prev];
+          const [moved] = updated.splice(idx, 1);
+          return [moved, ...updated];
+        });
       }
 
       setConversations(prev =>
@@ -136,11 +148,29 @@ function MessagesInner() {
     fetch(`${API}/conversations/my`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
-        const convs = data?.data || [];
+        const rawConvs = data?.data || data?.conversations || data || [];
+
+        // ── DEDUPLICATE by other participant id ──
+        const seen = new Set<string>();
+        const convs = rawConvs.filter((c: any) => {
+          const parts = c.participants || [];
+          const otherId = parts.find((p: any) => (p?._id || p)?.toString() !== myIdRef.current);
+          const key = (otherId?._id || otherId || c._id)?.toString();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        // Sort by latest message
+        convs.sort((a: any, b: any) => new Date(b.updatedAt||0).getTime() - new Date(a.updatedAt||0).getTime());
+
         setConversations(convs);
+
         const counts: Record<string, number> = {};
         convs.forEach((c: any) => {
-          if (c.unreadCount && c.unreadCount > 0) counts[c._id] = c.unreadCount;
+          // unreadCount from backend OR unread flag
+          const uc = c.unreadCount || c.unread || 0;
+          if (uc > 0) counts[c._id] = uc;
         });
         if (Object.keys(counts).length > 0) setUnreadCounts(counts);
         const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
@@ -176,16 +206,19 @@ function MessagesInner() {
 
   /* ── HELPERS ── */
   const getOtherParticipant = (conv: any) => {
-    if (!conv?.participants || !myId) return null;
-    return conv.participants.find((p: any) => (p?._id || p)?.toString() !== myId);
+    if (!conv?.participants) return null;
+    const id = myId || myIdRef.current;
+    if (!id) return conv.participants[0] || null;
+    const other = conv.participants.find((p: any) => (p?._id || p)?.toString() !== id);
+    return other || conv.participants[0] || null;
   };
   const getName = (p: any): string => {
     if (!p || typeof p === "string") return "User";
-    return p.name || p.username || p.fullName || p.email?.split("@")[0] || "User";
+    return p.name || p.fullName || p.username || p.displayName || p.email?.split("@")[0] || "User";
   };
   const getAvatar = (p: any): string => {
     if (!p || typeof p === "string") return "";
-    return p.profileImage || p.avatar || p.photo || "";
+    return p.profileImage || p.profilePicture || p.avatar || p.photo || p.image || p.picture || "";
   };
   const getInitial = (p: any) => getName(p).charAt(0).toUpperCase();
   const formatTime = (date: string) => {

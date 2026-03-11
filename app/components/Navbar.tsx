@@ -212,7 +212,7 @@ export default function Navbar() {
                   <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
                   <MoreDropdown items={[
                     { href:"/rewards",      label:"Rewards",       active: isActive("/rewards")      },
-                    { href:"/notification", label:`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ""}`, active: isActive("/notification") },
+                    { href:"/notification", label:"Notifications", active: isActive("/notification") },
                   ]} onItemClick={(href) => { if(href==="/notification") setUnreadCount(0); }} />
                 </>
               )}
@@ -224,14 +224,12 @@ export default function Navbar() {
                   <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>Campaigns</Link>
                   <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
                   <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
-                  {/* MORE dropdown for brand extra pages */}
+                  <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
                   <MoreDropdown items={[
-                    { href:"/messages",     label:"Messages",        active: isActive("/messages")     },
-                    { href:"/invite",       label:"Invite Creators", active: isActive("/invite")       },
-                    { href:"/contact",      label:"Unlock Contacts", active: isActive("/contact")      },
-                    { href:"/smart-match",  label:"Smart Match",     active: isActive("/smart-match")  },
-                    { href:"/notification", label:`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ""}`, active: isActive("/notification") },
-                  ]} onItemClick={(href) => { if(href==="/notification") setUnreadCount(0); }} />
+                    { href:"/invite",      label:"Invite Creators", active: isActive("/invite")      },
+                    { href:"/contact",     label:"Unlock Contacts", active: isActive("/contact")     },
+                    { href:"/smart-match", label:"Smart Match",     active: isActive("/smart-match") },
+                  ]} />
                   <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
                     Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
