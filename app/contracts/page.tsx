@@ -47,8 +47,28 @@ export default function ContractsPage() {
     return party.profileImage || party.avatar || party.photo || "";
   };
 
+  const [sending, setSending] = useState<string|null>(null);
+
+  const handleSend = async (contractId: string) => {
+    setSending(contractId);
+    try {
+      const res = await fetch(`${API}/contract/${contractId}/send`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to send");
+      // Update local state
+      setContracts(prev => prev.map(c => c._id === contractId ? {...c, status:"pending"} : c));
+      alert("Contract sent to creator successfully!");
+    } catch (err: any) {
+      alert(err.message || "Failed to send contract");
+    } finally { setSending(null); }
+  };
+
+  // Schema: only "pending" | "signed" — no "draft" status
   const statusMeta: Record<string, {bg:string;color:string;label:string}> = {
-    draft:    { bg:"#f5f5f5",  color:"#888",    label:"Draft" },
+    draft:    { bg:"#fffbeb",  color:"#d97706", label:"Pending" },
     sent:     { bg:"#fffbeb",  color:"#d97706", label:"Awaiting Signature" },
     signed:   { bg:"#f0fdf4",  color:"#16a34a", label:"Signed ✓" },
     rejected: { bg:"#fff5f5",  color:"#dc2626", label:"Rejected" },
@@ -122,7 +142,7 @@ export default function ContractsPage() {
             <div className="ct-stat"><span style={{fontSize:18}}>📄</span><div><div className="ct-stat-val">{contracts.length}</div><div className="ct-stat-lbl">Total</div></div></div>
             <div className="ct-stat"><span style={{fontSize:18}}>✅</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="signed").length}</div><div className="ct-stat-lbl">Signed</div></div></div>
             <div className="ct-stat"><span style={{fontSize:18}}>⏳</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="pending").length}</div><div className="ct-stat-lbl">Pending</div></div></div>
-            <div className="ct-stat"><span style={{fontSize:18}}>📝</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="pending").length}</div><div className="ct-stat-lbl">Pending</div></div></div>
+            <div className="ct-stat"><span style={{fontSize:18}}>💰</span><div><div className="ct-stat-val">₹{contracts.reduce((s:number,c:any)=>s+Number(c.amount||0),0).toLocaleString("en-IN")}</div><div className="ct-stat-lbl">Total Value</div></div></div>
           </div>
         )}
 
@@ -170,14 +190,22 @@ export default function ContractsPage() {
 
                     <div className="ct-meta">
                       {c.amount && <span className="ct-meta-chip">💰 ₹{Number(c.amount).toLocaleString()}</span>}
-                      {c.deadline && <span className="ct-meta-chip">📅 {new Date(c.deadline).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</span>}
+                      {(c.timeline||c.deadline) && <span className="ct-meta-chip">📅 {c.timeline || new Date(c.deadline).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</span>}
                       {c.campaignTitle && <span className="ct-meta-chip">📋 {c.campaignTitle}</span>}
                     </div>
 
                     <div className="ct-actions" onClick={e=>e.stopPropagation()}>
                       <Link href={`/contracts/${c._id}`} className="ct-btn ct-btn-view">👁 View</Link>
-                      {needsMySign && <Link href={`/contracts/${c._id}?action=sign`} className="ct-btn ct-btn-sign">✍ Sign Now</Link>}
-                      {role === "brand" && c.status === "pending" && <Link href={`/contracts/${c._id}?action=send`} className="ct-btn ct-btn-send">📤 Send</Link>}
+                      {needsMySign && (
+                        <Link href={`/contracts/${c._id}?action=sign`} className="ct-btn ct-btn-sign">✍ Sign Now</Link>
+                      )}
+                      {role === "brand" && c.status === "pending" && (
+                        <button className="ct-btn ct-btn-send"
+                          disabled={sending === c._id}
+                          onClick={() => handleSend(c._id)}>
+                          {sending === c._id ? "Sending..." : "📤 Send"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

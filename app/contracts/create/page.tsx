@@ -122,8 +122,13 @@ function CreateContractPageInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
-      showToast(form.sendImmediately ? "Contract sent to creator! ✓" : "Contract saved as draft ✓", "success");
-      setTimeout(() => router.push("/contracts"), 1500);
+      // Get the new contract ID from response
+      const newId = data.contract?._id || data.data?._id || data._id || null;
+      showToast("Contract created successfully! ✓", "success");
+      setTimeout(() => {
+        if (newId) router.push(`/contracts/${newId}`);
+        else router.push("/contracts");
+      }, 1000);
     } catch (err:any) { showToast(err.message || "Something went wrong", "error"); }
     finally { setSubmitting(false); }
   };
