@@ -198,9 +198,7 @@ export default function DealsPage() {
             <div className="dl-title">Deals</div>
             <div className="dl-sub">{deals.length} deal{deals.length !== 1 ? "s" : ""} total</div>
           </div>
-          {role === "brand" && (
-            {role === "brand" && <Link href="/deals/create" className="dl-create-btn">+ Create Deal</Link>}
-          )}
+          {role === "brand" && <Link href="/deals/create" className="dl-create-btn">+ Create Deal</Link>}
         </div>
 
         {/* FLOW */}
