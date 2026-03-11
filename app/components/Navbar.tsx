@@ -117,6 +117,13 @@ export default function Navbar() {
           grid-template-columns: auto 1fr auto;
           align-items: center; gap: 24px;
         }
+        @media(max-width:900px){
+          .nav-inner {
+            grid-template-columns: auto auto;
+            justify-content: space-between;
+          }
+          .nav-inner > *:nth-child(2) { display: none; }
+        }
 
         .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
         .nav-logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #4f46e5, #7c3aed); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px; flex-shrink: 0; }
@@ -198,14 +205,14 @@ export default function Navbar() {
               {/* INFLUENCER LINKS */}
               {isInfluencer && (
                 <>
-                  <Link href="/discovery"    className={`nav-link ${isActive("/discovery") ? "active" : ""}`}>🔍 Discover</Link>
-                  <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>📋 Applied</Link>
-                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>🤝 Deals</Link>
-                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>📄 Contracts</Link>
-                  <Link href="/rewards"      className={`nav-link ${isActive("/rewards") ? "active" : ""}`}>🏆 Rewards</Link>
-                  <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>💬 Messages</Link>
+                  <Link href="/discovery"    className={`nav-link ${isActive("/discovery") ? "active" : ""}`}>Discover</Link>
+                  <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>Applied</Link>
+                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
+                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
+                  <Link href="/rewards"      className={`nav-link ${isActive("/rewards") ? "active" : ""}`}>Rewards</Link>
+                  <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
                   <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
-                    🔔 {unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+                    Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
                 </>
               )}
@@ -213,18 +220,18 @@ export default function Navbar() {
               {/* BRAND LINKS */}
               {isBrand && (
                 <>
-                  <Link href="/browse"       className={`nav-link ${isActive("/browse") ? "active" : ""}`}>🔍 Discover</Link>
-                  <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>📋 Campaigns</Link>
-                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>🤝 Deals</Link>
-                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>📄 Contracts</Link>
+                  <Link href="/browse"       className={`nav-link ${isActive("/browse") ? "active" : ""}`}>Discover</Link>
+                  <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>Campaigns</Link>
+                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
+                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
                   {/* MORE dropdown for brand extra pages */}
                   <MoreDropdown items={[
-                    { href:"/invite",   label:"📨 Invite Creators",  active: isActive("/invite")   },
-                    { href:"/contact",  label:"🔓 Unlock Contacts",  active: isActive("/contact")  },
-                    { href:"/messages", label:"💬 Messages",         active: isActive("/messages") },
+                    { href:"/invite",   label:"Invite Creators",  active: isActive("/invite")   },
+                    { href:"/contact",  label:"Unlock Contacts",  active: isActive("/contact")  },
+                    { href:"/messages", label:"Messages",         active: isActive("/messages") },
                   ]} />
                   <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
-                    🔔 {unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+                    Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
                 </>
               )}
@@ -232,13 +239,13 @@ export default function Navbar() {
               {/* ADMIN LINKS */}
               {isAdmin && (
                 <>
-                  <Link href="/admin"        className={`nav-link ${isActive("/admin") ? "active" : ""}`}>📊 Dashboard</Link>
-                  <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>📋 Campaigns</Link>
-                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>🤝 Deals</Link>
-                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>📄 Contracts</Link>
-                  <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>💬 Messages</Link>
+                  <Link href="/admin"        className={`nav-link ${isActive("/admin") ? "active" : ""}`}>Dashboard</Link>
+                  <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>Campaigns</Link>
+                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
+                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
+                  <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
                   <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
-                    🔔 {unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+                    Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
                 </>
               )}
@@ -272,28 +279,28 @@ export default function Navbar() {
                         <span className="nav-dd-role">{role}</span>
                       </div>
                       <div className="nav-dd-sep" />
-                      <Link href="/upgrade"       className="nav-dd-item upgrade-dd" onClick={() => setDropdownOpen(false)}>✦ Upgrade Plan</Link>
+                      <Link href="/upgrade"       className="nav-dd-item upgrade-dd" onClick={() => setDropdownOpen(false)}>Upgrade Plan</Link>
                       <div className="nav-dd-sep" />
-                      <Link href="/my-profile"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>✏️ Edit Profile</Link>
-                      <Link href="/setup-profile" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>👤 View Profile</Link>
+                      <Link href="/my-profile"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Edit Profile</Link>
+                      <Link href="/setup-profile" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>View Profile</Link>
                       {isInfluencer && (
-                        <Link href="/rewards"     className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🏆 Rewards</Link>
+                        <Link href="/rewards"     className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Rewards</Link>
                       )}
                       {isBrand && (
                         <>
-                          <Link href="/invite"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📨 Invite Creators</Link>
-                          <Link href="/contact"   className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🔓 Unlock Contacts</Link>
+                          <Link href="/invite"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Invite Creators</Link>
+                          <Link href="/contact"   className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Unlock Contacts</Link>
                         </>
                       )}
                       {isAdmin && (
-                        <Link href="/admin"       className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📊 Admin Panel</Link>
+                        <Link href="/admin"       className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Admin Panel</Link>
                       )}
-                      <Link href="/settings"      className="nav-dd-item" onClick={() => setDropdownOpen(false)}>⚙️ Settings</Link>
+                      <Link href="/settings"      className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Settings</Link>
                       {(isBrand || isAdmin) && (
-                        <Link href="/campaigns/post" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📢 Post Campaign</Link>
+                        <Link href="/campaigns/post" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Post Campaign</Link>
                       )}
                       <div className="nav-dd-sep" />
-                      <button className="nav-dd-item danger" onClick={handleLogout}>🚪 Logout</button>
+                      <button className="nav-dd-item danger" onClick={handleLogout}>Logout</button>
                     </div>
                   )}
                 </div>
@@ -317,28 +324,28 @@ export default function Navbar() {
 
             {/* MAIN */}
             <div className="nav-mobile-section">Main</div>
-            {isInfluencer && <Link href="/discovery"    className={`nav-mobile-link ${isActive("/discovery") ? "active" : ""}`}>🔍 Discover</Link>}
-            {isBrand      && <Link href="/browse"       className={`nav-mobile-link ${isActive("/browse") ? "active" : ""}`}>🔍 Discover Creators</Link>}
-            {(isBrand||isAdmin) && <Link href="/campaigns" className={`nav-mobile-link ${isActive("/campaigns") ? "active" : ""}`}>📋 Campaigns</Link>}
-            {isInfluencer && <Link href="/apply"        className={`nav-mobile-link ${isActive("/apply") ? "active" : ""}`}>📋 Applied Campaigns</Link>}
-            <Link href="/messages"     className={`nav-mobile-link ${isActive("/messages") ? "active" : ""}`}>💬 Messages</Link>
+            {isInfluencer && <Link href="/discovery"    className={`nav-mobile-link ${isActive("/discovery") ? "active" : ""}`}>Discover</Link>}
+            {isBrand      && <Link href="/browse"       className={`nav-mobile-link ${isActive("/browse") ? "active" : ""}`}>Discover Creators</Link>}
+            {(isBrand||isAdmin) && <Link href="/campaigns" className={`nav-mobile-link ${isActive("/campaigns") ? "active" : ""}`}>Campaigns</Link>}
+            {isInfluencer && <Link href="/apply"        className={`nav-mobile-link ${isActive("/apply") ? "active" : ""}`}>Applied Campaigns</Link>}
+            <Link href="/messages"     className={`nav-mobile-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
             <Link href="/notification" className={`nav-mobile-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
-              🔔 Notifications {unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+              Notifications {unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
             </Link>
 
             {/* DEALS & CONTRACTS */}
             <div className="nav-mobile-section">Work</div>
-            <Link href="/deals"        className={`nav-mobile-link ${isActive("/deals") ? "active" : ""}`}>🤝 Deals</Link>
-            <Link href="/contracts"    className={`nav-mobile-link ${isActive("/contracts") ? "active" : ""}`}>📄 Contracts</Link>
-            {isInfluencer && <Link href="/rewards" className={`nav-mobile-link ${isActive("/rewards") ? "active" : ""}`}>🏆 Rewards</Link>}
+            <Link href="/deals"        className={`nav-mobile-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
+            <Link href="/contracts"    className={`nav-mobile-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
+            {isInfluencer && <Link href="/rewards" className={`nav-mobile-link ${isActive("/rewards") ? "active" : ""}`}>Rewards</Link>}
 
             {/* BRAND ONLY */}
             {isBrand && (
               <>
                 <div className="nav-mobile-section">Brand Tools</div>
-                <Link href="/invite"   className={`nav-mobile-link ${isActive("/invite") ? "active" : ""}`}>📨 Invite Creators</Link>
-                <Link href="/contact"  className={`nav-mobile-link ${isActive("/contact") ? "active" : ""}`}>🔓 Unlock Contacts</Link>
-                <Link href="/campaigns/post" className={`nav-mobile-link ${isActive("/campaigns/post") ? "active" : ""}`}>📢 Post Campaign</Link>
+                <Link href="/invite"   className={`nav-mobile-link ${isActive("/invite") ? "active" : ""}`}>Invite Creators</Link>
+                <Link href="/contact"  className={`nav-mobile-link ${isActive("/contact") ? "active" : ""}`}>Unlock Contacts</Link>
+                <Link href="/campaigns/post" className={`nav-mobile-link ${isActive("/campaigns/post") ? "active" : ""}`}>Post Campaign</Link>
               </>
             )}
 
@@ -346,20 +353,20 @@ export default function Navbar() {
             {isAdmin && (
               <>
                 <div className="nav-mobile-section">Admin</div>
-                <Link href="/admin"    className={`nav-mobile-link ${isActive("/admin") ? "active" : ""}`}>📊 Admin Panel</Link>
+                <Link href="/admin"    className={`nav-mobile-link ${isActive("/admin") ? "active" : ""}`}>Admin Panel</Link>
               </>
             )}
 
             {/* ACCOUNT */}
             <div className="nav-mobile-section">Account</div>
-            <Link href="/upgrade"      className="nav-mobile-upgrade">✦ Upgrade Plan</Link>
-            <Link href="/my-profile"   className={`nav-mobile-link ${isActive("/my-profile") ? "active" : ""}`}>✏️ Edit Profile</Link>
-            <Link href="/settings"     className={`nav-mobile-link ${isActive("/settings") ? "active" : ""}`}>⚙️ Settings</Link>
+            <Link href="/upgrade"      className="nav-mobile-upgrade">Upgrade Plan</Link>
+            <Link href="/my-profile"   className={`nav-mobile-link ${isActive("/my-profile") ? "active" : ""}`}>Edit Profile</Link>
+            <Link href="/settings"     className={`nav-mobile-link ${isActive("/settings") ? "active" : ""}`}>Settings</Link>
             <button
               className="nav-mobile-link"
               style={{ color: "#ef4444", border: "none", background: "none", cursor: "pointer", textAlign: "left", width: "100%", fontFamily: "inherit" }}
               onClick={handleLogout}>
-              🚪 Logout
+              Logout
             </button>
           </div>
         )}
@@ -400,6 +407,7 @@ function MoreDropdown({ items }: { items: { href: string; label: string; active:
     </div>
   );
 }
+
 
 
 

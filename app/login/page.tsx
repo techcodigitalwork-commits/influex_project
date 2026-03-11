@@ -49,14 +49,12 @@ export default function LoginPage() {
 
       const token = data.token;
 
-      // Check if profile exists
       const profileRes = await fetch(`${API}/profile/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const profileData = await profileRes.json();
       const hasProfile = profileData.success && !!profileData.profile;
 
-      // Build user object — remove stale 'coins' field, keep only 'bits'
       const { coins: _removeCoins, ...userWithoutCoins } = data.user;
       const userData = {
         ...userWithoutCoins,
@@ -64,7 +62,6 @@ export default function LoginPage() {
         hasProfile,
         bits: data.user.bits ?? 100,
         isSubscribed: data.user.isSubscribed ?? false,
-        // bits comes from data.user.bits (set by backend) — coins field removed
       };
 
       if (typeof window !== "undefined") {
@@ -72,17 +69,11 @@ export default function LoginPage() {
         localStorage.setItem("token", token);
       }
 
-      // Socket connection after login
       const socket = io(SOCKET_URL, { auth: { token } });
       socket.on("connect", () => {
-        console.log("Socket connected:", socket.id);
         socket.emit("joinRoom", data.user._id);
       });
-      socket.on("disconnect", () => {
-        console.log("Socket disconnected");
-      });
 
-      // Navigation
       if (!hasProfile) {
         router.push("/my-profile");
         return;
@@ -103,79 +94,327 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-6 py-12">
-      <div className="max-w-md w-full bg-white rounded-[40px] p-10 shadow-2xl shadow-indigo-100 border border-slate-100">
+    <>
+      <style>{`
+        .login-input {
+          width: 100%;
+          padding: 16px 20px;
+          background: #f8fafc;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 16px;
+          font-size: 15px;
+          font-family: inherit;
+          color: #0f172a !important;
+          outline: none;
+          transition: border-color 0.2s, box-shadow 0.2s;
+          -webkit-text-fill-color: #0f172a;
+          opacity: 1;
+        }
+        .login-input::placeholder {
+          color: #94a3b8;
+          -webkit-text-fill-color: #94a3b8;
+        }
+        .login-input:focus {
+          border-color: #4f46e5;
+          box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+          background: #fff;
+        }
+        .login-input:-webkit-autofill,
+        .login-input:-webkit-autofill:hover,
+        .login-input:-webkit-autofill:focus {
+          -webkit-text-fill-color: #0f172a !important;
+          -webkit-box-shadow: 0 0 0px 1000px #f8fafc inset !important;
+          transition: background-color 5000s ease-in-out 0s;
+        }
+        .pw-wrap { position: relative; }
+        .pw-toggle {
+          position: absolute;
+          right: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          color: #94a3b8;
+          font-size: 18px;
+          line-height: 1;
+          display: flex;
+          align-items: center;
+        }
+        .pw-toggle:hover { color: #4f46e5; }
+      `}</style>
 
-        <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4 shadow-lg shadow-indigo-200">
-            CB
-          </div>
-          <h2 className="text-3xl font-extrabold text-slate-900">Welcome Back</h2>
-          <p className="text-slate-500 mt-2">Log in to manage your brand or profile</p>
-        </div>
+      <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"48px 24px",background:"#f8fafc"}}>
+        <div style={{maxWidth:440,width:"100%",background:"#fff",borderRadius:32,padding:"40px 36px",boxShadow:"0 20px 60px rgba(79,70,229,0.08)",border:"1px solid #e2e8f0"}}>
 
-        <form onSubmit={handleLogin} className="space-y-6">
-          {error && (
-            <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold">
-              {error}
+          {/* LOGO */}
+          <div style={{textAlign:"center",marginBottom:32}}>
+            <div style={{width:60,height:60,background:"linear-gradient(135deg,#4f46e5,#7c3aed)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:20,margin:"0 auto 16px",boxShadow:"0 8px 24px rgba(79,70,229,0.3)"}}>
+              CB
             </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">
-              Email Address
-            </label>
-            <input
-              type="email"
-              required
-              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl"
-              placeholder="name@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <h2 style={{fontSize:28,fontWeight:800,color:"#0f172a",margin:"0 0 6px"}}>Welcome Back</h2>
+            <p style={{color:"#64748b",fontSize:14,margin:0}}>Log in to manage your brand or profile</p>
           </div>
 
-          <div className="relative">
-            <label className="block text-sm font-bold text-slate-700 mb-2">
-              Password
-            </label>
-            <input
-              type={showPassword ? "text" : "password"}
-              required
-              className="w-full px-5 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <img
-              src="https://www.pngitem.com/pimgs/m/495-4950508_show-password-show-password-icon-png-transparent-png.png"
-              alt="toggle password"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-4 top-[58%] w-6 h-6 cursor-pointer opacity-70"
-            />
+          <form onSubmit={handleLogin}>
+
+            {error && (
+              <div style={{padding:"12px 16px",background:"#fff5f5",border:"1.5px solid #fecaca",borderRadius:12,color:"#dc2626",fontSize:13,fontWeight:600,marginBottom:20}}>
+                {error}
+              </div>
+            )}
+
+            {/* EMAIL */}
+            <div style={{marginBottom:18}}>
+              <label style={{display:"block",fontSize:13,fontWeight:700,color:"#374151",marginBottom:8}}>
+                Email Address
+              </label>
+              <input
+                type="email"
+                required
+                className="login-input"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+            </div>
+
+            {/* PASSWORD */}
+            <div style={{marginBottom:24}}>
+              <label style={{display:"block",fontSize:13,fontWeight:700,color:"#374151",marginBottom:8}}>
+                Password
+              </label>
+              <div className="pw-wrap">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  className="login-input"
+                  style={{paddingRight:44}}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+                <button type="button" className="pw-toggle" onClick={() => setShowPassword(!showPassword)}>
+                  {showPassword ? (
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24M1 1l22 22"/>
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3" strokeWidth="2"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* SUBMIT */}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{width:"100%",padding:"15px",background:loading?"#a5b4fc":"linear-gradient(135deg,#4f46e5,#7c3aed)",color:"#fff",border:"none",borderRadius:16,fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",transition:"all 0.2s",boxShadow:"0 4px 16px rgba(79,70,229,0.3)",fontFamily:"inherit"}}>
+              {loading ? "Signing In..." : "Sign In"}
+            </button>
+          </form>
+
+          <div style={{marginTop:28,paddingTop:28,borderTop:"1px solid #f1f5f9",textAlign:"center"}}>
+            <p style={{color:"#64748b",fontSize:14,margin:0}}>
+              Don&apos;t have an account?{" "}
+              <Link href="/join" style={{color:"#4f46e5",fontWeight:700,textDecoration:"none"}}>
+                Join Platform
+              </Link>
+            </p>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg mt-4 disabled:opacity-50"
-          >
-            {loading ? "Signing In..." : "Sign In"}
-          </button>
-        </form>
-
-        <div className="mt-8 pt-8 border-t text-center">
-          <p className="text-slate-500 font-medium">
-            Don't have an account?{" "}
-            <Link href="/join" className="text-indigo-600 font-bold hover:underline">
-              Join Platform
-            </Link>
-          </p>
         </div>
       </div>
-    </div>
+    </>
   );
 }
+
+
+// "use client";
+
+// import { useState, type FormEvent } from "react";
+// import Link from "next/link";
+// import { useRouter } from "next/navigation";
+// import { io } from "socket.io-client";
+
+// const API = "http://54.252.201.93:5000/api";
+// const SOCKET_URL = "http://54.252.201.93:5000";
+
+// enum UserRole {
+//   INFLUENCER = "INFLUENCER",
+//   MODEL = "MODEL",
+//   PHOTOGRAPHER = "PHOTOGRAPHER",
+//   BRAND = "BRAND",
+//   ADMIN = "ADMIN",
+// }
+
+// export default function LoginPage() {
+//   const router = useRouter();
+
+//   const [email, setEmail]               = useState("");
+//   const [password, setPassword]         = useState("");
+//   const [showPassword, setShowPassword] = useState(false);
+//   const [error, setError]               = useState("");
+//   const [loading, setLoading]           = useState(false);
+
+//   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
+//     e.preventDefault();
+//     setError("");
+
+//     if (!email || !password) {
+//       setError("Please enter email and password");
+//       return;
+//     }
+
+//     try {
+//       setLoading(true);
+
+//       const res = await fetch(`${API}/auth/login`, {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify({ email, password }),
+//       });
+
+//       const data = await res.json();
+//       if (!res.ok) throw new Error(data.message || "Login failed");
+//       if (!data.token || !data.user) throw new Error("Invalid server response");
+
+//       const token = data.token;
+
+//       // Check if profile exists
+//       const profileRes = await fetch(`${API}/profile/me`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       const profileData = await profileRes.json();
+//       const hasProfile = profileData.success && !!profileData.profile;
+
+//       // Build user object — remove stale 'coins' field, keep only 'bits'
+//       const { coins: _removeCoins, ...userWithoutCoins } = data.user;
+//       const userData = {
+//         ...userWithoutCoins,
+//         token,
+//         hasProfile,
+//         bits: data.user.bits ?? 100,
+//         isSubscribed: data.user.isSubscribed ?? false,
+//         // bits comes from data.user.bits (set by backend) — coins field removed
+//       };
+
+//       if (typeof window !== "undefined") {
+//         localStorage.setItem("cb_user", JSON.stringify(userData));
+//         localStorage.setItem("token", token);
+//       }
+
+//       // Socket connection after login
+//       const socket = io(SOCKET_URL, { auth: { token } });
+//       socket.on("connect", () => {
+//         console.log("Socket connected:", socket.id);
+//         socket.emit("joinRoom", data.user._id);
+//       });
+//       socket.on("disconnect", () => {
+//         console.log("Socket disconnected");
+//       });
+
+//       // Navigation
+//       if (!hasProfile) {
+//         router.push("/my-profile");
+//         return;
+//       }
+
+//       if (userData.role === UserRole.BRAND || userData.role === UserRole.ADMIN) {
+//         router.push("/campaigns");
+//       } else {
+//         router.push("/discovery");
+//       }
+
+//       router.refresh();
+//     } catch (err: any) {
+//       setError(err.message || "Something went wrong");
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   return (
+//     <div className="min-h-[80vh] flex items-center justify-center px-6 py-12">
+//       <div className="max-w-md w-full bg-white rounded-[40px] p-10 shadow-2xl shadow-indigo-100 border border-slate-100">
+
+//         <div className="text-center mb-10">
+//           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4 shadow-lg shadow-indigo-200">
+//             CB
+//           </div>
+//           <h2 className="text-3xl font-extrabold text-slate-900">Welcome Back</h2>
+//           <p className="text-slate-500 mt-2">Log in to manage your brand or profile</p>
+//         </div>
+
+//         <form onSubmit={handleLogin} className="space-y-6">
+//           {error && (
+//             <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-bold">
+//               {error}
+//             </div>
+//           )}
+
+//           <div>
+//             <label className="block text-sm font-bold text-slate-700 mb-2">
+//               Email Address
+//             </label>
+//             <input
+//               type="email"
+//               required
+//               className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl"
+//               placeholder="name@example.com"
+//               value={email}
+//               onChange={(e) => setEmail(e.target.value)}
+//             />
+//           </div>
+
+//           <div className="relative">
+//             <label className="block text-sm font-bold text-slate-700 mb-2">
+//               Password
+//             </label>
+//             <input
+//               type={showPassword ? "text" : "password"}
+//               required
+//               className="w-full px-5 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl"
+//               placeholder="••••••••"
+//               value={password}
+//               onChange={(e) => setPassword(e.target.value)}
+//             />
+//             <img
+//               src="https://www.pngitem.com/pimgs/m/495-4950508_show-password-show-password-icon-png-transparent-png.png"
+//               alt="toggle password"
+//               onClick={() => setShowPassword(!showPassword)}
+//               className="absolute right-4 top-[58%] w-6 h-6 cursor-pointer opacity-70"
+//             />
+//           </div>
+
+//           <button
+//             type="submit"
+//             disabled={loading}
+//             className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg mt-4 disabled:opacity-50"
+//           >
+//             {loading ? "Signing In..." : "Sign In"}
+//           </button>
+//         </form>
+
+//         <div className="mt-8 pt-8 border-t text-center">
+//           <p className="text-slate-500 font-medium">
+//             Don't have an account?{" "}
+//             <Link href="/join" className="text-indigo-600 font-bold hover:underline">
+//               Join Platform
+//             </Link>
+//           </p>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
 
 
 // "use client";
