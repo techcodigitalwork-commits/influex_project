@@ -105,18 +105,36 @@ function DealDetailPageInner() {
     }
   };
 
+  // POST /deal/approve-deliverable — approve work + auto release payment
   const handleApprove = async () => {
     setActionLoading("approve");
     try {
-      // POST /api/deal/approve
-      const res = await fetch(`${API}/deal/approve`, {
+      const res = await fetch(`${API}/deal/approve-deliverable`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ dealId: id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to approve");
-      showToast("✅ Work approved! Payment released to creator.", "success");
+      showToast("✅ Work approved! Payment auto-released to creator.", "success");
+      fetchDeal(token);
+    } catch (err: any) { showToast(err.message || "Failed", "error"); }
+    finally { setActionLoading(""); }
+  };
+
+  // POST /deal/release — manual payment release (brand only)
+  const handleRelease = async () => {
+    if (!confirm("Manually release payment to creator?")) return;
+    setActionLoading("release");
+    try {
+      const res = await fetch(`${API}/deal/release`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ dealId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to release");
+      showToast("💸 Payment manually released to creator!", "success");
       fetchDeal(token);
     } catch (err: any) { showToast(err.message || "Failed", "error"); }
     finally { setActionLoading(""); }
@@ -126,10 +144,11 @@ function DealDetailPageInner() {
     if (!submitNote && !submitFile) { showToast("Add a note or link", "error"); return; }
     setActionLoading("submit");
     try {
+      // POST /deal/approve-deliverable is for brand — creator submits work separately
       const res = await fetch(`${API}/deal/${id}/deliverable`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ note: submitNote, fileUrl: submitFile }),
+        body: JSON.stringify({ dealId: id, note: submitNote, fileUrl: submitFile }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -243,6 +262,8 @@ function DealDetailPageInner() {
         .dd-btn-deposit:hover:not(:disabled) { transform: translateY(-1px); }
         .dd-btn-approve { background: linear-gradient(135deg,#16a34a,#22c55e); color: #fff; box-shadow: 0 4px 16px rgba(34,197,94,0.25); }
         .dd-btn-approve:hover:not(:disabled) { transform: translateY(-1px); }
+        .dd-btn-release { background: linear-gradient(135deg,#f59e0b,#f97316); color: #fff; box-shadow: 0 4px 16px rgba(245,158,11,0.25); }
+        .dd-btn-release:hover:not(:disabled) { transform: translateY(-1px); }
         .dd-btn-submit  { background: linear-gradient(135deg,#f59e0b,#f97316); color: #fff; box-shadow: 0 4px 16px rgba(245,158,11,0.25); }
         .dd-btn-submit:hover:not(:disabled) { transform: translateY(-1px); }
         .dd-btn-secondary { background: #f5f5f3; color: #555; margin-top: 8px; }

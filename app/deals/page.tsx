@@ -94,14 +94,15 @@ export default function DealsPage() {
     if (!confirm("Approve work and release payment to creator?")) return;
     setActioning(dealId + "_approve");
     try {
-      const res = await fetch(`${API}/deal/approve`, {
+      // POST /deal/approve-deliverable
+      const res = await fetch(`${API}/deal/approve-deliverable`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ dealId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
-      alert("✅ Work approved! Payment released.");
+      alert("✅ Work approved! Payment auto-released to creator.");
       fetchDeals(token);
     } catch (err: any) { alert(err.message || "Approve failed"); }
     finally { setActioning(null); }
