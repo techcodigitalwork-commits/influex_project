@@ -15,7 +15,7 @@ export default function ContactUnlockPage() {
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState("all");
-  const [unlocked, setUnlocked] = useState<Record<string, any>>({});
+  const [unlocked, setUnlocked] = useState<Record<string, { phone:string; instagram:string; email:string; unlockedAt:string }>>({});
   const [unlocking, setUnlocking] = useState<string | null>(null);
   const [selected, setSelected]   = useState<any>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warn" } | null>(null);
