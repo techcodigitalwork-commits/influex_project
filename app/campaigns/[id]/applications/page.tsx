@@ -43,16 +43,19 @@ export default function CampaignApplications() {
       const apps = appData?.applications || appData?.data || [];
       const appList = Array.isArray(apps) ? apps : [];
 
-      // Fetch full influencer profile for each application to get followers, categories, location
+      // Fetch full influencer profile for each application
       const enriched = await Promise.all(
         appList.map(async (app: any) => {
           const profileId = app?.influencer?._id || app?.influencer?.user || app?.userId || app?.influencerId;
+          console.log("=== APP RAW DATA ===", JSON.stringify(app, null, 2));
+          console.log("=== PROFILE ID ===", profileId);
           if (!profileId) return app;
           try {
             const pRes = await fetch(`${API_BASE}/profile/${profileId}`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             const pData = await pRes.json();
+            console.log("=== PROFILE API RESPONSE ===", JSON.stringify(pData, null, 2));
             const p = pData?.profile || pData?.data || pData;
             return {
               ...app,
@@ -67,7 +70,8 @@ export default function CampaignApplications() {
                 platform:     p?.instagram    || p?.platform || app?.influencer?.platform,
               },
             };
-          } catch {
+          } catch (e) {
+            console.log("=== PROFILE FETCH ERROR ===", e);
             return app;
           }
         })
@@ -487,9 +491,9 @@ export default function CampaignApplications() {
                     </button>
                     {decision === "accepted" ? (
                       <>
-                        <div className="ap-btn ap-btn-accepted">✓ Accepted</div>
+                        {/* <div className="ap-btn ap-btn-accepted">✓ Accepted</div>
                         <a href={`/deals/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-deal">🤝 Deal</a>
-                        <a href={`/contracts/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-contract">📄 Contract</a>
+                        <a href={`/contracts/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-contract">📄 Contract</a> */}
                       </>
                     ) : decision === "rejected" ? (
                       <div className="ap-btn ap-btn-rejected">✗ Rejected</div>

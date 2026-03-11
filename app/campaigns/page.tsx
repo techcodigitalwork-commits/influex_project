@@ -549,12 +549,12 @@ export default function CampaignBoard() {
                     </div>
                   </div>
                   <div className="cb-actions">
-                    <Link href={`/campaigns/${c._id}`} className="cb-btn cb-btn-view">📄 View</Link>
-                    <Link href={`/campaigns/${c._id}/application`} className="cb-btn cb-btn-apps">
+                    <Link href={`/campaigns/${c._id}`} className="cb-btn cb-btn-view">View</Link>
+                    {/* <Link href={`/campaigns/${c._id}/application`} className="cb-btn cb-btn-apps">
                       👥 Applications {!countLoading && count > 0 ? `(${count})` : ""}
-                    </Link>
+                    </Link> */}
                     {/* ✅ Edit button — calls PUT /api/campaigns/update/:id */}
-                    <button className="cb-btn cb-btn-edit" onClick={() => openEdit(c)}>✏️ Edit</button>
+                    <button className="cb-btn cb-btn-edit" onClick={() => openEdit(c)}>Edit</button>
                     {/* ✅ Complete button — shows confirm modal */}
                     {c.status !== "completed" && (
                       <button className="cb-btn cb-btn-complete" onClick={() => setConfirmCampaignId(c._id)}>✓ Complete</button>
