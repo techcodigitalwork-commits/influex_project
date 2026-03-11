@@ -15,7 +15,7 @@ export default function ContactUnlockPage() {
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState("all");
-  const [unlocked, setUnlocked] = useState<Record<string, { phone:string; instagram:string; email:string; unlockedAt:string }>>({});
+  const [unlocked, setUnlocked] = useState<{[key: string]: { phone:string; instagram:string; email:string; unlockedAt:string }}>({});
   const [unlocking, setUnlocking] = useState<string | null>(null);
   const [selected, setSelected]   = useState<any>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warn" } | null>(null);
@@ -63,7 +63,7 @@ export default function ContactUnlockPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to unlock");
       // Save unlock locally + update coins
-      const newUnlocked = {
+      const newUnlocked: {[key: string]: { phone:string; instagram:string; email:string; unlockedAt:string }} = {
         ...unlocked,
         [cid]: {
           phone:     data.phone     || creator.phone     || data.contact?.phone || "",
@@ -84,7 +84,7 @@ export default function ContactUnlockPage() {
         localStorage.setItem("cb_user", JSON.stringify(p));
       }
       showToast(`✅ Contact unlocked! ${UNLOCK_COST} coins used.`, "success");
-      if (selected?._id === cid) setSelected({ ...selected, _unlocked: newUnlocked[cid] });
+      if (selected?._id === cid) setSelected({ ...selected, _unlocked: newUnlocked[cid as string] as any });
     } catch (err: any) {
       showToast(err.message || "Unlock failed", "error");
     } finally { setUnlocking(null); }
