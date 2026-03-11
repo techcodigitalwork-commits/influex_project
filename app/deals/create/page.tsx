@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const API = "http://54.252.201.93:5000/api";
 
-export default function CreateDealPage() {
+function CreateDealPageInner() {
   const router = useRouter();
   const [token, setToken] = useState("");
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -260,6 +260,20 @@ export default function CreateDealPage() {
     </>
   );
 }
+
+export default function CreateDealPage() {
+  return (
+    <Suspense fallback={
+      <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:28,height:28,border:"3px solid #e0e0e0",borderTopColor:"#4f46e5",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    }>
+      <CreateDealPageInner />
+    </Suspense>
+  );
+}
+
 
 
 // "use client";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const API = "http://54.252.201.93:5000/api";
@@ -23,7 +23,7 @@ Both parties agree to keep the terms of this agreement confidential.
 6. REVISIONS
 Creator agrees to provide up to 2 revisions of submitted content.`;
 
-export default function CreateContractPage() {
+function CreateContractPageInner() {
   const router = useRouter();
   const [token, setToken]       = useState("");
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -342,6 +342,19 @@ export default function CreateContractPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function CreateContractPage() {
+  return (
+    <Suspense fallback={
+      <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:28,height:28,border:"3px solid #e0e0e0",borderTopColor:"#4f46e5",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    }>
+      <CreateContractPageInner />
+    </Suspense>
   );
 }
 

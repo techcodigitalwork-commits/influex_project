@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 
 const API          = "http://54.252.201.93:5000/api";
 const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
 
-export default function DealDetailPage() {
+function DealDetailPageInner() {
   const { id }          = useParams();
   const searchParams    = useSearchParams();
   const router          = useRouter();
@@ -384,6 +384,19 @@ export default function DealDetailPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function DealDetailPage() {
+  return (
+    <Suspense fallback={
+      <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:28,height:28,border:"3px solid #e0e0e0",borderTopColor:"#4f46e5",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    }>
+      <DealDetailPageInner />
+    </Suspense>
   );
 }
 
