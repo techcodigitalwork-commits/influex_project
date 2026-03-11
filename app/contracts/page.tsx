@@ -24,11 +24,27 @@ export default function ContractsPage() {
 
   const fetchContracts = async (t: string) => {
     try {
-      const res = await fetch(`${API}/contract/my`, { headers: { Authorization: `Bearer ${t}` } });
+      // GET /api/contract/my  — returns brand's contracts
+      const res  = await fetch(`${API}/contract/my`, { headers: { Authorization: `Bearer ${t}` } });
       const data = await res.json();
-      setContracts(data.contracts || data.data || []);
+      if (!res.ok) throw new Error(data.message || "Failed");
+      const list = data.contracts || data.data || data || [];
+      // Sort: newest first
+      list.sort((a: any, b: any) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
+      setContracts(list);
     } catch { setContracts([]); }
     finally { setLoading(false); }
+  };
+
+  // Schema status enum: "pending" | "signed"
+  const getPartyName = (party: any): string => {
+    if (!party) return "—";
+    if (typeof party === "string") return "—";
+    return party.name || party.username || party.email?.split("@")[0] || "—";
+  };
+  const getPartyAvatar = (party: any): string => {
+    if (!party || typeof party === "string") return "";
+    return party.profileImage || party.avatar || party.photo || "";
   };
 
   const statusMeta: Record<string, {bg:string;color:string;label:string}> = {
@@ -142,12 +158,12 @@ export default function ContractsPage() {
                     <div className="ct-parties">
                       <div className="ct-party">
                         <div className="ct-party-lbl">Brand</div>
-                        <div className="ct-party-val">{c.brandName || c.brand?.name || "Brand"}</div>
+                        <div className="ct-party-val">{getPartyName(c.brandId) !== "—" ? getPartyName(c.brandId) : (c.brandName || "Brand")}</div>
                         <div className={`ct-party-sig ${brandSigned ? "" : "pending"}`}>{brandSigned ? "✓ Signed" : "⏳ Pending"}</div>
                       </div>
                       <div className="ct-party">
                         <div className="ct-party-lbl">Creator</div>
-                        <div className="ct-party-val">{c.creatorName || c.creator?.name || "Creator"}</div>
+                        <div className="ct-party-val">{getPartyName(c.influencerId) !== "—" ? getPartyName(c.influencerId) : (c.creatorName || "Creator")}</div>
                         <div className={`ct-party-sig ${creatorSigned ? "" : "pending"}`}>{creatorSigned ? "✓ Signed" : "⏳ Pending"}</div>
                       </div>
                     </div>

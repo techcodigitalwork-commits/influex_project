@@ -133,7 +133,7 @@ export default function Navbar() {
         .nav-links { display: flex; align-items: center; gap: 4px; justify-content: center; flex-wrap: nowrap; overflow-x: auto; }
         @media(max-width:900px){ .nav-links{ display: none; } }
 
-        .nav-link { font-size: 13px; font-weight: 600; color: #777; text-decoration: none; padding: 6px 10px; border-radius: 9px; transition: all 0.18s; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+        .nav-link { font-size: 12.5px; font-weight: 600; color: #777; text-decoration: none; padding: 6px 7px; border-radius: 9px; transition: all 0.18s; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
         .nav-link:hover { color: #111; background: #f5f5f3; }
         .nav-link.active { color: #4f46e5; background: #eef2ff; }
 
@@ -206,14 +206,14 @@ export default function Navbar() {
               {isInfluencer && (
                 <>
                   <Link href="/discovery"    className={`nav-link ${isActive("/discovery") ? "active" : ""}`}>Discover</Link>
-                  <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>Applied</Link>
+                  {/* <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>Applied</Link> */}
                   <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
                   <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
                   <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
-                  <MoreDropdown items={[
-                    { href:"/rewards",      label:"Rewards",       active: isActive("/rewards")      },
-                    { href:"/notification", label:"Notifications", active: isActive("/notification") },
-                  ]} onItemClick={(href) => { if(href==="/notification") setUnreadCount(0); }} />
+                  <Link href="/rewards"      className={`nav-link ${isActive("/rewards") ? "active" : ""}`}>Rewards</Link>
+                  <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
+                    Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+                  </Link>
                 </>
               )}
 

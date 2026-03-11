@@ -37,9 +37,12 @@ function ContractDetailInner() {
 
   const fetchContract = async (t:string) => {
     try {
-      const res = await fetch(`${API}/contract/${id}`, { headers: { Authorization: `Bearer ${t}` } });
+      // GET /api/contract/:id
+      const res  = await fetch(`${API}/contract/${id}`, { headers: { Authorization: `Bearer ${t}` } });
       const data = await res.json();
-      setContract(data.contract || data.data || data);
+      if (!res.ok) throw new Error(data.message || "Failed to load contract");
+      const c = data.contract || data.data || data;
+      setContract(c);
     } catch {}
     finally { setLoading(false); }
   };
@@ -48,6 +51,7 @@ function ContractDetailInner() {
     if (!signName.trim()) { showToast("Enter your name to sign", "error"); return; }
     setActionLoading("sign");
     try {
+      // POST /api/contract/sign
       const res = await fetch(`${API}/contract/sign`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -98,6 +102,19 @@ function ContractDetailInner() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
+
+  // Schema fields: brandId (User obj), influencerId (User obj), deliverables (string), timeline, amount, status
+  const getBrandName     = () => contract.brandId?.name || contract.brandId?.username || contract.brandName || "Brand";
+  const getCreatorName   = () => contract.influencerId?.name || contract.influencerId?.username || contract.creatorName || "Creator";
+  const getBrandAvatar   = () => contract.brandId?.profileImage || contract.brandId?.avatar || "";
+  const getCreatorAvatar = () => contract.influencerId?.profileImage || contract.influencerId?.avatar || "";
+  const getDeliverables  = () => {
+    const d = contract.deliverables || "";
+    if (typeof d === "string") return d.split("
+").filter(Boolean);
+    if (Array.isArray(d)) return d;
+    return [];
+  };
 
   if (!contract) return (
     <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Plus Jakarta Sans,sans-serif"}}>
