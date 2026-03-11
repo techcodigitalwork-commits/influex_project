@@ -58,17 +58,18 @@ export default function ContactUnlockPage() {
       const res = await fetch(`${API}/contact/unlock`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ creatorId: cid }),
+        body: JSON.stringify({ influencerId: cid }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to unlock");
-      // Save unlock locally + update coins
+      // Map response — backend may return contact inside data.contact or flat
+      const contact = data.contact || data.data || data;
       const newUnlocked: {[key: string]: { phone:string; instagram:string; email:string; unlockedAt:string }} = {
         ...unlocked,
         [cid]: {
-          phone:     data.phone     || creator.phone     || data.contact?.phone || "",
-          instagram: data.instagram || creator.instagram || data.contact?.instagram || "",
-          email:     data.email     || creator.email     || data.contact?.email || "",
+          phone:     contact.phone     || contact.phoneNumber || creator.phone     || "",
+          instagram: contact.instagram || contact.instagramId  || creator.instagram || creator.platform || "",
+          email:     contact.email     || creator.email        || "",
           unlockedAt: new Date().toISOString(),
         },
       };
@@ -415,4 +416,3 @@ export default function ContactUnlockPage() {
     </>
   );
 }
-

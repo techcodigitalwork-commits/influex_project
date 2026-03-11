@@ -209,11 +209,11 @@ export default function Navbar() {
                   <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>Applied</Link>
                   <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
                   <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
-                  <Link href="/rewards"      className={`nav-link ${isActive("/rewards") ? "active" : ""}`}>Rewards</Link>
                   <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
-                  <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
-                    Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
-                  </Link>
+                  <MoreDropdown items={[
+                    { href:"/rewards",      label:"Rewards",       active: isActive("/rewards")      },
+                    { href:"/notification", label:`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ""}`, active: isActive("/notification") },
+                  ]} onItemClick={(href) => { if(href==="/notification") setUnreadCount(0); }} />
                 </>
               )}
 
@@ -226,10 +226,12 @@ export default function Navbar() {
                   <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
                   {/* MORE dropdown for brand extra pages */}
                   <MoreDropdown items={[
-                    { href:"/invite",   label:"Invite Creators",  active: isActive("/invite")   },
-                    { href:"/contact",  label:"Unlock Contacts",  active: isActive("/contact")  },
-                    { href:"/messages", label:"Messages",         active: isActive("/messages") },
-                  ]} />
+                    { href:"/messages",     label:"Messages",        active: isActive("/messages")     },
+                    { href:"/invite",       label:"Invite Creators", active: isActive("/invite")       },
+                    { href:"/contact",      label:"Unlock Contacts", active: isActive("/contact")      },
+                    { href:"/smart-match",  label:"Smart Match",     active: isActive("/smart-match")  },
+                    { href:"/notification", label:`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ""}`, active: isActive("/notification") },
+                  ]} onItemClick={(href) => { if(href==="/notification") setUnreadCount(0); }} />
                   <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
                     Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
@@ -376,7 +378,7 @@ export default function Navbar() {
 }
 
 // ── MORE dropdown component ──
-function MoreDropdown({ items }: { items: { href: string; label: string; active: boolean }[] }) {
+function MoreDropdown({ items, onItemClick }: { items: { href: string; label: string; active: boolean }[]; onItemClick?: (href: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const hasActive = items.some(i => i.active);
@@ -398,7 +400,8 @@ function MoreDropdown({ items }: { items: { href: string; label: string; active:
       {open && (
         <div className="nav-more-drop">
           {items.map(item => (
-            <Link key={item.href} href={item.href} className={`nav-more-item ${item.active ? "active" : ""}`} onClick={() => setOpen(false)}>
+            <Link key={item.href} href={item.href} className={`nav-more-item ${item.active ? "active" : ""}`}
+              onClick={() => { setOpen(false); onItemClick?.(item.href); }}>
               {item.label}
             </Link>
           ))}

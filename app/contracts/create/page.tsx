@@ -62,6 +62,8 @@ function CreateContractPageInner() {
       fetchApplications(campId, p.token);
     }
     if (creatorId) setForm(f => ({...f, creatorId}));
+    const dealId = searchParams.get("dealId") || "";
+    if (dealId) setForm(f => ({...f, dealId}));
   }, []);
 
   const fetchCampaigns = async (t:string) => {
@@ -108,14 +110,15 @@ function CreateContractPageInner() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          campaignId: form.campaignId,
-          creatorId: form.creatorId,
-          title: form.title,
+          dealId: form.dealId || undefined,
+          influencerId: form.creatorId,
+          deliverables: form.deliverables.filter(Boolean).join("\n"),
+          timeline: form.deadline || "",
           amount: Number(form.amount) || 0,
-          deadline: form.deadline,
-          deliverables: form.deliverables.filter(Boolean),
+          // extra fields for display (backend may or may not store these)
+          title: form.title,
+          campaignId: form.campaignId,
           terms: form.terms,
-          sendImmediately: form.sendImmediately,
         }),
       });
       const data = await res.json();

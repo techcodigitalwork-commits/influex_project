@@ -48,10 +48,10 @@ function ContractDetailInner() {
     if (!signName.trim()) { showToast("Enter your name to sign", "error"); return; }
     setActionLoading("sign");
     try {
-      const res = await fetch(`${API}/contract/${id}/sign`, {
+      const res = await fetch(`${API}/contract/sign`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ signedName: signName }),
+        body: JSON.stringify({ contractId: id, signedName: signName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
@@ -105,11 +105,11 @@ function ContractDetailInner() {
     </div>
   );
 
-  const isSigned     = contract.status === "signed";
+  const isSigned = contract.status === "signed";
   const brandSigned  = contract.brandSigned || isSigned;
   const creatorSigned= contract.creatorSigned || isSigned;
-  const canCreatorSign = (role==="influencer"||role==="creator") && contract.status==="sent" && !contract.creatorSigned;
-  const canBrandSend   = role==="brand" && contract.status==="draft";
+  const canCreatorSign = (role==="influencer"||role==="creator") && contract.status==="pending" && !contract.creatorSigned;
+  const canBrandSend   = role==="brand" && contract.status==="pending";
 
   return (
     <>
@@ -231,11 +231,11 @@ function ContractDetailInner() {
             <div className="cd-title">{contract.title || "Contract"}</div>
           </div>
           <div className="cd-status" style={{
-            background: isSigned?"#f0fdf4":contract.status==="sent"?"#fffbeb":contract.status==="rejected"?"#fff5f5":"#f5f5f5",
-            color:      isSigned?"#16a34a":contract.status==="sent"?"#d97706":contract.status==="rejected"?"#dc2626":"#888",
-            border:     `1.5px solid ${isSigned?"#86efac":contract.status==="sent"?"#fde68a":contract.status==="rejected"?"#fecaca":"#e0e0e0"}`,
+            background: isSigned?"#f0fdf4":contract.status==="pending"?"#fffbeb":contract.status==="rejected"?"#fff5f5":"#f5f5f5",
+            color:      isSigned?"#16a34a":contract.status==="pending"?"#d97706":contract.status==="rejected"?"#dc2626":"#888",
+            border:     `1.5px solid ${isSigned?"#86efac":contract.status==="pending"?"#fde68a":contract.status==="rejected"?"#fecaca":"#e0e0e0"}`,
           }}>
-            {isSigned?"✅ Signed":contract.status==="sent"?"⏳ Awaiting Signature":contract.status==="rejected"?"❌ Rejected":"📝 Draft"}
+            {isSigned?"✅ Signed":contract.status==="pending"?"⏳ Awaiting Signature":contract.status==="rejected"?"❌ Rejected":"📝 Draft"}
           </div>
         </div>
 

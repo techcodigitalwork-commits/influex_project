@@ -105,8 +105,8 @@ export default function ContractsPage() {
           <div className="ct-stats">
             <div className="ct-stat"><span style={{fontSize:18}}>📄</span><div><div className="ct-stat-val">{contracts.length}</div><div className="ct-stat-lbl">Total</div></div></div>
             <div className="ct-stat"><span style={{fontSize:18}}>✅</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="signed").length}</div><div className="ct-stat-lbl">Signed</div></div></div>
-            <div className="ct-stat"><span style={{fontSize:18}}>⏳</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="sent").length}</div><div className="ct-stat-lbl">Pending</div></div></div>
-            <div className="ct-stat"><span style={{fontSize:18}}>📝</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="draft").length}</div><div className="ct-stat-lbl">Draft</div></div></div>
+            <div className="ct-stat"><span style={{fontSize:18}}>⏳</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="pending").length}</div><div className="ct-stat-lbl">Pending</div></div></div>
+            <div className="ct-stat"><span style={{fontSize:18}}>📝</span><div><div className="ct-stat-val">{contracts.filter(c=>c.status==="pending").length}</div><div className="ct-stat-lbl">Pending</div></div></div>
           </div>
         )}
 
@@ -124,7 +124,7 @@ export default function ContractsPage() {
                 const sm = statusMeta[c.status] || statusMeta.draft;
                 const brandSigned   = c.brandSigned || c.status === "signed";
                 const creatorSigned = c.creatorSigned || c.status === "signed";
-                const needsMySign   = (role === "influencer" || role === "creator") && c.status === "sent" && !c.creatorSigned;
+                const needsMySign   = (role === "influencer" || role === "creator") && c.status === "pending" && !c.creatorSigned;
                 return (
                   <div key={c._id} className="ct-card" style={{animationDelay:`${idx*0.06}s`}}
                     onClick={() => router.push(`/contracts/${c._id}`)}>
@@ -161,7 +161,7 @@ export default function ContractsPage() {
                     <div className="ct-actions" onClick={e=>e.stopPropagation()}>
                       <Link href={`/contracts/${c._id}`} className="ct-btn ct-btn-view">👁 View</Link>
                       {needsMySign && <Link href={`/contracts/${c._id}?action=sign`} className="ct-btn ct-btn-sign">✍ Sign Now</Link>}
-                      {role === "brand" && c.status === "draft" && <Link href={`/contracts/${c._id}?action=send`} className="ct-btn ct-btn-send">📤 Send</Link>}
+                      {role === "brand" && c.status === "pending" && <Link href={`/contracts/${c._id}?action=send`} className="ct-btn ct-btn-send">📤 Send</Link>}
                     </div>
                   </div>
                 );
