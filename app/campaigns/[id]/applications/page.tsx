@@ -223,7 +223,8 @@ export default function CampaignApplications() {
         .ap-note-label { font-size: 10px; color: #c0c0c0; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; margin-bottom: 4px; }
         .ap-note-text { font-size: 13px; color: #555; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-        .ap-actions { padding: 0 20px 20px; display: flex; gap: 8px; }
+        .ap-actions { padding: 0 20px 20px; display: flex; flex-direction: column; gap: 8px; }
+        .ap-actions-row { display: flex; gap: 8px; }
         .ap-btn { flex: 1; padding: 10px 12px; border-radius: 10px; font-size: 12px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; transition: all 0.2s; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
         .ap-btn-view   { background: #f5f5f3; color: #555; }
         .ap-btn-view:hover   { background: #ebebeb; }
@@ -486,22 +487,28 @@ export default function CampaignApplications() {
                   )}
 
                   <div className="ap-actions">
-                    <button className="ap-btn ap-btn-view" onClick={() => setModalProfile(app)}>
-                      👤 View Profile
-                    </button>
-                    {decision === "accepted" ? (
-                      <>
+                    {/* Row 1: View + Accept/Reject */}
+                    <div className="ap-actions-row">
+                      <button className="ap-btn ap-btn-view" onClick={() => setModalProfile(app)}>
+                        👤 View Profile
+                      </button>
+                      {decision === "accepted" ? (
                         <div className="ap-btn ap-btn-accepted">✓ Accepted</div>
+                      ) : decision === "rejected" ? (
+                        <div className="ap-btn ap-btn-rejected">✗ Rejected</div>
+                      ) : (
+                        <>
+                          <button className="ap-btn ap-btn-accept" onClick={() => handleAccept(app)}>✓ Accept</button>
+                          <button className="ap-btn ap-btn-reject" onClick={() => handleReject(app)}>✗ Reject</button>
+                        </>
+                      )}
+                    </div>
+                    {/* Row 2: Deal + Contract (only when accepted) */}
+                    {decision === "accepted" && (
+                      <div className="ap-actions-row">
                         <a href={`/deals/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-deal">🤝 Deal</a>
                         <a href={`/contracts/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-contract">📄 Contract</a>
-                      </>
-                    ) : decision === "rejected" ? (
-                      <div className="ap-btn ap-btn-rejected">✗ Rejected</div>
-                    ) : (
-                      <>
-                        <button className="ap-btn ap-btn-accept" onClick={() => handleAccept(app)}>✓ Accept</button>
-                        <button className="ap-btn ap-btn-reject" onClick={() => handleReject(app)}>✗ Reject</button>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -513,6 +520,7 @@ export default function CampaignApplications() {
     </>
   );
 }
+
 // "use client";
 
 // import { useParams, useRouter } from "next/navigation";
