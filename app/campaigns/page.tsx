@@ -466,7 +466,7 @@ export default function CampaignBoard() {
                     </div>
                     {/* ✅ Application count — fetched from API */}
                     <div className="cb-meta-item apps-highlight">
-                      <div className="cb-meta-label">👥 Applications</div>
+                      <div className="cb-meta-label">Applications</div>
                       <div className={`cb-meta-val ${countLoading ? "loading" : ""}`}>
                         {countLoading ? "..." : count}
                       </div>
