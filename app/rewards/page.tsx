@@ -346,10 +346,9 @@ export default function RewardsPage() {
                   const isEarned = earnedBadges.includes(b.id);
                   return (
                     <div key={b.id} className={`rw-badge-card ${isEarned?"earned":"locked"}`}
-                      style={{"--bc":b.color} as any}
-                      style2={{animationDelay:`${i*0.05}s`}}>
+                      style={{"--bc":b.color, animationDelay:`${i*0.05}s`} as any}>
                       {isEarned && <div className="rw-badge-earned-ribbon">EARNED</div>}
-                      <div className="rw-badge-icon-wrap" style={{background:`${b.color}18`}} className2={isEarned?"rw-badge-icon-wrap earned":"rw-badge-icon-wrap"}>
+                      <div className={`rw-badge-icon-wrap ${isEarned?"earned":""}`} style={{background:`${b.color}18`}}>
                         <span style={{fontSize:28}}>{b.icon}</span>
                         {!isEarned && <div className="rw-badge-lock">🔒</div>}
                       </div>
