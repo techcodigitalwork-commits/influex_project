@@ -108,10 +108,9 @@ function ContractDetailInner() {
   const getCreatorName   = () => contract.influencerId?.name || contract.influencerId?.username || contract.creatorName || "Creator";
   const getBrandAvatar   = () => contract.brandId?.profileImage || contract.brandId?.avatar || "";
   const getCreatorAvatar = () => contract.influencerId?.profileImage || contract.influencerId?.avatar || "";
-  const getDeliverables  = () => {
+  const getDeliverables = () => {
     const d = contract.deliverables || "";
-    if (typeof d === "string") return d.split("
-").filter(Boolean);
+    if (typeof d === "string") return d.split("\n").filter(Boolean);
     if (Array.isArray(d)) return d;
     return [];
   };
