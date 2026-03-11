@@ -25,9 +25,13 @@ export default function DealsPage() {
 
   const fetchDeals = async (t: string) => {
     try {
+      // GET /api/deal/my
       const res = await fetch(`${API}/deal/my`, { headers: { Authorization: `Bearer ${t}` } });
       const data = await res.json();
-      setDeals(data.deals || data.data || []);
+      const list = data.deals || data.data || data || [];
+      // Sort newest first
+      list.sort((a: any, b: any) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
+      setDeals(list);
     } catch { setDeals([]); }
     finally { setLoading(false); }
   };

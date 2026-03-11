@@ -84,23 +84,28 @@ function CreateDealPageInner() {
     }
     setSubmitting(true);
     try {
+      // POST /api/deal/create
       const res = await fetch(`${API}/deal/create`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          campaignId: form.campaignId,
-          creatorId: form.creatorId,
-          title: form.title,
-          amount: Number(form.amount),
-          description: form.description,
-          deadline: form.deadline,
-          deliverables: form.deliverables.filter(Boolean),
+          campaignId:   form.campaignId,
+          influencerId: form.creatorId,          // schema uses influencerId
+          amount:       Number(form.amount),
+          title:        form.title,
+          description:  form.description,
+          deadline:     form.deadline,
+          deliverables: form.deliverables.filter(Boolean).join("\n"),
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed");
-      showToast("Deal created! ✓", "success");
-      setTimeout(() => router.push("/deals"), 1500);
+      if (!res.ok) throw new Error(data.message || "Failed to create deal");
+      showToast("Deal created! Redirecting...", "success");
+      const newId = data.deal?._id || data.data?._id || data._id || null;
+      setTimeout(() => {
+        if (newId) router.push(`/deals/${newId}`);
+        else router.push("/deals");
+      }, 900);
     } catch (err: any) {
       showToast(err.message || "Something went wrong", "error");
     } finally { setSubmitting(false); }

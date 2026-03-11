@@ -139,16 +139,6 @@ export default function Navbar() {
 
         .nav-notif-badge { background: #ef4444; color: #fff; border-radius: 100px; font-size: 9px; padding: 1px 5px; font-weight: 800; display: inline-block; }
 
-        /* MORE DROPDOWN */
-        .nav-more-wrap { position: relative; }
-        .nav-more-btn { font-size: 13px; font-weight: 600; color: #777; padding: 6px 10px; border-radius: 9px; border: none; background: none; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; display: flex; align-items: center; gap: 4px; transition: all 0.18s; }
-        .nav-more-btn:hover { color: #111; background: #f5f5f3; }
-        .nav-more-btn.has-active { color: #4f46e5; background: #eef2ff; }
-        .nav-more-drop { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #fff; border: 1.5px solid #ebebeb; border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,0.09); padding: 6px; min-width: 180px; z-index: 9999; animation: dropIn 0.15s ease; }
-        .nav-more-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 600; color: #444; text-decoration: none; transition: background 0.15s; white-space: nowrap; }
-        .nav-more-item:hover { background: #f5f5f0; color: #111; }
-        .nav-more-item.active { background: #eef2ff; color: #4f46e5; }
-
         .nav-right { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 
         .nav-avatar-btn { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 100px; border: 1.5px solid #ebebeb; background: none; cursor: pointer; transition: all 0.2s; }
@@ -170,6 +160,7 @@ export default function Navbar() {
         .nav-dd-item.danger:hover { background: #fff5f5; }
         .nav-dd-item.upgrade-dd { background: linear-gradient(135deg, #ede9fe, #e0e7ff); color: #4f46e5; font-weight: 700; }
         .nav-dd-item.upgrade-dd:hover { background: linear-gradient(135deg, #ddd6fe, #c7d2fe); }
+        .nav-dd-section { font-size: 10px; font-weight: 700; color: #bbb; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 12px 4px; }
 
         .nav-login { font-size: 13px; font-weight: 600; color: #666; text-decoration: none; padding: 8px 14px; border-radius: 10px; transition: all 0.2s; }
         .nav-login:hover { color: #111; background: #f5f5f0; }
@@ -206,7 +197,6 @@ export default function Navbar() {
               {isInfluencer && (
                 <>
                   <Link href="/discovery"    className={`nav-link ${isActive("/discovery") ? "active" : ""}`}>Discover</Link>
-                  {/* <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>Applied</Link> */}
                   <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
                   <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
                   <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
@@ -217,19 +207,12 @@ export default function Navbar() {
                 </>
               )}
 
-              {/* BRAND LINKS */}
+              {/* BRAND LINKS — More dropdown removed, Deals/Contracts moved to profile dropdown */}
               {isBrand && (
                 <>
                   <Link href="/browse"       className={`nav-link ${isActive("/browse") ? "active" : ""}`}>Discover</Link>
                   <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>Campaigns</Link>
-                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
-                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
                   <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
-                  <MoreDropdown items={[
-                    { href:"/invite",      label:"Invite Creators", active: isActive("/invite")      },
-                    { href:"/contact",     label:"Unlock Contacts", active: isActive("/contact")     },
-                    { href:"/smart-match", label:"Smart Match",     active: isActive("/smart-match") },
-                  ]} />
                   <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
                     Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
@@ -279,28 +262,45 @@ export default function Navbar() {
                         <span className="nav-dd-role">{role}</span>
                       </div>
                       <div className="nav-dd-sep" />
-                      <Link href="/upgrade"       className="nav-dd-item upgrade-dd" onClick={() => setDropdownOpen(false)}>Upgrade Plan</Link>
+
+                      {/* Upgrade */}
+                      <Link href="/upgrade" className="nav-dd-item upgrade-dd" onClick={() => setDropdownOpen(false)}>⚡ Upgrade Plan</Link>
                       <div className="nav-dd-sep" />
-                      <Link href="/my-profile"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Edit Profile</Link>
-                      <Link href="/setup-profile" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>View Profile</Link>
+
+                      {/* Profile */}
+                      <Link href="/my-profile"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>✏️ Edit Profile</Link>
+                      <Link href="/setup-profile" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>👤 View Profile</Link>
+
+                      {/* Influencer extras */}
                       {isInfluencer && (
-                        <Link href="/rewards"     className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Rewards</Link>
+                        <Link href="/rewards" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🎁 Rewards</Link>
                       )}
+
+                      {/* Brand extras — Deals, Contracts, tools moved here */}
                       {isBrand && (
                         <>
-                          <Link href="/invite"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Invite Creators</Link>
-                          <Link href="/contact"   className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Unlock Contacts</Link>
+                          <div className="nav-dd-sep" />
+                          <div className="nav-dd-section">Brand Tools</div>
+                          <Link href="/deals"          className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🤝 Deals</Link>
+                          <Link href="/contracts"      className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📄 Contracts</Link>
+                          <Link href="/invite"         className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📩 Invite Creators</Link>
+                          <Link href="/contact"        className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🔓 Unlock Contacts</Link>
+                          <Link href="/smart-match"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>✨ Smart Match</Link>
+                          <Link href="/campaigns/post" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📋 Post Campaign</Link>
                         </>
                       )}
+
+                      {/* Admin */}
                       {isAdmin && (
-                        <Link href="/admin"       className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Admin Panel</Link>
+                        <>
+                          <Link href="/admin"          className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🛡️ Admin Panel</Link>
+                          <Link href="/campaigns/post" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📋 Post Campaign</Link>
+                        </>
                       )}
-                      <Link href="/settings"      className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Settings</Link>
-                      {(isBrand || isAdmin) && (
-                        <Link href="/campaigns/post" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>Post Campaign</Link>
-                      )}
+
                       <div className="nav-dd-sep" />
-                      <button className="nav-dd-item danger" onClick={handleLogout}>Logout</button>
+                      <Link href="/settings" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>⚙️ Settings</Link>
+                      <button className="nav-dd-item danger" onClick={handleLogout}>🚪 Logout</button>
                     </div>
                   )}
                 </div>
@@ -322,7 +322,6 @@ export default function Navbar() {
         {user && (
           <div className={`nav-mobile ${mobileMenuOpen ? "open" : ""}`}>
 
-            {/* MAIN */}
             <div className="nav-mobile-section">Main</div>
             {isInfluencer && <Link href="/discovery"    className={`nav-mobile-link ${isActive("/discovery") ? "active" : ""}`}>Discover</Link>}
             {isBrand      && <Link href="/browse"       className={`nav-mobile-link ${isActive("/browse") ? "active" : ""}`}>Discover Creators</Link>}
@@ -333,35 +332,32 @@ export default function Navbar() {
               Notifications {unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
             </Link>
 
-            {/* DEALS & CONTRACTS */}
             <div className="nav-mobile-section">Work</div>
             <Link href="/deals"        className={`nav-mobile-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
             <Link href="/contracts"    className={`nav-mobile-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
             {isInfluencer && <Link href="/rewards" className={`nav-mobile-link ${isActive("/rewards") ? "active" : ""}`}>Rewards</Link>}
 
-            {/* BRAND ONLY */}
             {isBrand && (
               <>
                 <div className="nav-mobile-section">Brand Tools</div>
-                <Link href="/invite"   className={`nav-mobile-link ${isActive("/invite") ? "active" : ""}`}>Invite Creators</Link>
-                <Link href="/contact"  className={`nav-mobile-link ${isActive("/contact") ? "active" : ""}`}>Unlock Contacts</Link>
+                <Link href="/invite"      className={`nav-mobile-link ${isActive("/invite") ? "active" : ""}`}>Invite Creators</Link>
+                <Link href="/contact"     className={`nav-mobile-link ${isActive("/contact") ? "active" : ""}`}>Unlock Contacts</Link>
+                <Link href="/smart-match" className={`nav-mobile-link ${isActive("/smart-match") ? "active" : ""}`}>Smart Match</Link>
                 <Link href="/campaigns/post" className={`nav-mobile-link ${isActive("/campaigns/post") ? "active" : ""}`}>Post Campaign</Link>
               </>
             )}
 
-            {/* ADMIN */}
             {isAdmin && (
               <>
                 <div className="nav-mobile-section">Admin</div>
-                <Link href="/admin"    className={`nav-mobile-link ${isActive("/admin") ? "active" : ""}`}>Admin Panel</Link>
+                <Link href="/admin" className={`nav-mobile-link ${isActive("/admin") ? "active" : ""}`}>Admin Panel</Link>
               </>
             )}
 
-            {/* ACCOUNT */}
             <div className="nav-mobile-section">Account</div>
-            <Link href="/upgrade"      className="nav-mobile-upgrade">Upgrade Plan</Link>
-            <Link href="/my-profile"   className={`nav-mobile-link ${isActive("/my-profile") ? "active" : ""}`}>Edit Profile</Link>
-            <Link href="/settings"     className={`nav-mobile-link ${isActive("/settings") ? "active" : ""}`}>Settings</Link>
+            <Link href="/upgrade"    className="nav-mobile-upgrade">⚡ Upgrade Plan</Link>
+            <Link href="/my-profile" className={`nav-mobile-link ${isActive("/my-profile") ? "active" : ""}`}>Edit Profile</Link>
+            <Link href="/settings"   className={`nav-mobile-link ${isActive("/settings") ? "active" : ""}`}>Settings</Link>
             <button
               className="nav-mobile-link"
               style={{ color: "#ef4444", border: "none", background: "none", cursor: "pointer", textAlign: "left", width: "100%", fontFamily: "inherit" }}
@@ -372,40 +368,6 @@ export default function Navbar() {
         )}
       </nav>
     </>
-  );
-}
-
-// ── MORE dropdown component ──
-function MoreDropdown({ items, onItemClick }: { items: { href: string; label: string; active: boolean }[]; onItemClick?: (href: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const hasActive = items.some(i => i.active);
-
-  useEffect(() => {
-    const handler = (e: any) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div className="nav-more-wrap" ref={ref}>
-      <button className={`nav-more-btn ${hasActive ? "has-active" : ""}`} onClick={() => setOpen(o => !o)}>
-        More
-        <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && (
-        <div className="nav-more-drop">
-          {items.map(item => (
-            <Link key={item.href} href={item.href} className={`nav-more-item ${item.active ? "active" : ""}`}
-              onClick={() => { setOpen(false); onItemClick?.(item.href); }}>
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 

@@ -41,9 +41,12 @@ function DealDetailPageInner() {
 
   const fetchDeal = async (t: string) => {
     try {
+      // GET /api/deal/:id
       const res = await fetch(`${API}/deal/${id}`, { headers: { Authorization: `Bearer ${t}` } });
       const data = await res.json();
-      setDeal(data.deal || data.data || data);
+      if (!res.ok) throw new Error(data.message || "Failed");
+      const d = data.deal || data.data || data;
+      setDeal(d);
     } catch {}
     finally { setLoading(false); }
   };
@@ -53,39 +56,49 @@ function DealDetailPageInner() {
     if (!deal && !t) return;
     setActionLoading("deposit");
     try {
-      const res = await fetch(`${API}/deal/${id}/escrow/create`, {
+      // POST /api/deal/deposit
+      const res = await fetch(`${API}/deal/deposit`, {
         method: "POST",
         headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: deal?.amount }),
+        body: JSON.stringify({ dealId: id, amount: deal?.amount }),
       });
       const data = await res.json();
-      if (!data.success || !data.order?.id) throw new Error(data.message || "Failed to create payment");
+      if (!res.ok) throw new Error(data.message || "Failed to initiate payment");
 
-      const options = {
-        key: RAZORPAY_KEY,
-        order_id: data.order.id,
-        amount: data.order.amount,
-        currency: "INR",
-        name: "Influex Escrow",
-        description: `Deal: ${deal?.title || ""}`,
-        theme: { color: "#4f46e5" },
-        prefill: { name: userName, email: userEmail },
-        handler: async (response: any) => {
-          try {
-            await fetch(`${API}/deal/${id}/escrow/verify`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
-              body: JSON.stringify(response),
-            });
-            showToast("💰 Escrow deposited successfully!", "success");
-            fetchDeal(tk);
-          } catch { showToast("Verification failed", "error"); }
-          setActionLoading("");
-        },
-        modal: { ondismiss: () => { showToast("Payment cancelled", "warn"); setActionLoading(""); } },
-      };
-      const rzp = new (window as any).Razorpay(options);
-      rzp.open();
+      // If backend returns Razorpay order — open Razorpay
+      if (data.order?.id) {
+        const options = {
+          key: RAZORPAY_KEY,
+          order_id: data.order.id,
+          amount: data.order.amount,
+          currency: "INR",
+          name: "Influex Escrow",
+          description: `Deal: ${deal?.title || ""}`,
+          theme: { color: "#4f46e5" },
+          prefill: { name: userName, email: userEmail },
+          handler: async (response: any) => {
+            try {
+              // Verify payment after Razorpay success
+              await fetch(`${API}/deal/deposit`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ dealId: id, paymentId: response.razorpay_payment_id, orderId: response.razorpay_order_id, signature: response.razorpay_signature }),
+              });
+              showToast("💰 Escrow deposited successfully!", "success");
+              fetchDeal(tk);
+            } catch { showToast("Payment verification failed", "error"); }
+            setActionLoading("");
+          },
+          modal: { ondismiss: () => { showToast("Payment cancelled", "warn"); setActionLoading(""); } },
+        };
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      } else {
+        // Direct deposit (no Razorpay)
+        showToast("💰 Payment deposited to escrow!", "success");
+        fetchDeal(tk);
+        setActionLoading("");
+      }
     } catch (err: any) {
       showToast(err.message || "Payment failed", "error");
       setActionLoading("");
@@ -95,12 +108,14 @@ function DealDetailPageInner() {
   const handleApprove = async () => {
     setActionLoading("approve");
     try {
-      const res = await fetch(`${API}/deal/${id}/approve`, {
+      // POST /api/deal/approve
+      const res = await fetch(`${API}/deal/approve`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ dealId: id }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.message || "Failed to approve");
       showToast("✅ Work approved! Payment released to creator.", "success");
       fetchDeal(token);
     } catch (err: any) { showToast(err.message || "Failed", "error"); }
