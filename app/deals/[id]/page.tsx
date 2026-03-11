@@ -151,6 +151,18 @@ function DealDetailPageInner() {
     return 0;
   };
 
+  // Helpers for populated fields
+  const getBrandName   = () => deal?.brandId?.name || deal?.brandId?.username || deal?.brandName || "Brand";
+  const getCreatorName = () => deal?.influencerId?.name || deal?.influencerId?.username || deal?.creatorName || "Creator";
+  const getBrandAvatar   = () => deal?.brandId?.profileImage || deal?.brandId?.avatar || "";
+  const getCreatorAvatar = () => deal?.influencerId?.profileImage || deal?.influencerId?.avatar || "";
+  const getDeliverables  = () => {
+    const d = deal?.deliverables || "";
+    if (typeof d === "string") return d.split("\n").filter(Boolean);
+    if (Array.isArray(d)) return d;
+    return [];
+  };
+
   if (loading) return (
     <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:28,height:28,border:"3px solid #e0e0e0",borderTopColor:"#4f46e5",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} />
@@ -286,8 +298,8 @@ function DealDetailPageInner() {
           <div className="dd-card">
             <div className="dd-card-title">📋 Deal Info</div>
             <div className="dd-row"><span className="dd-row-label">Campaign</span><span className="dd-row-val">{deal.campaignTitle || deal.campaign?.title || "—"}</span></div>
-            <div className="dd-row"><span className="dd-row-label">Brand</span><span className="dd-row-val">{deal.brandName || deal.brand?.name || "—"}</span></div>
-            <div className="dd-row"><span className="dd-row-label">Creator</span><span className="dd-row-val">{deal.creatorName || deal.creator?.name || deal.influencer?.name || "—"}</span></div>
+            <div className="dd-row"><span className="dd-row-label">Brand</span><span className="dd-row-val">{deal.brandId?.name || deal.brandId?.username || deal.brandName || deal.brand?.name || "—"}</span></div>
+            <div className="dd-row"><span className="dd-row-label">Creator</span><span className="dd-row-val">{deal.influencerId?.name || deal.influencerId?.username || deal.creatorName || deal.creator?.name || "—"}</span></div>
             <div className="dd-row"><span className="dd-row-label">Deadline</span><span className="dd-row-val">{deal.deadline ? new Date(deal.deadline).toLocaleDateString("en-IN", {day:"numeric",month:"long",year:"numeric"}) : "—"}</span></div>
             <div className="dd-row"><span className="dd-row-label">Created</span><span className="dd-row-val">{new Date(deal.createdAt).toLocaleDateString("en-IN", {day:"numeric",month:"long"})}</span></div>
             {deal.description && (
@@ -414,7 +426,6 @@ export default function DealDetailPage() {
     </Suspense>
   );
 }
-
 
 // "use client";
 

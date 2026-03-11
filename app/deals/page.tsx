@@ -9,9 +9,11 @@ const API = "http://54.252.201.93:5000/api";
 export default function DealsPage() {
   const router = useRouter();
   const [deals, setDeals] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState("");
-  const [token, setToken] = useState("");
+  const [loading, setLoading]           = useState(true);
+  const [role, setRole]                 = useState("");
+  const [token, setToken]               = useState("");
+  const [campaignFilter, setCampaignFilter] = useState("");
+  const [actioning, setActioning]       = useState<string|null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem("cb_user");
@@ -25,15 +27,84 @@ export default function DealsPage() {
 
   const fetchDeals = async (t: string) => {
     try {
-      // GET /api/deal/my
-      const res = await fetch(`${API}/deal/my`, { headers: { Authorization: `Bearer ${t}` } });
+      // GET /api/deal/my — fetch all my deals
+      const res  = await fetch(`${API}/deal/my`, { headers: { Authorization: `Bearer ${t}` } });
       const data = await res.json();
-      const list = data.deals || data.data || data || [];
-      // Sort newest first
+      if (!res.ok) throw new Error(data.message || "Failed");
+      const list = data.deals || data.data || [];
       list.sort((a: any, b: any) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
       setDeals(list);
     } catch { setDeals([]); }
     finally { setLoading(false); }
+  };
+
+  // GET /api/deal/campaign/:campaignId — deals for specific campaign
+  const fetchCampaignDeals = async (campaignId: string) => {
+    if (!campaignId) { fetchDeals(token); return; }
+    setLoading(true);
+    try {
+      const res  = await fetch(`${API}/deal/campaign/${campaignId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+      const list = data.deals || data.data || [];
+      list.sort((a: any, b: any) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
+      setDeals(list);
+    } catch { setDeals([]); }
+    finally { setLoading(false); }
+  };
+
+  // POST /deal/deposit
+  const handleDeposit = async (deal: any) => {
+    setActioning(deal._id + "_deposit");
+    try {
+      const res = await fetch(`${API}/deal/deposit`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ dealId: deal._id, amount: deal.amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+      // Razorpay flow
+      if (data.order?.id) {
+        const rzp = new (window as any).Razorpay({
+          key: "rzp_test_SL7M2uHDyhrU4A",
+          order_id: data.order.id,
+          amount: data.order.amount,
+          currency: "INR",
+          name: "Influex Escrow",
+          description: `Deal: ${deal.title || ""}`,
+          theme: { color: "#4f46e5" },
+          handler: () => {
+            alert("💰 Escrow deposited successfully!");
+            fetchDeals(token);
+          },
+          modal: { ondismiss: () => setActioning(null) },
+        });
+        rzp.open();
+      } else {
+        alert("💰 Payment deposited!");
+        fetchDeals(token);
+      }
+    } catch (err: any) { alert(err.message || "Deposit failed"); }
+    finally { setActioning(null); }
+  };
+
+  // POST /deal/approve
+  const handleApprove = async (dealId: string) => {
+    if (!confirm("Approve work and release payment to creator?")) return;
+    setActioning(dealId + "_approve");
+    try {
+      const res = await fetch(`${API}/deal/approve`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ dealId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+      alert("✅ Work approved! Payment released.");
+      fetchDeals(token);
+    } catch (err: any) { alert(err.message || "Approve failed"); }
+    finally { setActioning(null); }
   };
 
   const statusColor: Record<string, string> = {
@@ -128,11 +199,34 @@ export default function DealsPage() {
             <div className="dl-sub">{deals.length} deal{deals.length !== 1 ? "s" : ""} total</div>
           </div>
           {role === "brand" && (
-            <Link href="/deals/create" className="dl-create-btn">+ Create Deal</Link>
+            {role === "brand" && <Link href="/deals/create" className="dl-create-btn">+ Create Deal</Link>}
           )}
         </div>
 
         {/* FLOW */}
+        {/* CAMPAIGN FILTER — GET /deal/campaign/:id */}
+        {role === "brand" && (
+          <div style={{padding:"12px 32px",background:"#fff",borderBottom:"1px solid #efefef",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,fontWeight:600,color:"#888"}}>Filter by Campaign:</span>
+            <input
+              style={{padding:"7px 12px",borderRadius:10,border:"1.5px solid #e0e0e0",fontSize:13,fontFamily:"inherit",outline:"none",minWidth:220,color:"#111"}}
+              placeholder="Paste Campaign ID to filter..."
+              value={campaignFilter}
+              onChange={e => {
+                setCampaignFilter(e.target.value);
+                if (e.target.value.length > 10) fetchCampaignDeals(e.target.value.trim());
+                else if (!e.target.value) fetchDeals(token);
+              }}
+            />
+            {campaignFilter && (
+              <button onClick={() => { setCampaignFilter(""); fetchDeals(token); }}
+                style={{padding:"7px 12px",borderRadius:10,border:"1.5px solid #e0e0e0",background:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",color:"#ef4444"}}>
+                ✕ Clear
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="dl-flow">
           {["Campaign", "Apply", "Shortlist", "Deal", "Deposit", "Work", "Approve", "💰 Released"].map((step, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center" }}>
@@ -216,11 +310,19 @@ export default function DealsPage() {
 
                     <div className="dl-actions" onClick={e => e.stopPropagation()}>
                       <Link href={`/deals/${deal._id}`} className="dl-btn dl-btn-view">👁 View</Link>
-                      {role === "brand" && !deal.escrowDeposited && deal.status === "pending" && (
-                        <Link href={`/deals/${deal._id}?action=deposit`} className="dl-btn dl-btn-deposit">💰 Deposit</Link>
+                      {role === "brand" && !deal.escrowDeposited && deal.status !== "completed" && (
+                        <button className="dl-btn dl-btn-deposit"
+                          disabled={actioning === deal._id + "_deposit"}
+                          onClick={() => handleDeposit(deal)}>
+                          {actioning === deal._id + "_deposit" ? "Processing..." : "💰 Deposit"}
+                        </button>
                       )}
-                      {role === "brand" && deal.status === "active" && deal.deliverableSubmitted && (
-                        <Link href={`/deals/${deal._id}?action=approve`} className="dl-btn dl-btn-approve">✓ Approve</Link>
+                      {role === "brand" && deal.deliverableSubmitted && deal.status !== "completed" && (
+                        <button className="dl-btn dl-btn-approve"
+                          disabled={actioning === deal._id + "_approve"}
+                          onClick={() => handleApprove(deal._id)}>
+                          {actioning === deal._id + "_approve" ? "Approving..." : "✓ Approve"}
+                        </button>
                       )}
                     </div>
                   </div>

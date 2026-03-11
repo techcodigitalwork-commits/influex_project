@@ -43,35 +43,35 @@ export default function CampaignApplications() {
       const apps = appData?.applications || appData?.data || [];
       const appList = Array.isArray(apps) ? apps : [];
 
-      // Fetch full influencer profile for each application
+      // Fetch full influencer profile using /api/profile/user/:userId
       const enriched = await Promise.all(
         appList.map(async (app: any) => {
-          const profileId = app?.influencer?._id || app?.influencer?.user || app?.userId || app?.influencerId;
-          console.log("=== APP RAW DATA ===", JSON.stringify(app, null, 2));
-          console.log("=== PROFILE ID ===", profileId);
-          if (!profileId) return app;
+          // application has influencerId._id which is the user ID
+          const userId = app?.influencerId?._id || app?.influencer?._id || app?.userId;
+          if (!userId) return app;
           try {
-            const pRes = await fetch(`${API_BASE}/profile/${profileId}`, {
+            const pRes = await fetch(`${API_BASE}/profile/user/${userId}`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             const pData = await pRes.json();
-            console.log("=== PROFILE API RESPONSE ===", JSON.stringify(pData, null, 2));
             const p = pData?.profile || pData?.data || pData;
             return {
               ...app,
               influencer: {
-                ...app.influencer,
-                name:         p?.name         || app?.influencer?.name,
-                profileImage: p?.profileImage || app?.influencer?.profileImage,
-                location:     p?.location     || p?.city  || app?.influencer?.location,
-                followers:    p?.followers    || p?.followersCount || app?.influencer?.followers,
-                categories:   p?.categories   || app?.influencer?.categories,
-                phone:        p?.phone        || app?.influencer?.phone,
-                platform:     p?.instagram    || p?.platform || app?.influencer?.platform,
+                _id:          p?._id,
+                user:         userId,
+                name:         p?.name         || app?.influencerId?.email?.split("@")[0] || "Creator",
+                email:        app?.influencerId?.email || "",
+                profileImage: p?.profileImage || null,
+                location:     p?.location     || p?.city || "",
+                followers:    p?.followers    || null,
+                categories:   p?.categories   || [],
+                phone:        p?.phone        || "",
+                platform:     p?.platform     || p?.instagram || "",
+                bio:          p?.bio          || "",
               },
             };
-          } catch (e) {
-            console.log("=== PROFILE FETCH ERROR ===", e);
+          } catch {
             return app;
           }
         })
@@ -129,24 +129,24 @@ export default function CampaignApplications() {
     showToast("Application rejected", "error");
   };
 
-  const getName       = (a: any) => a?.influencer?.name || a?.name || "Creator";
-  const getImage      = (a: any) => a?.influencer?.profileImage || a?.profileImage || null;
-  const getLocation   = (a: any) => a?.influencer?.location || a?.influencer?.city || a?.location || a?.city || "";
+  // After enrichment, all data is in app.influencer
+  const getName       = (a: any) => a?.influencer?.name || a?.influencerId?.email?.split("@")[0] || "Creator";
+  const getImage      = (a: any) => a?.influencer?.profileImage || null;
+  const getLocation   = (a: any) => a?.influencer?.location || "";
   const getCategories = (a: any) => {
-    const c = a?.influencer?.categories || a?.influencer?.niche || a?.categories || a?.niche || [];
+    const c = a?.influencer?.categories || [];
     return Array.isArray(c) ? c.join(", ") : c || "";
   };
   const getFollowers  = (a: any) => {
-    const f = a?.influencer?.followers || a?.influencer?.followersCount
-           || a?.influencer?.totalFollowers || a?.followers || a?.followersCount;
-    if (!f) return null;
+    const f = a?.influencer?.followers;
+    if (!f && f !== 0) return null;
     const num = Number(f);
     if (!isNaN(num) && num >= 1000) return (num / 1000).toFixed(1) + "K";
     return String(f);
   };
-  const getPlatform   = (a: any) => a?.influencer?.instagram || a?.influencer?.platform || a?.instagram || a?.platform || "";
-  const getPhone      = (a: any) => a?.influencer?.phone || a?.influencer?.mobile || a?.phone || a?.mobile || "";
-  const getProfileId  = (a: any) => a?.influencer?._id || a?.influencerId || a?.userId;
+  const getPlatform   = (a: any) => a?.influencer?.platform || "";
+  const getPhone      = (a: any) => a?.influencer?.phone || "";
+  const getProfileId  = (a: any) => a?.influencer?._id || a?.influencerId?._id || a?.userId;
 
   const blurPhone     = (phone: string) => phone ? String(phone).slice(0, 3) + "XXXXXXX" : "";
   const blurNameHalf  = (name: string) => {
@@ -491,9 +491,9 @@ export default function CampaignApplications() {
                     </button>
                     {decision === "accepted" ? (
                       <>
-                        {/* <div className="ap-btn ap-btn-accepted">✓ Accepted</div>
+                        <div className="ap-btn ap-btn-accepted">✓ Accepted</div>
                         <a href={`/deals/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-deal">🤝 Deal</a>
-                        <a href={`/contracts/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-contract">📄 Contract</a> */}
+                        <a href={`/contracts/create?campaignId=${id}&creatorId=${app.influencer?._id||app._id}`} className="ap-btn ap-btn-contract">📄 Contract</a>
                       </>
                     ) : decision === "rejected" ? (
                       <div className="ap-btn ap-btn-rejected">✗ Rejected</div>
@@ -513,8 +513,6 @@ export default function CampaignApplications() {
     </>
   );
 }
-
-
 // "use client";
 
 // import { useParams, useRouter } from "next/navigation";

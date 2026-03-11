@@ -193,14 +193,11 @@ export default function Navbar() {
           {user ? (
             <div className="nav-links">
 
-              {/* INFLUENCER LINKS */}
+              {/* INFLUENCER LINKS — Deals/Contracts/Rewards moved to profile dropdown */}
               {isInfluencer && (
                 <>
                   <Link href="/discovery"    className={`nav-link ${isActive("/discovery") ? "active" : ""}`}>Discover</Link>
-                  <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
-                  <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link>
                   <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
-                  <Link href="/rewards"      className={`nav-link ${isActive("/rewards") ? "active" : ""}`}>Rewards</Link>
                   <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
                     Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
@@ -271,9 +268,15 @@ export default function Navbar() {
                       <Link href="/my-profile"    className="nav-dd-item" onClick={() => setDropdownOpen(false)}>✏️ Edit Profile</Link>
                       <Link href="/setup-profile" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>👤 View Profile</Link>
 
-                      {/* Influencer extras */}
+                      {/* Influencer extras — Deals, Contracts, Rewards in dropdown */}
                       {isInfluencer && (
-                        <Link href="/rewards" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🎁 Rewards</Link>
+                        <>
+                          <div className="nav-dd-sep" />
+                          <div className="nav-dd-section">My Work</div>
+                          <Link href="/deals"     className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🤝 Deals</Link>
+                          <Link href="/contracts" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📄 Contracts</Link>
+                          <Link href="/rewards"   className="nav-dd-item" onClick={() => setDropdownOpen(false)}>🎁 Rewards</Link>
+                        </>
                       )}
 
                       {/* Brand extras — Deals, Contracts, tools moved here */}
@@ -370,7 +373,6 @@ export default function Navbar() {
     </>
   );
 }
-
 
 
 
