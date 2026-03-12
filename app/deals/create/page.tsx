@@ -65,6 +65,8 @@ function CreateDealPageInner() {
         if (camp) setForm(f => ({ ...f, campaignId: campId, title: f.title || `Deal for ${camp.title}` }));
       }
     } catch {}
+    // Always load all creators
+    fetchApplications("", t);
   };
 
   const fetchApplications = async (campaignId: string, t?: string) => {
@@ -85,8 +87,8 @@ function CreateDealPageInner() {
   };
 
   const handleCreatorChange = (creatorId: string) => {
-    const app = applications.find(a => (a.influencer?._id || a.influencerId?._id || a.influencerId || a._id) === creatorId);
-    const name = app?.influencer?.name || app?.influencerId?.name || app?.name || "";
+    const app = applications.find(a => a._id === creatorId);
+    const name = app?.name || "";
     setForm(f => ({ ...f, creatorId, creatorName: name }));
   };
 
@@ -198,7 +200,7 @@ function CreateDealPageInner() {
                 {campaigns.map(c => <option key={c._id} value={c._id}>{c.title}</option>)}
               </select>
             </div>
-            {(form.campaignId || applications.length > 0) && (
+            {(
               <div className="dc-field">
                 <label className="dc-label">Creator <span>*</span></label>
                 {loadingApps ? <div style={{fontSize:13,color:"#aaa",padding:"10px 0"}}>Loading creators...</div> :
@@ -206,9 +208,10 @@ function CreateDealPageInner() {
                   <select className="dc-select" style={{color: form.creatorId ? "#111" : "#9ca3af"}} value={form.creatorId} onChange={e => handleCreatorChange(e.target.value)}>
                     <option value="">Select creator...</option>
                     {applications.map((a, i) => {
-                      const cid  = a.influencer?._id || a.influencerId?._id || a.influencerId || a._id;
-                      const name = a.influencer?.name || a.influencerId?.name || a.name || `Creator ${i+1}`;
-                      return <option key={cid || i} value={cid}>{name}</option>;
+                      const cid  = a._id;
+                      const name = a.name || `Creator ${i+1}`;
+                      const sub  = a.followers ? ` · ${Number(a.followers).toLocaleString("en-IN")} followers` : "";
+                      return <option key={cid || i} value={cid}>{name}{sub}</option>;
                     })}
                   </select>
                 }
