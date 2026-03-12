@@ -22,6 +22,8 @@ function DealDetailPageInner() {
   const [submitNote,    setSubmitNote]    = useState("");
   const [submitFile,    setSubmitFile]    = useState("");
   const [showSubmit,    setShowSubmit]    = useState(false);
+  const [brandName,     setBrandName]     = useState("");
+  const [creatorName,   setCreatorName]   = useState("");
 
   const showToast = (msg: string, type: "success"|"error"|"warn" = "success") => {
     setToast({msg,type}); setTimeout(() => setToast(null), 4500);
@@ -49,11 +51,28 @@ function DealDetailPageInner() {
       const res  = await fetch(`${API}/deal/${id}`, { headers: { Authorization: `Bearer ${t}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
-      const d = data.deal || data.data || data;
+      const d = data.deal || data.data || (data._id ? data : null) || data;
       setDeal(d);
       const esc = d.escrow || data.escrow || null;
       if (esc) setEscrow(esc);
       console.log("DEAL DATA:", JSON.stringify(d, null, 2));
+      // ✅ Fetch brand & creator names
+      const brandId = d.brandId?._id || d.brandId;
+      const creatorId = d.influencerId?._id || d.influencerId;
+      if (brandId && typeof brandId === "string") {
+        fetch(`${API}/profile/user/${brandId}`, { headers: { Authorization: `Bearer ${t}` } })
+          .then(r => r.json()).then(pd => {
+            const p = pd.profile || pd.data || pd;
+            setBrandName(p?.companyName || p?.name || d.brandId?.email || "");
+          }).catch(() => {});
+      }
+      if (creatorId && typeof creatorId === "string") {
+        fetch(`${API}/profile/user/${creatorId}`, { headers: { Authorization: `Bearer ${t}` } })
+          .then(r => r.json()).then(pd => {
+            const p = pd.profile || pd.data || pd;
+            setCreatorName(p?.name || p?.username || d.influencerId?.email || "");
+          }).catch(() => {});
+      }
     } catch(e:any) {
       showToast(e.message || "Failed to load deal", "error");
     } finally {
@@ -332,8 +351,8 @@ function DealDetailPageInner() {
           <div className="dd-card">
             <div className="dd-card-title">📋 Deal Info</div>
             <div className="dd-row"><span className="dd-lbl">Campaign</span><span className="dd-val">{deal.campaignId?.title || deal.campaignTitle || "—"}</span></div>
-            <div className="dd-row"><span className="dd-lbl">Brand</span><span className="dd-val">{deal.brandId?.name || deal.brandId?.email || deal.brandName || "—"}</span></div>
-            <div className="dd-row"><span className="dd-lbl">Creator</span><span className="dd-val">{deal.influencerId?.name || deal.influencerId?.email || deal.creatorName || "—"}</span></div>
+            <div className="dd-row"><span className="dd-lbl">Brand</span><span className="dd-val">{brandName || deal.brandId?.email || "—"}</span></div>
+            <div className="dd-row"><span className="dd-lbl">Creator</span><span className="dd-val">{creatorName || deal.influencerId?.email || "—"}</span></div>
             <div className="dd-row"><span className="dd-lbl">Amount</span><span className="dd-val">₹{Number(deal.amount||0).toLocaleString("en-IN")}</span></div>
             <div className="dd-row"><span className="dd-lbl">Platform Fee (10%)</span><span className="dd-val">₹{Number(deal.platformCommission||0).toLocaleString("en-IN")}</span></div>
             <div className="dd-row"><span className="dd-lbl">Creator Gets</span><span className="dd-val" style={{color:"#16a34a"}}>₹{Number(deal.creatorAmount||0).toLocaleString("en-IN")}</span></div>
@@ -468,7 +487,6 @@ export default function DealDetailPage() {
     </Suspense>
   );
 }
-
 
 // "use client";
 
