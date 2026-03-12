@@ -126,8 +126,8 @@ function CreateContractPageInner() {
       const newId = data.contract?._id || data.data?._id || data._id || null;
       showToast("Contract created successfully! ✓", "success");
       setTimeout(() => {
-        if (newId) router.push(`/contracts/${newId}`);
-        else router.push("/contracts");
+        // if (newId) router.push(`/contracts/${newId}`);
+        router.push("/contracts");
       }, 1000);
     } catch (err:any) { showToast(err.message || "Something went wrong", "error"); }
     finally { setSubmitting(false); }
