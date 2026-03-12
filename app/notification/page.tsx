@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 const API = "http://54.252.201.93:5000/api";
 
-// ✅ Safe JSON fetch — HTML response pe crash nahi karega
 const safeFetch = async (url: string, options: RequestInit = {}) => {
   try {
     const res = await fetch(url, options);
@@ -18,16 +17,12 @@ const safeFetch = async (url: string, options: RequestInit = {}) => {
   }
 };
 
-// ✅ Kisi bhi format se MongoDB ObjectId string nikalo
 const extractMongoId = (val: any): string | null => {
   if (!val) return null;
-  // Already a string ID
   if (typeof val === "string" && val.length > 0 && !/\s/.test(val)) return val;
   if (typeof val === "object") {
-    // Populated object — { _id: "...", name: "..." }
     const id = val._id || val.id;
     if (typeof id === "string") return id;
-    // Nested object
     if (typeof id === "object") return extractMongoId(id);
   }
   return null;
@@ -36,6 +31,7 @@ const extractMongoId = (val: any): string | null => {
 export default function NotificationsPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>("");  // ✅ "brand" | "influencer"
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
@@ -48,6 +44,11 @@ export default function NotificationsPage() {
     if (!stored) { router.push("/login"); return; }
     const parsed = JSON.parse(stored);
     setUser(parsed);
+
+    // ✅ Role extract karo
+    const role = parsed.role || parsed.user?.role || "";
+    setUserRole(role.toLowerCase());
+
     fetchNotifications(parsed.token);
   }, []);
 
@@ -57,10 +58,7 @@ export default function NotificationsPage() {
       const { data } = await safeFetch(`${API}/notification`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log("NOTIFICATIONS:", data);
       const list = data?.data || data?.notifications || [];
-
-      // ✅ localStorage se saved status merge karo — refresh ke baad bhi status rahega
       const savedStatuses = JSON.parse(localStorage.getItem("cb_notif_status") || "{}");
       const merged = list.map((n: any) => ({
         ...n,
@@ -81,69 +79,42 @@ export default function NotificationsPage() {
     } catch { }
   };
 
-  const getCampaignId = (n: any): string | null => {
-    const id = extractMongoId(n.campaignId) || n.link?.split("/").filter(Boolean).pop() || null;
-    return id;
-  };
+  const getCampaignId = (n: any): string | null =>
+    extractMongoId(n.campaignId) || n.link?.split("/").filter(Boolean).pop() || null;
 
-  // ✅ Profile fetch — only /profile/user/:id (backend pe sirf yahi kaam karega)
-  // Agar 404 aata hai toh backend wale ko route add karna hai
   const fetchProfile = async (userId: string) => {
-    const token = user?.token;
     if (!userId || typeof userId !== "string") return null;
-
-    // Log kar taaki pata chale exact kya bhej rahe hain
-    console.log("FETCHING PROFILE FOR:", userId);
-
     const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${user?.token}` },
     });
-
     if (ok && data) {
       const p = data.profile || data.data || (data._id ? data : null);
       if (p) return p;
     }
-
-    // Fallback — baad mein backend route add ho toh yeh kaam karega
     return null;
   };
 
   const viewCreatorProfile = async (n: any) => {
     try {
       setProfileLoading(true);
-
-      // Debug: notification ka full structure dekho
-      console.log("NOTIFICATION DATA:", JSON.stringify(n, null, 2));
-
       const senderId = extractMongoId(n.sender);
-      console.log("EXTRACTED SENDER ID:", senderId);
-
       if (senderId) {
         const profile = await fetchProfile(senderId);
         if (profile) {
-          setSelectedProfile({
-            ...profile,
-            notifId: n._id,
-            status: n.applicationStatus,
-            campaignId: getCampaignId(n),
-          });
+          setSelectedProfile({ ...profile, notifId: n._id, status: n.applicationStatus, campaignId: getCampaignId(n) });
           return;
         }
       }
-
-      // Fallback: campaign applications se try karo
       const campaignId = getCampaignId(n);
       if (campaignId) {
-        const { ok, data: appData } = await safeFetch(
-          `${API}/campaigns/${campaignId}/applications`,
-          { headers: { Authorization: `Bearer ${user.token}` } }
-        );
+        const { ok, data: appData } = await safeFetch(`${API}/campaigns/${campaignId}/applications`, {
+          headers: { Authorization: `Bearer ${user.token}` },
+        });
         if (ok && appData) {
           const apps = appData.applications || appData.data || [];
           const app = apps[apps.length - 1];
           if (app) {
             const creatorId = extractMongoId(app.influencerId) || extractMongoId(app.influencer);
-            console.log("APP CREATOR ID:", creatorId);
             if (creatorId) {
               const profile = await fetchProfile(creatorId);
               if (profile) {
@@ -160,38 +131,21 @@ export default function NotificationsPage() {
           }
         }
       }
-
-      // Final fallback — naam dikhao, profile nahi mila
       setSelectedProfile({
         name: n.sender?.name || "Creator",
         profileImage: null, bio: "", followers: "", categories: [], platform: "",
-        notifId: n._id, status: n.applicationStatus, campaignId,
-        _noProfile: true,
+        notifId: n._id, status: n.applicationStatus, campaignId, _noProfile: true,
       });
-    } catch (err) {
-      console.error("viewCreatorProfile error:", err);
-    } finally {
-      setProfileLoading(false);
-    }
+    } catch (err) { console.error(err); }
+    finally { setProfileLoading(false); }
   };
 
-  // ✅ Notification pe applicationStatus backend mein save karo
-  // Yeh ensure karta hai refresh ke baad bhi status rahe
-  // ✅ Backend mein /:id/status route nahi — localStorage mein save karo
-  // Refresh ke baad bhi status rahega
   const saveStatusLocally = (notifId: string, status: string) => {
     try {
       const existing = JSON.parse(localStorage.getItem("cb_notif_status") || "{}");
       existing[notifId] = status;
       localStorage.setItem("cb_notif_status", JSON.stringify(existing));
     } catch { }
-  };
-
-  const getLocalStatus = (notifId: string): string => {
-    try {
-      const existing = JSON.parse(localStorage.getItem("cb_notif_status") || "{}");
-      return existing[notifId] || "";
-    } catch { return ""; }
   };
 
   const acceptCreator = async (applicationId: string, notifId: string) => {
@@ -225,23 +179,16 @@ export default function NotificationsPage() {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
           body: JSON.stringify({ decision: "accepted", status: "accepted" }),
         });
-        console.log("ACCEPT result:", url, result);
         if (result.ok) { ok = true; respData = result.data; break; }
       }
       if (!ok) throw new Error(respData?.message || "Accept failed");
-
-      // ✅ 1. UI immediately update
       setNotifications(prev => prev.map(n =>
         n._id === notifId ? { ...n, applicationStatus: "accepted", applicationId: appId } : n
       ));
-      if (selectedProfile?.notifId === notifId) {
+      if (selectedProfile?.notifId === notifId)
         setSelectedProfile((p: any) => ({ ...p, status: "accepted", applicationId: appId }));
-      }
-
-      // ✅ 2. localStorage mein save karo
       saveStatusLocally(notifId, "accepted");
       markRead(notifId);
-
     } catch (err: any) {
       alert(err.message || "Accept failed");
     } finally { setActionLoading(""); }
@@ -278,22 +225,16 @@ export default function NotificationsPage() {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
           body: JSON.stringify({ decision: "rejected", status: "rejected" }),
         });
-        console.log("REJECT result:", url, result);
         if (result.ok) { ok = true; respData = result.data; break; }
       }
       if (!ok) throw new Error(respData?.message || "Reject failed");
-
       setNotifications(prev => prev.map(n =>
         n._id === notifId ? { ...n, applicationStatus: "rejected", applicationId: appId } : n
       ));
-      if (selectedProfile?.notifId === notifId) {
+      if (selectedProfile?.notifId === notifId)
         setSelectedProfile((p: any) => ({ ...p, status: "rejected", applicationId: appId }));
-      }
-
-      // ✅ localStorage mein save karo
       saveStatusLocally(notifId, "rejected");
       markRead(notifId);
-
     } catch (err: any) {
       alert(err.message || "Reject failed");
     } finally { setActionLoading(""); }
@@ -315,16 +256,22 @@ export default function NotificationsPage() {
     return `${Math.floor(hrs / 24)}d ago`;
   };
 
-  const isApplyNotif = (n: any) =>
-    ["new_application", "campaign_apply", "application", "application_accepted"].includes(n.type);
+  // ✅ Brand ke liye: new_application type (creator ne apply kiya)
+  const isBrandApplyNotif = (n: any) =>
+    ["new_application", "campaign_apply", "application"].includes(n.type);
 
-  // ✅ Status check — multiple field names handle karo
+  // ✅ Influencer ke liye: application_accepted/rejected type (brand ne decision kiya)
+  const isInfluencerStatusNotif = (n: any) =>
+    ["application_accepted", "application_rejected", "application_status"].includes(n.type);
+
   const getStatus = (n: any) => {
     const s = n.applicationStatus || n.status || n.application?.status || "";
     return s?.toLowerCase();
   };
 
   if (!user) return null;
+
+  const isBrand = userRole === "brand";
 
   return (
     <>
@@ -362,9 +309,12 @@ export default function NotificationsPage() {
         .np-btn-reject:hover:not(:disabled) { background: #fee2e2; }
         .np-btn-msg { background: #4f46e5; color: #fff; border: 1.5px solid #4f46e5; }
         .np-btn-msg:hover:not(:disabled) { background: #4338ca; }
-        .np-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 100px; font-size: 12px; font-weight: 600; margin-top: 10px; }
-        .np-status-accepted { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
-        .np-status-rejected { background: #fff5f5; color: #dc2626; border: 1px solid #fecaca; }
+        .np-status { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 700; margin-top: 12px; }
+        .np-status-accepted { background: #f0fdf4; color: #16a34a; border: 1.5px solid #bbf7d0; }
+        .np-status-rejected { background: #fff5f5; color: #dc2626; border: 1.5px solid #fecaca; }
+        .np-status-pending { background: #fefce8; color: #ca8a04; border: 1.5px solid #fde68a; }
+        .np-msg-btn { margin-top: 10px; padding: 10px 18px; background: #4f46e5; color: #fff; border: none; border-radius: 10px; font-size: 13px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; cursor: pointer; transition: all 0.2s; }
+        .np-msg-btn:hover { background: #4338ca; }
         .np-empty { text-align: center; padding: 80px 20px; }
         .np-empty-icon { font-size: 48px; margin-bottom: 16px; }
         .np-empty-title { font-size: 18px; font-weight: 700; color: #111; margin-bottom: 6px; }
@@ -401,7 +351,6 @@ export default function NotificationsPage() {
         .pm-btn-accept:hover:not(:disabled) { background: #4338ca; }
         .pm-btn-reject { background: #fff5f5; color: #dc2626; border: 1.5px solid #fecaca; }
         .pm-btn-reject:hover:not(:disabled) { background: #fee2e2; }
-        .pm-no-profile { background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 12px 16px; margin: 0 22px 16px; font-size: 13px; color: #92400e; }
         @keyframes spin{to{transform:rotate(360deg)}}
         .spinner{width:28px;height:28px;border:3px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto}
       `}</style>
@@ -421,15 +370,22 @@ export default function NotificationsPage() {
             <div className="np-empty">
               <div className="np-empty-icon">🔔</div>
               <div className="np-empty-title">No notifications yet</div>
-              <div className="np-empty-sub">When creators apply to your campaigns, you will see them here</div>
+              <div className="np-empty-sub">Your notifications will appear here</div>
             </div>
           ) : (
             notifications.map((n) => {
-              const isApply = isApplyNotif(n);
               const status = getStatus(n);
               const isAccepted = status === "accepted";
               const isRejected = status === "rejected";
               const isPending = !isAccepted && !isRejected;
+
+              // ✅ BRAND: creator ne apply kiya — Accept/Reject dikhao
+              const showBrandActions = isBrand && isBrandApplyNotif(n);
+
+              // ✅ INFLUENCER: brand ne decision kiya — sirf status dikhao
+              const showInfluencerStatus = !isBrand && (
+                isInfluencerStatusNotif(n) || n.applicationStatus
+              );
 
               return (
                 <div key={n._id} className={`np-card ${!n.read ? "unread" : ""}`}
@@ -441,49 +397,68 @@ export default function NotificationsPage() {
                       <div className="np-msg">{n.message}</div>
                       <div className="np-time">{timeAgo(n.createdAt)}</div>
 
-                      {isApply && (
-                        <div className="np-creator-strip"
-                          onClick={(e) => { e.stopPropagation(); viewCreatorProfile(n); }}>
-                          <div className="np-avatar">👤</div>
-                          <div style={{ flex: 1 }}>
-                            <div className="np-creator-name">
-                              {n.sender?.name || "View Creator Profile"}
+                      {/* ── BRAND: Creator strip + Accept/Reject ── */}
+                      {showBrandActions && (
+                        <>
+                          <div className="np-creator-strip"
+                            onClick={(e) => { e.stopPropagation(); viewCreatorProfile(n); }}>
+                            <div className="np-avatar">👤</div>
+                            <div style={{ flex: 1 }}>
+                              <div className="np-creator-name">{n.sender?.name || "View Creator Profile"}</div>
+                              <div className="np-creator-sub">Tap to see full profile</div>
                             </div>
-                            <div className="np-creator-sub">Tap to see full profile</div>
+                            {profileLoading
+                              ? <div style={{ width: "16px", height: "16px", border: "2px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                              : <span className="np-view">View →</span>}
                           </div>
-                          {profileLoading
-                            ? <div style={{ width: "16px", height: "16px", border: "2px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                            : <span className="np-view">View →</span>}
-                        </div>
+
+                          <div className="np-actions">
+                            {isPending ? (
+                              <>
+                                <button className="np-btn np-btn-accept"
+                                  disabled={actionLoading === n._id + "_accept"}
+                                  onClick={(e) => { e.stopPropagation(); acceptCreator(n.applicationId, n._id); }}>
+                                  {actionLoading === n._id + "_accept" ? "..." : "✓ Accept"}
+                                </button>
+                                <button className="np-btn np-btn-reject"
+                                  disabled={actionLoading === n._id + "_reject"}
+                                  onClick={(e) => { e.stopPropagation(); rejectCreator(n.applicationId, n._id); }}>
+                                  {actionLoading === n._id + "_reject" ? "..." : "✗ Reject"}
+                                </button>
+                              </>
+                            ) : isAccepted ? (
+                              <>
+                                <div className="np-status np-status-accepted">✓ Accepted</div>
+                                <button className="np-btn np-btn-msg"
+                                  onClick={(e) => { e.stopPropagation(); viewCreatorProfile(n); }}>
+                                  💬 Message Creator
+                                </button>
+                              </>
+                            ) : (
+                              <div className="np-status np-status-rejected">✗ Rejected</div>
+                            )}
+                          </div>
+                        </>
                       )}
 
-                      {isApply && !isPending && (
-                        <div className={`np-status ${isAccepted ? "np-status-accepted" : "np-status-rejected"}`}>
-                          {isAccepted ? "✓ Accepted" : "✗ Rejected"}
-                        </div>
-                      )}
-
-                      {isApply && (
-                        <div className="np-actions">
-                          {isPending ? (
+                      {/* ── INFLUENCER: Sirf status dikhao — koi action nahi ── */}
+                      {showInfluencerStatus && (
+                        <div style={{ marginTop: "10px" }}>
+                          {isAccepted ? (
                             <>
-                              <button className="np-btn np-btn-accept"
-                                disabled={actionLoading === n._id + "_accept"}
-                                onClick={(e) => { e.stopPropagation(); acceptCreator(n.applicationId, n._id); }}>
-                                {actionLoading === n._id + "_accept" ? "..." : "✓ Accept"}
-                              </button>
-                              <button className="np-btn np-btn-reject"
-                                disabled={actionLoading === n._id + "_reject"}
-                                onClick={(e) => { e.stopPropagation(); rejectCreator(n.applicationId, n._id); }}>
-                                {actionLoading === n._id + "_reject" ? "..." : "✗ Reject"}
-                              </button>
+                              <div className="np-status np-status-accepted">✅ Application Accepted!</div>
+                              <div style={{ marginTop: "8px" }}>
+                                <button className="np-msg-btn"
+                                  onClick={(e) => { e.stopPropagation(); router.push("/messages"); }}>
+                                  💬 Go to Messages
+                                </button>
+                              </div>
                             </>
-                          ) : isAccepted ? (
-                            <button className="np-btn np-btn-msg"
-                              onClick={(e) => { e.stopPropagation(); viewCreatorProfile(n); }}>
-                              💬 Message Creator
-                            </button>
-                          ) : null}
+                          ) : isRejected ? (
+                            <div className="np-status np-status-rejected">❌ Application Not Selected</div>
+                          ) : (
+                            <div className="np-status np-status-pending">⏳ Application Under Review</div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -495,7 +470,8 @@ export default function NotificationsPage() {
         </div>
       </div>
 
-      {selectedProfile && (
+      {/* Profile Modal — sirf brand ke liye */}
+      {selectedProfile && isBrand && (
         <div className="pm-overlay" onClick={(e) => e.target === e.currentTarget && setSelectedProfile(null)}>
           <div className="pm-modal">
             <div className="pm-top">
@@ -514,12 +490,6 @@ export default function NotificationsPage() {
                   ))}
               </div>
             </div>
-
-            {selectedProfile._noProfile && (
-              <div className="pm-no-profile">
-                ⚠️ Full profile not available — backend needs <code>/api/profile/user/:id</code> route
-              </div>
-            )}
 
             <div className="pm-body">
               <div className="pm-stats">
@@ -589,6 +559,601 @@ export default function NotificationsPage() {
     </>
   );
 }
+
+
+
+
+// "use client";
+
+// import { useEffect, useState } from "react";
+// import { useRouter } from "next/navigation";
+
+// const API = "http://54.252.201.93:5000/api";
+
+// // ✅ Safe JSON fetch — HTML response pe crash nahi karega
+// const safeFetch = async (url: string, options: RequestInit = {}) => {
+//   try {
+//     const res = await fetch(url, options);
+//     const text = await res.text();
+//     if (!text || text.trimStart().startsWith("<")) return { ok: false, data: null };
+//     const data = JSON.parse(text);
+//     return { ok: res.ok, data };
+//   } catch {
+//     return { ok: false, data: null };
+//   }
+// };
+
+// // ✅ Kisi bhi format se MongoDB ObjectId string nikalo
+// const extractMongoId = (val: any): string | null => {
+//   if (!val) return null;
+//   // Already a string ID
+//   if (typeof val === "string" && val.length > 0 && !/\s/.test(val)) return val;
+//   if (typeof val === "object") {
+//     // Populated object — { _id: "...", name: "..." }
+//     const id = val._id || val.id;
+//     if (typeof id === "string") return id;
+//     // Nested object
+//     if (typeof id === "object") return extractMongoId(id);
+//   }
+//   return null;
+// };
+
+// export default function NotificationsPage() {
+//   const router = useRouter();
+//   const [user, setUser] = useState<any>(null);
+//   const [notifications, setNotifications] = useState<any[]>([]);
+//   const [loading, setLoading] = useState(true);
+//   const [selectedProfile, setSelectedProfile] = useState<any>(null);
+//   const [profileLoading, setProfileLoading] = useState(false);
+//   const [actionLoading, setActionLoading] = useState("");
+
+//   useEffect(() => {
+//     if (typeof window === "undefined") return;
+//     const stored = localStorage.getItem("cb_user");
+//     if (!stored) { router.push("/login"); return; }
+//     const parsed = JSON.parse(stored);
+//     setUser(parsed);
+//     fetchNotifications(parsed.token);
+//   }, []);
+
+//   const fetchNotifications = async (token: string) => {
+//     try {
+//       setLoading(true);
+//       const { data } = await safeFetch(`${API}/notification`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       console.log("NOTIFICATIONS:", data);
+//       const list = data?.data || data?.notifications || [];
+
+//       // ✅ localStorage se saved status merge karo — refresh ke baad bhi status rahega
+//       const savedStatuses = JSON.parse(localStorage.getItem("cb_notif_status") || "{}");
+//       const merged = list.map((n: any) => ({
+//         ...n,
+//         applicationStatus: n.applicationStatus || savedStatuses[n._id] || "",
+//       }));
+//       setNotifications(merged);
+//     } catch (err) { console.error(err); }
+//     finally { setLoading(false); }
+//   };
+
+//   const markRead = async (notifId: string) => {
+//     try {
+//       await safeFetch(`${API}/notification/read/${notifId}`, {
+//         method: "PATCH",
+//         headers: { Authorization: `Bearer ${user.token}` },
+//       });
+//       setNotifications(prev => prev.map(n => n._id === notifId ? { ...n, read: true } : n));
+//     } catch { }
+//   };
+
+//   const getCampaignId = (n: any): string | null => {
+//     const id = extractMongoId(n.campaignId) || n.link?.split("/").filter(Boolean).pop() || null;
+//     return id;
+//   };
+
+//   // ✅ Profile fetch — only /profile/user/:id (backend pe sirf yahi kaam karega)
+//   // Agar 404 aata hai toh backend wale ko route add karna hai
+//   const fetchProfile = async (userId: string) => {
+//     const token = user?.token;
+//     if (!userId || typeof userId !== "string") return null;
+
+//     // Log kar taaki pata chale exact kya bhej rahe hain
+//     console.log("FETCHING PROFILE FOR:", userId);
+
+//     const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
+//       headers: { Authorization: `Bearer ${token}` },
+//     });
+
+//     if (ok && data) {
+//       const p = data.profile || data.data || (data._id ? data : null);
+//       if (p) return p;
+//     }
+
+//     // Fallback — baad mein backend route add ho toh yeh kaam karega
+//     return null;
+//   };
+
+//   const viewCreatorProfile = async (n: any) => {
+//     try {
+//       setProfileLoading(true);
+
+//       // Debug: notification ka full structure dekho
+//       console.log("NOTIFICATION DATA:", JSON.stringify(n, null, 2));
+
+//       const senderId = extractMongoId(n.sender);
+//       console.log("EXTRACTED SENDER ID:", senderId);
+
+//       if (senderId) {
+//         const profile = await fetchProfile(senderId);
+//         if (profile) {
+//           setSelectedProfile({
+//             ...profile,
+//             notifId: n._id,
+//             status: n.applicationStatus,
+//             campaignId: getCampaignId(n),
+//           });
+//           return;
+//         }
+//       }
+
+//       // Fallback: campaign applications se try karo
+//       const campaignId = getCampaignId(n);
+//       if (campaignId) {
+//         const { ok, data: appData } = await safeFetch(
+//           `${API}/campaigns/${campaignId}/applications`,
+//           { headers: { Authorization: `Bearer ${user.token}` } }
+//         );
+//         if (ok && appData) {
+//           const apps = appData.applications || appData.data || [];
+//           const app = apps[apps.length - 1];
+//           if (app) {
+//             const creatorId = extractMongoId(app.influencerId) || extractMongoId(app.influencer);
+//             console.log("APP CREATOR ID:", creatorId);
+//             if (creatorId) {
+//               const profile = await fetchProfile(creatorId);
+//               if (profile) {
+//                 setSelectedProfile({
+//                   ...profile,
+//                   applicationId: extractMongoId(app._id) || app._id,
+//                   notifId: n._id,
+//                   status: n.applicationStatus || app.status,
+//                   campaignId,
+//                 });
+//                 return;
+//               }
+//             }
+//           }
+//         }
+//       }
+
+//       // Final fallback — naam dikhao, profile nahi mila
+//       setSelectedProfile({
+//         name: n.sender?.name || "Creator",
+//         profileImage: null, bio: "", followers: "", categories: [], platform: "",
+//         notifId: n._id, status: n.applicationStatus, campaignId,
+//         _noProfile: true,
+//       });
+//     } catch (err) {
+//       console.error("viewCreatorProfile error:", err);
+//     } finally {
+//       setProfileLoading(false);
+//     }
+//   };
+
+//   // ✅ Notification pe applicationStatus backend mein save karo
+//   // Yeh ensure karta hai refresh ke baad bhi status rahe
+//   // ✅ Backend mein /:id/status route nahi — localStorage mein save karo
+//   // Refresh ke baad bhi status rahega
+//   const saveStatusLocally = (notifId: string, status: string) => {
+//     try {
+//       const existing = JSON.parse(localStorage.getItem("cb_notif_status") || "{}");
+//       existing[notifId] = status;
+//       localStorage.setItem("cb_notif_status", JSON.stringify(existing));
+//     } catch { }
+//   };
+
+//   const getLocalStatus = (notifId: string): string => {
+//     try {
+//       const existing = JSON.parse(localStorage.getItem("cb_notif_status") || "{}");
+//       return existing[notifId] || "";
+//     } catch { return ""; }
+//   };
+
+//   const acceptCreator = async (applicationId: string, notifId: string) => {
+//     let appId = applicationId;
+//     if (!appId) {
+//       const n = notifications.find(x => x._id === notifId);
+//       if (n) {
+//         const campaignId = getCampaignId(n);
+//         if (campaignId) {
+//           const { ok, data } = await safeFetch(`${API}/campaigns/${campaignId}/applications`, {
+//             headers: { Authorization: `Bearer ${user.token}` },
+//           });
+//           if (ok && data) {
+//             const apps = data.applications || data.data || [];
+//             appId = apps[apps.length - 1]?._id;
+//           }
+//         }
+//       }
+//     }
+//     if (!appId) { alert("Application ID missing — cannot accept"); return; }
+//     try {
+//       setActionLoading(notifId + "_accept");
+//       let ok = false, respData: any = null;
+//       for (const url of [
+//         `${API}/application/${appId}/decision`,
+//         `${API}/applications/${appId}/accept`,
+//         `${API}/applications/${appId}/status`,
+//       ]) {
+//         const result = await safeFetch(url, {
+//           method: "POST",
+//           headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
+//           body: JSON.stringify({ decision: "accepted", status: "accepted" }),
+//         });
+//         console.log("ACCEPT result:", url, result);
+//         if (result.ok) { ok = true; respData = result.data; break; }
+//       }
+//       if (!ok) throw new Error(respData?.message || "Accept failed");
+
+//       // ✅ 1. UI immediately update
+//       setNotifications(prev => prev.map(n =>
+//         n._id === notifId ? { ...n, applicationStatus: "accepted", applicationId: appId } : n
+//       ));
+//       if (selectedProfile?.notifId === notifId) {
+//         setSelectedProfile((p: any) => ({ ...p, status: "accepted", applicationId: appId }));
+//       }
+
+//       // ✅ 2. localStorage mein save karo
+//       saveStatusLocally(notifId, "accepted");
+//       markRead(notifId);
+
+//     } catch (err: any) {
+//       alert(err.message || "Accept failed");
+//     } finally { setActionLoading(""); }
+//   };
+
+//   const rejectCreator = async (applicationId: string, notifId: string) => {
+//     let appId = applicationId;
+//     if (!appId) {
+//       const n = notifications.find(x => x._id === notifId);
+//       if (n) {
+//         const campaignId = getCampaignId(n);
+//         if (campaignId) {
+//           const { ok, data } = await safeFetch(`${API}/campaigns/${campaignId}/applications`, {
+//             headers: { Authorization: `Bearer ${user.token}` },
+//           });
+//           if (ok && data) {
+//             const apps = data.applications || data.data || [];
+//             appId = apps[apps.length - 1]?._id;
+//           }
+//         }
+//       }
+//     }
+//     if (!appId) { alert("Application ID missing — cannot reject"); return; }
+//     try {
+//       setActionLoading(notifId + "_reject");
+//       let ok = false, respData: any = null;
+//       for (const url of [
+//         `${API}/application/${appId}/decision`,
+//         `${API}/applications/${appId}/reject`,
+//         `${API}/applications/${appId}/status`,
+//       ]) {
+//         const result = await safeFetch(url, {
+//           method: "POST",
+//           headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
+//           body: JSON.stringify({ decision: "rejected", status: "rejected" }),
+//         });
+//         console.log("REJECT result:", url, result);
+//         if (result.ok) { ok = true; respData = result.data; break; }
+//       }
+//       if (!ok) throw new Error(respData?.message || "Reject failed");
+
+//       setNotifications(prev => prev.map(n =>
+//         n._id === notifId ? { ...n, applicationStatus: "rejected", applicationId: appId } : n
+//       ));
+//       if (selectedProfile?.notifId === notifId) {
+//         setSelectedProfile((p: any) => ({ ...p, status: "rejected", applicationId: appId }));
+//       }
+
+//       // ✅ localStorage mein save karo
+//       saveStatusLocally(notifId, "rejected");
+//       markRead(notifId);
+
+//     } catch (err: any) {
+//       alert(err.message || "Reject failed");
+//     } finally { setActionLoading(""); }
+//   };
+
+//   const goToMessage = (profile: any) => {
+//     const creatorUserId = extractMongoId(profile.user) || extractMongoId(profile) || profile._id;
+//     router.push(`/messages?userId=${creatorUserId}&name=${encodeURIComponent(profile.name || "Creator")}&campaignId=${profile.campaignId || ""}`);
+//   };
+
+//   const timeAgo = (date: string) => {
+//     if (!date) return "";
+//     const diff = Date.now() - new Date(date).getTime();
+//     const mins = Math.floor(diff / 60000);
+//     if (mins < 1) return "just now";
+//     if (mins < 60) return `${mins}m ago`;
+//     const hrs = Math.floor(mins / 60);
+//     if (hrs < 24) return `${hrs}h ago`;
+//     return `${Math.floor(hrs / 24)}d ago`;
+//   };
+
+//   const isApplyNotif = (n: any) =>
+//     ["new_application", "campaign_apply", "application", "application_accepted"].includes(n.type);
+
+//   // ✅ Status check — multiple field names handle karo
+//   const getStatus = (n: any) => {
+//     const s = n.applicationStatus || n.status || n.application?.status || "";
+//     return s?.toLowerCase();
+//   };
+
+//   if (!user) return null;
+
+//   return (
+//     <>
+//       <style>{`
+//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+//         * { box-sizing: border-box; }
+//         .np { font-family: 'Plus Jakarta Sans', sans-serif; background: #f5f5f0; min-height: 100vh; padding-bottom: 60px; }
+//         .np-header { background: #fff; border-bottom: 1px solid #ebebeb; padding: 24px 32px; display: flex; align-items: center; }
+//         .np-title { font-size: 22px; font-weight: 800; color: #111; }
+//         .np-badge { background: #4f46e5; color: #fff; border-radius: 100px; font-size: 11px; font-weight: 700; padding: 3px 10px; margin-left: 8px; }
+//         .np-body { max-width: 680px; margin: 28px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 12px; }
+//         @media(max-width:600px){.np-body{padding:0 12px;margin:16px auto}.np-header{padding:16px 20px}}
+//         .np-card { background: #fff; border-radius: 16px; border: 1.5px solid #ebebeb; padding: 18px 20px; transition: all 0.2s; cursor: pointer; }
+//         .np-card.unread { border-color: #c7d2fe; background: #fafbff; }
+//         .np-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+//         .np-card-top { display: flex; gap: 12px; }
+//         .np-dot { width: 8px; height: 8px; border-radius: 50%; background: #4f46e5; margin-top: 6px; flex-shrink: 0; }
+//         .np-dot.read { background: #e0e0e0; }
+//         .np-type { font-size: 11px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
+//         .np-msg { font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 4px; }
+//         .np-time { font-size: 11px; color: #bbb; }
+//         .np-creator-strip { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px; background: #fafafa; border-radius: 12px; border: 1px solid #f0f0f0; cursor: pointer; transition: all 0.2s; }
+//         .np-creator-strip:hover { background: #eff6ff; border-color: #bfdbfe; }
+//         .np-avatar { width: 40px; height: 40px; border-radius: 50%; background: #e8e8e8; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #666; flex-shrink: 0; overflow: hidden; }
+//         .np-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+//         .np-creator-name { font-size: 14px; font-weight: 700; color: #111; }
+//         .np-creator-sub { font-size: 12px; color: #aaa; margin-top: 1px; }
+//         .np-view { font-size: 12px; color: #4f46e5; font-weight: 600; margin-left: auto; }
+//         .np-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+//         .np-btn { padding: 9px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; transition: all 0.2s; }
+//         .np-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+//         .np-btn-accept { background: #f0fdf4; color: #16a34a; border: 1.5px solid #bbf7d0; }
+//         .np-btn-accept:hover:not(:disabled) { background: #dcfce7; }
+//         .np-btn-reject { background: #fff5f5; color: #dc2626; border: 1.5px solid #fecaca; }
+//         .np-btn-reject:hover:not(:disabled) { background: #fee2e2; }
+//         .np-btn-msg { background: #4f46e5; color: #fff; border: 1.5px solid #4f46e5; }
+//         .np-btn-msg:hover:not(:disabled) { background: #4338ca; }
+//         .np-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 100px; font-size: 12px; font-weight: 600; margin-top: 10px; }
+//         .np-status-accepted { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+//         .np-status-rejected { background: #fff5f5; color: #dc2626; border: 1px solid #fecaca; }
+//         .np-empty { text-align: center; padding: 80px 20px; }
+//         .np-empty-icon { font-size: 48px; margin-bottom: 16px; }
+//         .np-empty-title { font-size: 18px; font-weight: 700; color: #111; margin-bottom: 6px; }
+//         .np-empty-sub { color: #aaa; font-size: 14px; }
+//         .pm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 16px; animation: fadeIn 0.2s; }
+//         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+//         .pm-modal { background: #fff; border-radius: 22px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; animation: slideUp 0.25s ease; }
+//         @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+//         .pm-top { background: linear-gradient(135deg, #312e81 0%, #4f46e5 100%); border-radius: 22px 22px 0 0; padding: 28px 24px 24px; position: relative; }
+//         .pm-close { position: absolute; top: 14px; right: 14px; background: rgba(255,255,255,0.15); border: none; color: #fff; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+//         .pm-close:hover { background: rgba(255,255,255,0.25); }
+//         .pm-avatar-big { width: 76px; height: 76px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.4); background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 12px; overflow: hidden; }
+//         .pm-avatar-big img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+//         .pm-name { font-size: 20px; font-weight: 800; color: #fff; margin: 0 0 4px; }
+//         .pm-location { font-size: 13px; color: rgba(255,255,255,0.65); margin: 0 0 12px; }
+//         .pm-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+//         .pm-tag { padding: 3px 10px; border-radius: 100px; background: rgba(255,255,255,0.15); font-size: 11px; color: rgba(255,255,255,0.9); }
+//         .pm-body { padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+//         .pm-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+//         .pm-stat { background: #fafafa; border-radius: 12px; padding: 12px; text-align: center; border: 1px solid #f0f0f0; }
+//         .pm-stat-num { font-size: 17px; font-weight: 800; color: #4f46e5; }
+//         .pm-stat-label { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+//         .pm-label { font-size: 11px; font-weight: 700; color: #bbb; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; }
+//         .pm-bio { font-size: 14px; color: #555; line-height: 1.7; }
+//         .pm-platform { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fafafa; border-radius: 10px; border: 1px solid #f0f0f0; text-decoration: none; color: #111; font-size: 13px; font-weight: 500; }
+//         .pm-platform:hover { background: #f0f0f0; }
+//         .pm-banner { margin: 0 22px 16px; padding: 12px 16px; border-radius: 12px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+//         .pm-banner-accepted { background: #f0fdf4; border: 1.5px solid #bbf7d0; color: #16a34a; }
+//         .pm-banner-rejected { background: #fff5f5; border: 1.5px solid #fecaca; color: #dc2626; }
+//         .pm-footer { padding: 0 22px 22px; display: flex; gap: 10px; }
+//         .pm-btn { flex: 1; padding: 13px; border-radius: 12px; font-size: 14px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; transition: all 0.2s; }
+//         .pm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+//         .pm-btn-accept { background: #4f46e5; color: #fff; }
+//         .pm-btn-accept:hover:not(:disabled) { background: #4338ca; }
+//         .pm-btn-reject { background: #fff5f5; color: #dc2626; border: 1.5px solid #fecaca; }
+//         .pm-btn-reject:hover:not(:disabled) { background: #fee2e2; }
+//         .pm-no-profile { background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 12px 16px; margin: 0 22px 16px; font-size: 13px; color: #92400e; }
+//         @keyframes spin{to{transform:rotate(360deg)}}
+//         .spinner{width:28px;height:28px;border:3px solid #e0e0e0;border-top-color:#4f46e5;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto}
+//       `}</style>
+
+//       <div className="np">
+//         <div className="np-header">
+//           <span className="np-title">Notifications</span>
+//           {notifications.filter(n => !n.read).length > 0 && (
+//             <span className="np-badge">{notifications.filter(n => !n.read).length}</span>
+//           )}
+//         </div>
+
+//         <div className="np-body">
+//           {loading ? (
+//             <div style={{ padding: "60px", textAlign: "center" }}><div className="spinner" /></div>
+//           ) : notifications.length === 0 ? (
+//             <div className="np-empty">
+//               <div className="np-empty-icon">🔔</div>
+//               <div className="np-empty-title">No notifications yet</div>
+//               <div className="np-empty-sub">When creators apply to your campaigns, you will see them here</div>
+//             </div>
+//           ) : (
+//             notifications.map((n) => {
+//               const isApply = isApplyNotif(n);
+//               const status = getStatus(n);
+//               const isAccepted = status === "accepted";
+//               const isRejected = status === "rejected";
+//               const isPending = !isAccepted && !isRejected;
+
+//               return (
+//                 <div key={n._id} className={`np-card ${!n.read ? "unread" : ""}`}
+//                   onClick={() => !n.read && markRead(n._id)}>
+//                   <div className="np-card-top">
+//                     <div className={`np-dot ${n.read ? "read" : ""}`} />
+//                     <div style={{ flex: 1 }}>
+//                       <div className="np-type">{n.type?.replace(/_/g, " ")}</div>
+//                       <div className="np-msg">{n.message}</div>
+//                       <div className="np-time">{timeAgo(n.createdAt)}</div>
+
+//                       {isApply && (
+//                         <div className="np-creator-strip"
+//                           onClick={(e) => { e.stopPropagation(); viewCreatorProfile(n); }}>
+//                           <div className="np-avatar">👤</div>
+//                           <div style={{ flex: 1 }}>
+//                             <div className="np-creator-name">
+//                               {n.sender?.name || "View Creator Profile"}
+//                             </div>
+//                             <div className="np-creator-sub">Tap to see full profile</div>
+//                           </div>
+//                           {profileLoading
+//                             ? <div style={{ width: "16px", height: "16px", border: "2px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+//                             : <span className="np-view">View →</span>}
+//                         </div>
+//                       )}
+
+//                       {isApply && !isPending && (
+//                         <div className={`np-status ${isAccepted ? "np-status-accepted" : "np-status-rejected"}`}>
+//                           {isAccepted ? "✓ Accepted" : "✗ Rejected"}
+//                         </div>
+//                       )}
+
+//                       {isApply && (
+//                         <div className="np-actions">
+//                           {isPending ? (
+//                             <>
+//                               <button className="np-btn np-btn-accept"
+//                                 disabled={actionLoading === n._id + "_accept"}
+//                                 onClick={(e) => { e.stopPropagation(); acceptCreator(n.applicationId, n._id); }}>
+//                                 {actionLoading === n._id + "_accept" ? "..." : "✓ Accept"}
+//                               </button>
+//                               <button className="np-btn np-btn-reject"
+//                                 disabled={actionLoading === n._id + "_reject"}
+//                                 onClick={(e) => { e.stopPropagation(); rejectCreator(n.applicationId, n._id); }}>
+//                                 {actionLoading === n._id + "_reject" ? "..." : "✗ Reject"}
+//                               </button>
+//                             </>
+//                           ) : isAccepted ? (
+//                             <button className="np-btn np-btn-msg"
+//                               onClick={(e) => { e.stopPropagation(); viewCreatorProfile(n); }}>
+//                               💬 Message Creator
+//                             </button>
+//                           ) : null}
+//                         </div>
+//                       )}
+//                     </div>
+//                   </div>
+//                 </div>
+//               );
+//             })
+//           )}
+//         </div>
+//       </div>
+
+//       {selectedProfile && (
+//         <div className="pm-overlay" onClick={(e) => e.target === e.currentTarget && setSelectedProfile(null)}>
+//           <div className="pm-modal">
+//             <div className="pm-top">
+//               <button className="pm-close" onClick={() => setSelectedProfile(null)}>✕</button>
+//               <div className="pm-avatar-big">
+//                 {selectedProfile.profileImage
+//                   ? <img src={selectedProfile.profileImage} alt="avatar" />
+//                   : (selectedProfile.name || "C").charAt(0).toUpperCase()}
+//               </div>
+//               <div className="pm-name">{selectedProfile.name || "Creator"}</div>
+//               {selectedProfile.location && <div className="pm-location">📍 {selectedProfile.location}</div>}
+//               <div className="pm-tags">
+//                 {(Array.isArray(selectedProfile.categories) ? selectedProfile.categories : [selectedProfile.categories])
+//                   .filter(Boolean).map((cat: string, i: number) => (
+//                     <span key={i} className="pm-tag">{cat}</span>
+//                   ))}
+//               </div>
+//             </div>
+
+//             {selectedProfile._noProfile && (
+//               <div className="pm-no-profile">
+//                 ⚠️ Full profile not available — backend needs <code>/api/profile/user/:id</code> route
+//               </div>
+//             )}
+
+//             <div className="pm-body">
+//               <div className="pm-stats">
+//                 <div className="pm-stat">
+//                   <div className="pm-stat-num">
+//                     {selectedProfile.followers
+//                       ? Number(selectedProfile.followers) >= 1000
+//                         ? Math.floor(Number(selectedProfile.followers) / 1000) + "K"
+//                         : selectedProfile.followers
+//                       : "—"}
+//                   </div>
+//                   <div className="pm-stat-label">Followers</div>
+//                 </div>
+//                 <div className="pm-stat">
+//                   <div className="pm-stat-num">
+//                     {Array.isArray(selectedProfile.categories) ? selectedProfile.categories.length : selectedProfile.categories ? 1 : 0}
+//                   </div>
+//                   <div className="pm-stat-label">Niches</div>
+//                 </div>
+//                 <div className="pm-stat">
+//                   <div className="pm-stat-num">{selectedProfile.platform ? "✓" : "—"}</div>
+//                   <div className="pm-stat-label">Platform</div>
+//                 </div>
+//               </div>
+//               {selectedProfile.bio && (
+//                 <div><div className="pm-label">About</div><div className="pm-bio">{selectedProfile.bio}</div></div>
+//               )}
+//               {selectedProfile.platform && (
+//                 <div>
+//                   <div className="pm-label">Platform</div>
+//                   <a href={selectedProfile.platform} target="_blank" rel="noopener noreferrer" className="pm-platform">
+//                     📸 {selectedProfile.platform}
+//                   </a>
+//                 </div>
+//               )}
+//             </div>
+
+//             {selectedProfile.status === "accepted" && (
+//               <div className="pm-banner pm-banner-accepted">✅ You have accepted this creator!</div>
+//             )}
+//             {selectedProfile.status === "rejected" && (
+//               <div className="pm-banner pm-banner-rejected">❌ You have rejected this creator</div>
+//             )}
+
+//             <div className="pm-footer">
+//               {(!selectedProfile.status || selectedProfile.status === "pending") ? (
+//                 <>
+//                   <button className="pm-btn pm-btn-accept" disabled={!!actionLoading}
+//                     onClick={() => acceptCreator(selectedProfile.applicationId, selectedProfile.notifId)}>
+//                     {actionLoading.includes("accept") ? "..." : "✓ Accept"}
+//                   </button>
+//                   <button className="pm-btn pm-btn-reject" disabled={!!actionLoading}
+//                     onClick={() => rejectCreator(selectedProfile.applicationId, selectedProfile.notifId)}>
+//                     {actionLoading.includes("reject") ? "..." : "✗ Reject"}
+//                   </button>
+//                 </>
+//               ) : selectedProfile.status === "accepted" ? (
+//                 <button className="pm-btn pm-btn-accept" style={{ flex: "none", width: "100%" }}
+//                   onClick={() => goToMessage(selectedProfile)}>
+//                   💬 Message Creator
+//                 </button>
+//               ) : null}
+//             </div>
+//           </div>
+//         </div>
+//       )}
+//     </>
+//   );
+// }
 
 // "use client";
 
