@@ -125,11 +125,15 @@ function DealDetailPageInner() {
                 razorpay_order_id:   response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature:  response.razorpay_signature,
+                influencerId:        deal?.influencerId?._id || deal?.influencerId || "",
+                amount:              Number(deal?.amount || 0),
               }),
             });
             const vData = await vRes.json();
             if (!vRes.ok) throw new Error(vData.message || "Verification failed");
-            // STEP 5: Escrow funded
+            // STEP 5: Escrow funded — update local state immediately
+            setEscrow(vData.escrow || { status: "funded" });
+            setDeal((prev: any) => ({ ...prev, status: "active" }));
             showToast("✅ Escrow funded! Deal is now active.", "success");
             await fetchDeal(tk);
           } catch(e:any) {
@@ -181,10 +185,18 @@ function DealDetailPageInner() {
   const handleApprove = async () => {
     setActionLoading("approve");
     try {
+      // Backend needs deliverableId — get it from deal's deliverable
+      const deliverableId = deal?.deliverableId?._id || deal?.deliverableId
+                         || deal?.submittedWork?._id  || deal?.submittedWork;
+
+      if (!deliverableId) {
+        throw new Error("No deliverable found for this deal");
+      }
+
       const res  = await fetch(`${API}/payment/approve-deliverable`, {
         method:  "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body:    JSON.stringify({ dealId: id }),
+        body:    JSON.stringify({ deliverableId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Approval failed");
