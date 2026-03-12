@@ -68,10 +68,22 @@ function DealDetailPageInner() {
     try {
       // STEP 1: POST /api/payment/deposit → creates Razorpay order
       // Body: { dealId }  — backend calculates amount + commission from deal
+      // Calculate commission (10%) and creator amount
+      const dealAmount     = Number(deal?.amount || 0);
+      const commission     = Math.round(dealAmount * 0.10);
+      const creatorAmount  = dealAmount - commission;
+      const influencerId   = deal?.influencerId?._id || deal?.influencerId || deal?.creatorId || "";
+
       const res  = await fetch(`${API}/payment/deposit`, {
         method: "POST",
         headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ dealId: id }),
+        body: JSON.stringify({
+          dealId: id,
+          amount:        dealAmount,
+          commission,
+          creatorAmount,
+          influencerId,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to create payment order");

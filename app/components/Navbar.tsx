@@ -31,7 +31,21 @@ export default function Navbar() {
         .catch(() => {});
 
       if (pathname?.startsWith("/notification")) {
+        // ✅ Notification page pe hain — sab read mark karo aur 0 dikhao
         setUnreadCount(0);
+        // Backend pe bhi sab read mark karo silently
+        fetch(`${API_BASE}/notification`, { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(data => {
+            const notifs = data.notifications || data.data || [];
+            const unreadIds = notifs.filter((n: any) => !n.read).map((n: any) => n._id);
+            unreadIds.forEach((id: string) => {
+              fetch(`${API_BASE}/notification/read/${id}`, {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${token}` },
+              }).catch(() => {});
+            });
+          }).catch(() => {});
         return;
       }
 
