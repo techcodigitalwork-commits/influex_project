@@ -141,7 +141,7 @@ function DealDetailPageInner() {
             if (!vRes.ok) throw new Error(vData.message || "Verification failed");
             // STEP 5: Escrow funded — update local state immediately
             setEscrow(vData.escrow || { status: "funded" });
-            setDeal((prev: any) => ({ ...prev, status: "active" }));
+            setDeal((prev: any) => ({ ...prev, paymentStatus: "deposited" }));
             showToast("✅ Escrow funded! Deal is now active.", "success");
             await fetchDeal(tk);
           } catch(e:any) {
@@ -218,9 +218,9 @@ function DealDetailPageInner() {
   };
 
   // ── FLOW STATE FLAGS ─────────────────────────────────────
-  const isEscrowFunded  = escrow?.status === "funded"   || deal?.status === "active"    || deal?.status === "completed";
-  const isWorkSubmitted = !!(deal?.deliverableSubmitted || deal?.workSubmitted);
-  const isCompleted     = deal?.status === "completed"  || escrow?.status === "released";
+  const isEscrowFunded  = escrow?.status === "funded" || deal?.paymentStatus === "deposited" || deal?.paymentStatus === "released";
+  const isWorkSubmitted = !!(deal?.workStatus === "submitted" || deal?.workStatus === "approved" || deal?.deliverableSubmitted);
+  const isCompleted     = deal?.paymentStatus === "released" || escrow?.status === "released";
   const isBrand         = role === "brand";
   const isCreator       = role === "influencer" || role === "creator";
 
@@ -343,7 +343,7 @@ function DealDetailPageInner() {
             background: isCompleted ? "#f0fdf4" : isEscrowFunded ? "#eef2ff" : "#fffbeb",
             color:      isCompleted ? "#16a34a" : isEscrowFunded ? "#4f46e5" : "#d97706",
             border:     `1.5px solid ${isCompleted ? "#86efac" : isEscrowFunded ? "#c7d2fe" : "#fde68a"}`,
-          }}>{deal.status || "pending"}</div>
+          }}>{deal.paymentStatus || "pending"}</div>
         </div>
 
         <div className="dd-body">
