@@ -63,6 +63,8 @@ function DealDetailPageInner() {
       setDeal(d);
       const esc = d.escrow || data.escrow || null;
       if (esc) setEscrow(esc);
+      // Debug: log deal to see structure
+      console.log("DEAL DATA:", JSON.stringify(d, null, 2));
     } catch(e:any) {
       showToast(e.message || "Failed to load deal", "error");
     } finally {
@@ -79,7 +81,11 @@ function DealDetailPageInner() {
       const dealAmount    = Number(deal.amount || 0);
       const commission    = Math.round(dealAmount * 0.10);
       const creatorAmount = dealAmount - commission;
-      const influencerId  = deal.influencerId?._id || deal.influencerId || "";
+      // influencerId could be: populated object {_id,name} OR plain ObjectId string
+      const rawInf = deal.influencerId;
+      const influencerId = (typeof rawInf === "object" && rawInf !== null)
+        ? (rawInf._id || rawInf.id || String(rawInf))
+        : String(rawInf || "");
 
       const res  = await fetch(`${API}/payment/deposit`, {
         method:  "POST",
@@ -125,7 +131,9 @@ function DealDetailPageInner() {
                 razorpay_order_id:   response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature:  response.razorpay_signature,
-                influencerId:        deal?.influencerId?._id || deal?.influencerId || "",
+                influencerId:        (typeof deal?.influencerId === "object" && deal?.influencerId !== null)
+                                       ? (deal.influencerId._id || deal.influencerId.id || String(deal.influencerId))
+                                       : String(deal?.influencerId || ""),
                 amount:              Number(deal?.amount || 0),
               }),
             });
