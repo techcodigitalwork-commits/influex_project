@@ -65,17 +65,44 @@ function CreateDealPageInner() {
         if (camp) setForm(f => ({ ...f, campaignId: campId, title: f.title || `Deal for ${camp.title}` }));
       }
     } catch {}
-    // Always load all creators
-    fetchApplications("", t);
   };
 
-  const fetchApplications = async (campaignId: string, t?: string) => {
+  const fetchApplications = async (campaignId: string, t?: string): Promise<void> => {
+    if (!campaignId) return;
     setLoadingApps(true);
+    setApplications([]);
+    const tk = t || token;
     try {
-      const res = await fetch(`${API}/campaigns/${campaignId}/application`, { headers: { Authorization: `Bearer ${t||token}` } });
+      // ✅ CONFIRMED working: GET /api/campaigns/:id/applications (304 = cached, data exists)
+      const res  = await fetch(`${API}/campaigns/${campaignId}/applications`, {
+        headers: { Authorization: `Bearer ${tk}`, "Cache-Control": "no-cache" }
+      });
       const data = await res.json();
-      setApplications(data.applications || data.data || []);
-    } catch { setApplications([]); }
+
+      // Backend returns array directly OR nested
+      const raw: any[] = Array.isArray(data) ? data
+        : Array.isArray(data.applications) ? data.applications
+        : Array.isArray(data.data)         ? data.data
+        : Array.isArray(data.applicants)   ? data.applicants
+        : [];
+
+      // Each application: { _id, status, influencer: {_id,name} or influencerId: ObjectId }
+      // Filter: show accepted OR all (if none accepted yet, show all applicants)
+      const accepted = raw.filter((a: any) => a.status === "accepted");
+      const toShow   = accepted.length > 0 ? accepted : raw;
+
+      const normalised = toShow.map((a: any) => {
+        const uid  = a.influencer?._id  || a.influencerId?._id  || a.userId?._id
+                  || a.influencerId     || a.userId              || a._id;
+        const name = a.influencer?.name || a.influencerId?.name  || a.userId?.name
+                  || a.name             || a.username            || "Creator";
+        return { _id: String(uid || ""), name: String(name), status: a.status || "" };
+      }).filter((a: any) => a._id && a._id.length === 24);
+
+      setApplications(normalised);
+    } catch {
+      setApplications([]);
+    }
     finally { setLoadingApps(false); }
   };
 
@@ -87,7 +114,7 @@ function CreateDealPageInner() {
   };
 
   const handleCreatorChange = (creatorId: string) => {
-    const app = applications.find(a => a._id === creatorId);
+    const app = applications.find((a: any) => a._id === creatorId);
     const name = app?.name || "";
     setForm(f => ({ ...f, creatorId, creatorName: name }));
   };
@@ -200,19 +227,18 @@ function CreateDealPageInner() {
                 {campaigns.map(c => <option key={c._id} value={c._id}>{c.title}</option>)}
               </select>
             </div>
-            {(
+            {form.campaignId && (
               <div className="dc-field">
                 <label className="dc-label">Creator <span>*</span></label>
                 {loadingApps ? <div style={{fontSize:13,color:"#aaa",padding:"10px 0"}}>Loading creators...</div> :
-                  applications.length === 0 ? <div style={{fontSize:13,color:"#f59e0b",padding:"10px 0"}}>⚠️ No applications yet for this campaign — creators need to apply first.</div> :
+                  loadingApps ? <div style={{fontSize:13,color:"#aaa",padding:"10px 0"}}>Loading applicants...</div> : applications.length === 0 ? <div style={{fontSize:13,color:"#f59e0b",padding:"10px 0"}}>⚠️ No creators have applied to this campaign yet.</div> :
                   <select className="dc-select" style={{color: form.creatorId ? "#111" : "#9ca3af"}} value={form.creatorId} onChange={e => handleCreatorChange(e.target.value)}>
                     <option value="">Select creator...</option>
-                    {applications.map((a, i) => {
-                      const cid  = a._id;
-                      const name = a.name || `Creator ${i+1}`;
-                      const sub  = a.followers ? ` · ${Number(a.followers).toLocaleString("en-IN")} followers` : "";
-                      return <option key={cid || i} value={cid}>{name}{sub}</option>;
-                    })}
+                    {applications.map((a, i) => (
+                      <option key={a._id || i} value={a._id}>
+                        {a.name}{a.status === "accepted" ? " ✓ Accepted" : a.status ? ` (${a.status})` : ""}
+                      </option>
+                    ))}
                   </select>
                 }
                 {form.creatorName && (
@@ -302,7 +328,6 @@ export default function CreateDealPage() {
     </Suspense>
   );
 }
-
 
 
 // "use client";
