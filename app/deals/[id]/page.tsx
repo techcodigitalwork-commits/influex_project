@@ -161,33 +161,73 @@ function DealDetailPageInner() {
   };
 
   // STEP 6: Creator submits work
+  // const handleSubmitWork = async () => {
+  //   if (!submitNote && !submitFile) { showToast("Add a note or link", "error"); return; }
+  //   setActionLoading("submit");
+  //   try {
+  //     let res = await fetch(`${API}/payment/deal/${id}/submit-deliverable`, {
+  //       method:  "POST",
+  //       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  //       body:    JSON.stringify({ note: submitNote, fileUrl: submitFile }),
+  //     });
+  //     if (res.status === 404) {
+  //       res = await fetch(`${API}/deal/${id}/deliverable`, {
+  //         method:  "POST",
+  //         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  //         body:    JSON.stringify({ dealId: id, note: submitNote, fileUrl: submitFile }),
+  //       });
+  //     }
+  //     const data = await res.json();
+  //     if (!res.ok) throw new Error(data.message || "Submit failed");
+  //     showToast("📤 Work submitted! Waiting for approval.", "success");
+  //     setShowSubmit(false); setSubmitNote(""); setSubmitFile("");
+  //     await fetchDeal(token);
+  //   } catch(e:any) {
+  //     showToast(e.message || "Submit failed", "error");
+  //   } finally {
+  //     setActionLoading("");
+  //   }
+  // };
   const handleSubmitWork = async () => {
-    if (!submitNote && !submitFile) { showToast("Add a note or link", "error"); return; }
-    setActionLoading("submit");
-    try {
-      let res = await fetch(`${API}/payment/deal/${id}/submit-deliverable`, {
-        method:  "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body:    JSON.stringify({ note: submitNote, fileUrl: submitFile }),
-      });
-      if (res.status === 404) {
-        res = await fetch(`${API}/deal/${id}/deliverable`, {
-          method:  "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body:    JSON.stringify({ dealId: id, note: submitNote, fileUrl: submitFile }),
-        });
-      }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Submit failed");
-      showToast("📤 Work submitted! Waiting for approval.", "success");
-      setShowSubmit(false); setSubmitNote(""); setSubmitFile("");
-      await fetchDeal(token);
-    } catch(e:any) {
-      showToast(e.message || "Submit failed", "error");
-    } finally {
-      setActionLoading("");
-    }
-  };
+  if (!submitNote && !submitFile) { 
+    showToast("Add a note or link", "error"); 
+    return; 
+  }
+
+  setActionLoading("submit");
+
+  try {
+
+    const res = await fetch(`${API}/payment/${id}/submit-deliverable`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        note: submitNote,
+        links: [submitFile]   // ✅ correct field
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.message || "Submit failed");
+
+    showToast("📤 Work submitted! Waiting for approval.", "success");
+
+    setShowSubmit(false);
+    setSubmitNote("");
+    setSubmitFile("");
+
+    await fetchDeal(token);
+
+  } catch (e:any) {
+    showToast(e.message || "Submit failed", "error");
+  } finally {
+    setActionLoading("");
+  }
+};
 
   // STEP 7: Brand approves → STEP 8: Escrow released
   const handleApprove = async () => {
