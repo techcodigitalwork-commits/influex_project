@@ -57,10 +57,10 @@ export default function DealsPage() {
   const handleDeposit = async (deal: any) => {
     setActioning(deal._id + "_deposit");
     try {
-      const res = await fetch(`${API}/deal/deposit`, {
+      const res = await fetch(`${API}/payment/deposit`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ dealId: deal._id, amount: deal.amount }),
+        body: JSON.stringify({ dealId: deal._id }),  // backend reads amount from deal
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
@@ -74,9 +74,21 @@ export default function DealsPage() {
           name: "Influex Escrow",
           description: `Deal: ${deal.title || ""}`,
           theme: { color: "#4f46e5" },
-          handler: () => {
-            alert("💰 Escrow deposited successfully!");
-            fetchDeals(token);
+          handler: async (response: any) => {
+            try {
+              await fetch(`${API}/payment/verify`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  dealId: deal._id,
+                  razorpay_order_id:   response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature:  response.razorpay_signature,
+                }),
+              });
+              alert("💰 Escrow funded! Deal is now active.");
+              fetchDeals(token);
+            } catch { alert("Payment verification failed"); }
           },
           modal: { ondismiss: () => setActioning(null) },
         });
@@ -94,8 +106,8 @@ export default function DealsPage() {
     if (!confirm("Approve work and release payment to creator?")) return;
     setActioning(dealId + "_approve");
     try {
-      // POST /deal/approve-deliverable
-      const res = await fetch(`${API}/deal/approve-deliverable`, {
+      // POST /payment/approve-deliverable
+      const res = await fetch(`${API}/payment/approve-deliverable`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ dealId }),

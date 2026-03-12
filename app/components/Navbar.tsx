@@ -197,7 +197,7 @@ export default function Navbar() {
               {isInfluencer && (
                 <>
                   <Link href="/discovery"    className={`nav-link ${isActive("/discovery") ? "active" : ""}`}>Discover</Link>
-                  <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>Applied</Link>
+                  {/* <Link href="/apply"        className={`nav-link ${isActive("/apply") ? "active" : ""}`}>Applied</Link> */}
                   {/* <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link> */}
                   {/* <Link href="/contracts"    className={`nav-link ${isActive("/contracts") ? "active" : ""}`}>Contracts</Link> */}
                   <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
