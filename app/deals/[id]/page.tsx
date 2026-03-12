@@ -165,7 +165,7 @@ function DealDetailPageInner() {
     if (!submitNote && !submitFile) { showToast("Add a note or link", "error"); return; }
     setActionLoading("submit");
     try {
-      let res = await fetch(`${API}/deal/${id}/submit-deliverable`, {
+      let res = await fetch(`${API}/deal/${id}/deal/:dealId/submit-deliverable`, {
         method:  "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body:    JSON.stringify({ note: submitNote, fileUrl: submitFile }),
