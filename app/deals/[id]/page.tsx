@@ -28,6 +28,13 @@ function DealDetailPageInner() {
   };
 
   useEffect(() => {
+    // Pre-load Razorpay script immediately on page mount
+    if (typeof window !== "undefined" && !(window as any).Razorpay) {
+      const s = document.createElement("script");
+      s.src = "https://checkout.razorpay.com/v1/checkout.js";
+      s.async = true;
+      document.head.appendChild(s);
+    }
     const raw = localStorage.getItem("cb_user");
     if (!raw) { router.push("/login"); return; }
     const parsed = JSON.parse(raw);

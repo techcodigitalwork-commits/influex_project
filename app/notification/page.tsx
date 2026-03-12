@@ -78,19 +78,30 @@ export default function NotificationsPage() {
         method: "PATCH",
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      // ✅ Immediately local state update karo
+      // ✅ Immediately local state + localStorage update
+      const localRead: string[] = JSON.parse(localStorage.getItem("readNotifIds") || "[]");
+      if (!localRead.includes(notifId)) {
+        localRead.push(notifId);
+        localStorage.setItem("readNotifIds", JSON.stringify(localRead));
+      }
       setNotifications(prev => {
         const updated = prev.map(n => n._id === notifId ? { ...n, read: true } : n);
-        // ✅ Navbar ko signal bhejo — unread count update kare
         const unreadLeft = updated.filter(n => !n.read).length;
+        // ✅ Navbar ko signal bhejo
+        window.dispatchEvent(new StorageEvent("storage", { key: "notif_unread_count", newValue: String(unreadLeft) }));
         if (unreadLeft === 0) localStorage.setItem("notif_all_read", "true");
         return updated;
       });
     } catch {
-      // Fail hone pe bhi UI update karo
+      const localRead: string[] = JSON.parse(localStorage.getItem("readNotifIds") || "[]");
+      if (!localRead.includes(notifId)) {
+        localRead.push(notifId);
+        localStorage.setItem("readNotifIds", JSON.stringify(localRead));
+      }
       setNotifications(prev => {
         const updated = prev.map(n => n._id === notifId ? { ...n, read: true } : n);
         const unreadLeft = updated.filter(n => !n.read).length;
+        window.dispatchEvent(new StorageEvent("storage", { key: "notif_unread_count", newValue: String(unreadLeft) }));
         if (unreadLeft === 0) localStorage.setItem("notif_all_read", "true");
         return updated;
       });
@@ -614,7 +625,6 @@ export default function NotificationsPage() {
     </>
   );
 }
-
 // "use client";
 
 

@@ -61,6 +61,10 @@ export default function Navbar() {
     if (typeof window === "undefined") return;
     const handleStorage = (e: StorageEvent) => {
       if (e.key === "notif_all_read") setUnreadCount(0);
+      // ✅ NotificationsPage se real-time count update
+      if (e.key === "notif_unread_count" && e.newValue !== null) {
+        setUnreadCount(Number(e.newValue));
+      }
     };
     window.addEventListener("storage", handleStorage);
     const wasRead = localStorage.getItem("notif_all_read");

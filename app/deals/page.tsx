@@ -16,6 +16,13 @@ export default function DealsPage() {
   const [actioning, setActioning]       = useState<string|null>(null);
 
   useEffect(() => {
+    // Pre-load Razorpay script on mount
+    if (!(window as any).Razorpay) {
+      const s = document.createElement("script");
+      s.src = "https://checkout.razorpay.com/v1/checkout.js";
+      s.async = true;
+      document.head.appendChild(s);
+    }
     const raw = localStorage.getItem("cb_user");
     if (!raw) { router.push("/login"); return; }
     const parsed = JSON.parse(raw);
@@ -66,6 +73,19 @@ export default function DealsPage() {
       if (!res.ok) throw new Error(data.message || "Failed");
       // Razorpay flow
       if (data.order?.id) {
+        // Wait for Razorpay to be ready
+        if (!(window as any).Razorpay) {
+          await new Promise<void>((resolve, reject) => {
+            const existing = document.querySelector('script[src*="razorpay"]');
+            if (existing) { existing.remove(); }
+            const s = document.createElement("script");
+            s.src = "https://checkout.razorpay.com/v1/checkout.js";
+            s.async = true;
+            s.onload = () => setTimeout(resolve, 500);
+            s.onerror = () => reject(new Error("Razorpay load failed"));
+            document.head.appendChild(s);
+          });
+        }
         const rzp = new (window as any).Razorpay({
           key: "rzp_test_SL7M2uHDyhrU4A",
           order_id: data.order.id,
