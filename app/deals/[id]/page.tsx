@@ -2,7 +2,6 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import Script from "next/script";
 
 const API          = "http://54.252.201.93:5000/api";
 const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
@@ -107,15 +106,25 @@ function DealDetailPageInner() {
         modal: { ondismiss: () => { showToast("Payment cancelled", "warn"); setActionLoading(""); } },
       };
 
-      // Load Razorpay script if not loaded
+      // Load Razorpay script and wait for it to be ready
+      await new Promise<void>((resolve, reject) => {
+        if ((window as any).Razorpay) { resolve(); return; }
+        // Remove any existing failed script
+        const existing = document.querySelector('script[src*="razorpay"]');
+        if (existing) existing.remove();
+        const s = document.createElement("script");
+        s.src = "https://checkout.razorpay.com/v1/checkout.js";
+        s.async = true;
+        s.onload = () => {
+          // Small delay to ensure Razorpay constructor is registered
+          setTimeout(resolve, 300);
+        };
+        s.onerror = () => reject(new Error("Razorpay script failed to load"));
+        document.head.appendChild(s);
+      });
+
       if (!(window as any).Razorpay) {
-        await new Promise<void>((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "https://checkout.razorpay.com/v1/checkout.js";
-          s.onload = () => resolve();
-          s.onerror = () => reject(new Error("Razorpay load failed"));
-          document.body.appendChild(s);
-        });
+        throw new Error("Razorpay failed to initialize. Please refresh and try again.");
       }
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
@@ -205,7 +214,7 @@ function DealDetailPageInner() {
 
   return (
     <>
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
