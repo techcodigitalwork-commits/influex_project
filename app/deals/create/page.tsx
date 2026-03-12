@@ -7,6 +7,7 @@ const API = "http://54.252.201.93:5000/api";
 
 function CreateDealPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [token, setToken] = useState("");
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
@@ -36,21 +37,40 @@ function CreateDealPageInner() {
     const parsed = JSON.parse(raw);
     if (parsed.role?.toLowerCase() !== "brand") { router.push("/deals"); return; }
     setToken(parsed.token);
-    fetchCampaigns(parsed.token);
+    fetchCampaigns(parsed.token).then(() => {
+      // Prefill from URL params after campaigns load
+      const campId    = searchParams?.get("campaignId") || "";
+      const creatorId = searchParams?.get("creatorId")  || "";
+      if (campId) {
+        setForm(f => ({ ...f, campaignId: campId }));
+        fetchApplications(campId, parsed.token).then(() => {
+          if (creatorId) setForm(f => ({ ...f, creatorId }));
+        });
+      } else if (creatorId) {
+        setForm(f => ({ ...f, creatorId }));
+      }
+    });
   }, []);
 
   const fetchCampaigns = async (t: string) => {
     try {
-      const res = await fetch(`${API}/campaigns/my`, { headers: { Authorization: `Bearer ${t}` } });
+      const res  = await fetch(`${API}/campaigns/my`, { headers: { Authorization: `Bearer ${t}` } });
       const data = await res.json();
-      setCampaigns(data.data || data.campaigns || []);
+      const list = data.data || data.campaigns || [];
+      setCampaigns(list);
+      // If campId in URL, auto-set title
+      const campId = searchParams?.get("campaignId") || "";
+      if (campId) {
+        const camp = list.find((c: any) => c._id === campId);
+        if (camp) setForm(f => ({ ...f, campaignId: campId, title: f.title || `Deal for ${camp.title}` }));
+      }
     } catch {}
   };
 
   const fetchApplications = async (campaignId: string, t?: string) => {
     setLoadingApps(true);
     try {
-      const res = await fetch(`${API}/campaigns/${campaignId}/applications`, { headers: { Authorization: `Bearer ${t||token}` } });
+      const res = await fetch(`${API}/campaigns/${campaignId}/application`, { headers: { Authorization: `Bearer ${t||token}` } });
       const data = await res.json();
       setApplications(data.applications || data.data || []);
     } catch { setApplications([]); }
@@ -65,8 +85,8 @@ function CreateDealPageInner() {
   };
 
   const handleCreatorChange = (creatorId: string) => {
-    const app = applications.find(a => (a.influencer?._id || a._id) === creatorId);
-    const name = app?.influencer?.name || app?.name || "";
+    const app = applications.find(a => (a.influencer?._id || a.influencerId?._id || a.influencerId || a._id) === creatorId);
+    const name = app?.influencer?.name || app?.influencerId?.name || app?.name || "";
     setForm(f => ({ ...f, creatorId, creatorName: name }));
   };
 
@@ -79,9 +99,10 @@ function CreateDealPageInner() {
   }));
 
   const handleSubmit = async () => {
-    if (!form.campaignId || !form.creatorId || !form.amount || !form.title) {
-      showToast("Please fill all required fields", "error"); return;
-    }
+    if (!form.campaignId) { showToast("⬆️ Please select a Campaign above", "error"); document.querySelector('.dc-select')?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
+    if (!form.creatorId)  { showToast("⬆️ Please select a Creator above", "error"); return; }
+    if (!form.amount)     { showToast("⬆️ Please enter the Deal Amount", "error"); return; }
+    if (!form.title)      { showToast("⬆️ Please enter a Deal Title", "error"); return; }
     setSubmitting(true);
     try {
       // POST /api/deal/create
@@ -132,7 +153,7 @@ function CreateDealPageInner() {
         .dc-label span { color: #ef4444; }
         .dc-input { width: 100%; padding: 11px 14px; border-radius: 10px; border: 1.5px solid #ebebeb; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; transition: border-color 0.2s; color: #111; background: #fff; }
         .dc-input:focus { border-color: #4f46e5; }
-        .dc-select { width: 100%; padding: 11px 14px; border-radius: 10px; border: 1.5px solid #ebebeb; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; cursor: pointer; color: #111; background: #fff; }
+        .dc-select { -webkit-appearance: auto; appearance: auto;  width: 100%; padding: 11px 14px; border-radius: 10px; border: 1.5px solid #ebebeb; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; cursor: pointer; color: #111; background: #fff; }
         .dc-select:focus { border-color: #4f46e5; }
         .dc-textarea { width: 100%; padding: 11px 14px; border-radius: 10px; border: 1.5px solid #ebebeb; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; resize: vertical; min-height: 90px; color: #111; }
         .dc-textarea:focus { border-color: #4f46e5; }
@@ -172,22 +193,22 @@ function CreateDealPageInner() {
             <div className="dc-section-title">🎯 Campaign & Creator</div>
             <div className="dc-field">
               <label className="dc-label">Campaign <span>*</span></label>
-              <select className="dc-select" value={form.campaignId} onChange={e => handleCampaignChange(e.target.value)}>
+              <select className="dc-select" style={{color: form.campaignId ? "#111" : "#9ca3af"}} value={form.campaignId} onChange={e => handleCampaignChange(e.target.value)}>
                 <option value="">Select campaign...</option>
                 {campaigns.map(c => <option key={c._id} value={c._id}>{c.title}</option>)}
               </select>
             </div>
-            {form.campaignId && (
+            {(form.campaignId || applications.length > 0) && (
               <div className="dc-field">
                 <label className="dc-label">Creator <span>*</span></label>
                 {loadingApps ? <div style={{fontSize:13,color:"#aaa",padding:"10px 0"}}>Loading creators...</div> :
-                  applications.length === 0 ? <div style={{fontSize:13,color:"#aaa",padding:"10px 0"}}>No applications for this campaign</div> :
-                  <select className="dc-select" value={form.creatorId} onChange={e => handleCreatorChange(e.target.value)}>
+                  applications.length === 0 ? <div style={{fontSize:13,color:"#f59e0b",padding:"10px 0"}}>⚠️ No applications yet for this campaign — creators need to apply first.</div> :
+                  <select className="dc-select" style={{color: form.creatorId ? "#111" : "#9ca3af"}} value={form.creatorId} onChange={e => handleCreatorChange(e.target.value)}>
                     <option value="">Select creator...</option>
-                    {applications.map(a => {
-                      const id = a.influencer?._id || a._id;
-                      const name = a.influencer?.name || a.name || "Creator";
-                      return <option key={id} value={id}>{name}</option>;
+                    {applications.map((a, i) => {
+                      const cid  = a.influencer?._id || a.influencerId?._id || a.influencerId || a._id;
+                      const name = a.influencer?.name || a.influencerId?.name || a.name || `Creator ${i+1}`;
+                      return <option key={cid || i} value={cid}>{name}</option>;
                     })}
                   </select>
                 }
