@@ -367,8 +367,8 @@ export default function Navbar() {
             {isBrand && (
               <>
                 <div className="nav-mobile-section">Brand Tools</div>
-                <Link href="/invite"      className={`nav-mobile-link ${isActive("/invite") ? "active" : ""}`}>Invite Creators</Link>
-                <Link href="/contact"     className={`nav-mobile-link ${isActive("/contact") ? "active" : ""}`}>Unlock Contacts</Link>
+                {/* <Link href="/invite"      className={`nav-mobile-link ${isActive("/invite") ? "active" : ""}`}>Invite Creators</Link>
+                <Link href="/contact"     className={`nav-mobile-link ${isActive("/contact") ? "active" : ""}`}>Unlock Contacts</Link> */}
                 <Link href="/smart-match" className={`nav-mobile-link ${isActive("/smart-match") ? "active" : ""}`}>Smart Match</Link>
                 <Link href="/campaigns/post" className={`nav-mobile-link ${isActive("/campaigns/post") ? "active" : ""}`}>Post Campaign</Link>
               </>
