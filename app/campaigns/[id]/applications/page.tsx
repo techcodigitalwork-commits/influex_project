@@ -566,7 +566,7 @@ export default function CampaignApplications() {
                       <button className="ap-btn ap-btn-view" onClick={() => {
                         const creatorId = app?.influencerId?._id || app?.influencer?._id || app?.influencer?.user || app?.userId;
                         console.log("creatorId:", creatorId, "appId:", app._id);
-                        router.push(`/campaigns/${id}/applications/creator/${creatorId}?appId=${app._id}`);
+                        router.push(`/campaigns/${id}/applications/creator/${creatorId}?appId=${app._id}&campaignId=${id}`);
                       }}>
                         👤 View Profile
                       </button>

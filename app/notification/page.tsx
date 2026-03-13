@@ -68,33 +68,7 @@ export default function NotificationsPage() {
       }));
       setNotifications(merged);
 
-      // ✅ Fetch creator names - only once, use cache
-      const brandNotifs = merged.filter((n: any) =>
-        ["new_application", "campaign_apply", "application"].includes(n.type)
-      );
-      const names: Record<string, string> = { ...creatorNames };
-      const toFetch = brandNotifs.filter((n: any) => !names[n._id]);
-      if (toFetch.length > 0) {
-        await Promise.all(toFetch.map(async (n: any) => {
-          const senderId = extractMongoId(n.sender);
-          if (!senderId) return;
-          if (profileCache[senderId]) {
-            if (profileCache[senderId]?.name) names[n._id] = profileCache[senderId].name;
-            return;
-          }
-          const { ok, data: pd } = await safeFetch(`${API}/profile/user/${senderId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (ok && pd) {
-            const p = pd.profile || pd.data || (pd._id ? pd : null);
-            if (p) {
-              profileCache[senderId] = p;
-              if (p?.name) names[n._id] = p.name;
-            }
-          }
-        }));
-        setCreatorNames(names);
-      }
+      // ✅ Names load pe nahi - sirf click pe fetch honge (lazy loading)
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -188,6 +162,9 @@ export default function NotificationsPage() {
       if (senderId) {
         const profile = await fetchProfile(senderId);
         if (profile) {
+          // ✅ Name cache mein save karo
+          const names = { ...creatorNames, [n._id]: profile.name || creatorNames[n._id] };
+          setCreatorNames(names);
           setSelectedProfile({ ...profile, notifId: n._id, status: n.applicationStatus, campaignId: getCampaignId(n) });
           return;
         }
@@ -560,6 +537,26 @@ export default function NotificationsPage() {
                       {/* ── INFLUENCER: Sirf status dikhao — koi action nahi ── */}
                       {showInfluencerStatus && (
                         <div style={{ marginTop: "10px" }}>
+                          {/* Brand name strip */}
+                          {extractMongoId(n.sender) && (
+                            <div style={{ fontSize: 12, color: "#888", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                              <span>🏢</span>
+                              <span style={{ fontWeight: 600, color: "#555" }}>
+                                {creatorNames[n._id] || "Brand"}
+                              </span>
+                              <span style={{ color: "#bbb" }}>reviewed your application</span>
+                              {!creatorNames[n._id] && (() => {
+                                // Lazy fetch brand name
+                                const sid = extractMongoId(n.sender);
+                                if (sid && !profileCache[sid]) {
+                                  fetchProfile(sid).then(p => {
+                                    if (p?.name) setCreatorNames(prev => ({ ...prev, [n._id]: p.name }));
+                                  });
+                                }
+                                return null;
+                              })()}
+                            </div>
+                          )}
                           {isAccepted ? (
                             <>
                               <div className="np-status np-status-accepted">✅ Application Accepted!</div>
