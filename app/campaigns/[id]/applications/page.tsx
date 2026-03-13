@@ -88,30 +88,49 @@ export default function CampaignApplications() {
     }
   };
 
+  const sendNotif = async (token: string, creatorUserId: string, type: string, message: string, appId: string) => {
+    try {
+      await fetch(`${API_BASE}/notification/create`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ user: creatorUserId, sender: JSON.parse(localStorage.getItem("cb_user") || "{}").id, message, type, applicationId: appId, link: "/notifications" }),
+      });
+    } catch { /* silent */ }
+  };
+
   const handleAccept = async (app: any) => {
     const raw = localStorage.getItem("cb_user");
     if (!raw) return;
     const { token } = JSON.parse(raw);
     const appId = app._id;
+    const creatorUserId = app?.influencerId?._id || app?.influencer?.user || app?.influencer?._id || app?.userId;
     try {
       await fetch(`${API_BASE}/application/${appId}/decision`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ decision: "accepted" }),
       });
-      const creatorUserId = app?.influencer?.user || app?.influencer?._id || app?.influencerId?._id || app?.userId;
+      // ✅ Frontend se notification bhejo with correct user ID
       if (creatorUserId) {
-        await fetch(`${API_BASE}/notification/create`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user: creatorUserId,
-            message: `Your application for "${campaign?.title || "a campaign"}" has been accepted! 🎉`,
-            type: "application_accepted",
-            link: `/campaign/${id}`,
-            applicationId: appId,
-          }),
-        });
+        await sendNotif(token, creatorUserId, "application_accepted",
+          `Your application for "${campaign?.title || "a campaign"}" has been accepted! 🎉`, appId);
+        // Auto message
+        try {
+          const convRes = await fetch(`${API_BASE}/conversations/start`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ participantId: creatorUserId }),
+          });
+          const convData = await convRes.json();
+          const convId = convData?.conversation?._id || convData?._id;
+          if (convId) {
+            await fetch(`${API_BASE}/conversations/send/${convId}`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ text: "🎉 Congratulations! Your application has been accepted. Let's discuss the next steps!" }),
+            });
+          }
+        } catch { /* silent */ }
       }
       const updated = { ...decidedApps, [appId]: "accepted" as const };
       setDecidedApps(updated);
@@ -130,31 +149,20 @@ export default function CampaignApplications() {
     if (!raw) return;
     const { token } = JSON.parse(raw);
     const appId = app._id;
+    const creatorUserId = app?.influencerId?._id || app?.influencer?.user || app?.influencer?._id || app?.userId;
     try {
-      // Reject API call
       await fetch(`${API_BASE}/application/${appId}/decision`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ decision: "rejected" }),
       });
-      // Creator ko notification bhejo
-      const creatorUserId = app?.influencer?.user || app?.influencer?._id || app?.influencerId?._id || app?.userId;
+      // ✅ Frontend se notification bhejo with correct user ID
       if (creatorUserId) {
-        await fetch(`${API_BASE}/notification/create`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user: creatorUserId,
-            message: `Your application for "${campaign?.title || "a campaign"}" was not selected this time. Keep applying! 💪`,
-            type: "application_accepted",
-            status: "rejected",
-            link: `/discovery`,
-            applicationId: appId,
-          }),
-        });
+        await sendNotif(token, creatorUserId, "application_rejected",
+          `Your application for "${campaign?.title || "a campaign"}" was not selected this time. Keep applying! 💪`, appId);
       }
     } catch (err) {
-      console.error("Reject notification error:", err);
+      console.error("Reject error:", err);
     }
     const updated = { ...decidedApps, [appId]: "rejected" as const };
     setDecidedApps(updated);
@@ -556,7 +564,8 @@ export default function CampaignApplications() {
                     {/* Row 1: View + Accept/Reject */}
                     <div className="ap-actions-row">
                       <button className="ap-btn ap-btn-view" onClick={() => {
-                        const creatorId = app?.influencer?._id || app?.influencer?.user || app?.influencerId?._id;
+                        const creatorId = app?.influencerId?._id || app?.influencer?._id || app?.influencer?.user || app?.userId;
+                        console.log("creatorId:", creatorId, "appId:", app._id);
                         router.push(`/campaigns/${id}/applications/creator/${creatorId}?appId=${app._id}`);
                       }}>
                         👤 View Profile

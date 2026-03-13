@@ -99,6 +99,16 @@ export default function NotificationsPage() {
     finally { setLoading(false); }
   };
 
+  const sendNotif = async (creatorId: string, type: string, message: string, appId: string) => {
+    try {
+      await safeFetch(`${API}/notification/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
+        body: JSON.stringify({ user: creatorId, sender: user.id, message, type, applicationId: appId, link: "/notifications" }),
+      });
+    } catch { /* silent */ }
+  };
+
   const markRead = async (notifId: string) => {
     // ✅ Already read hai toh skip karo
     const notif = notifications.find(n => n._id === notifId);
@@ -259,10 +269,14 @@ export default function NotificationsPage() {
       saveStatusLocally(notifId, "accepted");
       markRead(notifId);
 
-      // ✅ Send message to creator: "Your application has been accepted!"
+      // ✅ Send accept notification + message
       try {
         const n = notifications.find(x => x._id === notifId);
         const creatorId = extractMongoId(n?.sender);
+        if (creatorId) {
+          await sendNotif(creatorId, "application_accepted",
+            `Your application has been accepted! 🎉`, appId);
+        }
         if (creatorId) {
           // Find or create conversation then send message
           const convRes = await safeFetch(`${API}/conversations/start`, {
@@ -319,27 +333,15 @@ export default function NotificationsPage() {
       saveStatusLocally(notifId, "rejected");
       markRead(notifId);
 
-      // ✅ Creator ko reject notification bhejo
+      // ✅ Send reject notification
       try {
         const n = notifications.find(x => x._id === notifId);
         const creatorId = extractMongoId(n?.sender);
-        const campaignId = getCampaignId(n);
         if (creatorId) {
-          await safeFetch(`${API}/notification/create`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
-            body: JSON.stringify({
-              recipient: creatorId,
-              user: creatorId,
-              message: `Your application was not selected this time. Keep applying! 💪`,
-              type: "application_accepted",
-              status: "rejected",
-              link: `/discovery`,
-              applicationId: appId,
-            }),
-          });
+          await sendNotif(creatorId, "application_rejected",
+            `Your application was not selected this time. Keep applying! 💪`, appId);
         }
-      } catch { /* silent fail */ }
+      } catch { /* silent */ }
     } catch (err: any) {
       alert(err.message || "Reject failed");
     } finally { setActionLoading(""); }
@@ -367,16 +369,13 @@ export default function NotificationsPage() {
 
   // ✅ Influencer ke liye: application_accepted/rejected type (brand ne decision kiya)
   const isInfluencerStatusNotif = (n: any) =>
-    ["application_accepted", "application_rejected", "application_status"].includes(n.type)
-    || (n.type === "application_accepted" && n.status === "rejected");
+    ["application_accepted", "application_rejected", "application_status", "campaign_update"].includes(n.type);
 
   const getStatus = (n: any) => {
     const s = n.applicationStatus || n.application?.status || "";
     if (s) return s.toLowerCase();
-    // ✅ type + status field se derive karo
+    if (n.type === "campaign_update")     return "rejected";   // ✅ backend reject type
     if (n.type === "application_rejected") return "rejected";
-    if (n.status === "rejected") return "rejected";
-    if (n.type === "application_accepted" && n.status === "rejected") return "rejected";
     if (n.type === "application_accepted") return "accepted";
     return "";
   };

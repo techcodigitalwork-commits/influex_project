@@ -50,6 +50,7 @@ export default function CreatorProfilePage() {
   const fetchProfile = async (tok: string, appId: string|null, campaignId: string|null) => {
     try {
       setLoading(true);
+      console.log("🔍 Fetching profile for id:", id, "appId:", appId, "campaignId:", campaignId);
       // Fetch profile
       const res  = await fetch(`${API}/profile/user/${id}`, {
         headers: { Authorization: `Bearer ${tok}` },
