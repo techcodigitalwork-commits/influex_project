@@ -32,6 +32,7 @@ export default function NotificationsPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>("");  // ✅ "brand" | "influencer"
+  const profileCache = useState<Record<string, any>>({})[0];  // ✅ Cache — ek baar fetch
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
@@ -67,23 +68,33 @@ export default function NotificationsPage() {
       }));
       setNotifications(merged);
 
-      // ✅ Fetch creator names for all brand notifications
+      // ✅ Fetch creator names - only once, use cache
       const brandNotifs = merged.filter((n: any) =>
         ["new_application", "campaign_apply", "application"].includes(n.type)
       );
-      const names: Record<string, string> = {};
-      await Promise.all(brandNotifs.map(async (n: any) => {
-        const senderId = extractMongoId(n.sender);
-        if (!senderId) return;
-        const { ok, data: pd } = await safeFetch(`${API}/profile/user/${senderId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (ok && pd) {
-          const p = pd.profile || pd.data || (pd._id ? pd : null);
-          if (p?.name) names[n._id] = p.name;
-        }
-      }));
-      setCreatorNames(names);
+      const names: Record<string, string> = { ...creatorNames };
+      const toFetch = brandNotifs.filter((n: any) => !names[n._id]);
+      if (toFetch.length > 0) {
+        await Promise.all(toFetch.map(async (n: any) => {
+          const senderId = extractMongoId(n.sender);
+          if (!senderId) return;
+          if (profileCache[senderId]) {
+            if (profileCache[senderId]?.name) names[n._id] = profileCache[senderId].name;
+            return;
+          }
+          const { ok, data: pd } = await safeFetch(`${API}/profile/user/${senderId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (ok && pd) {
+            const p = pd.profile || pd.data || (pd._id ? pd : null);
+            if (p) {
+              profileCache[senderId] = p;
+              if (p?.name) names[n._id] = p.name;
+            }
+          }
+        }));
+        setCreatorNames(names);
+      }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -149,12 +160,13 @@ export default function NotificationsPage() {
 
   const fetchProfile = async (userId: string) => {
     if (!userId || typeof userId !== "string") return null;
+    if (profileCache[userId]) return profileCache[userId];  // ✅ Cache hit — no API call
     const { ok, data } = await safeFetch(`${API}/profile/user/${userId}`, {
       headers: { Authorization: `Bearer ${user?.token}` },
     });
     if (ok && data) {
       const p = data.profile || data.data || (data._id ? data : null);
-      if (p) return p;
+      if (p) { profileCache[userId] = p; return p; }  // ✅ Cache store
     }
     return null;
   };
@@ -317,9 +329,11 @@ export default function NotificationsPage() {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
             body: JSON.stringify({
+              recipient: creatorId,
               user: creatorId,
               message: `Your application was not selected this time. Keep applying! 💪`,
-              type: "application_rejected",
+              type: "application_accepted",
+              status: "rejected",
               link: `/discovery`,
               applicationId: appId,
             }),
@@ -353,14 +367,17 @@ export default function NotificationsPage() {
 
   // ✅ Influencer ke liye: application_accepted/rejected type (brand ne decision kiya)
   const isInfluencerStatusNotif = (n: any) =>
-    ["application_accepted", "application_rejected", "application_status"].includes(n.type);
+    ["application_accepted", "application_rejected", "application_status"].includes(n.type)
+    || (n.type === "application_accepted" && n.status === "rejected");
 
   const getStatus = (n: any) => {
-    const s = n.applicationStatus || n.status || n.application?.status || "";
+    const s = n.applicationStatus || n.application?.status || "";
     if (s) return s.toLowerCase();
-    // ✅ applicationStatus nahi hai toh type se derive karo
-    if (n.type === "application_accepted") return "accepted";
+    // ✅ type + status field se derive karo
     if (n.type === "application_rejected") return "rejected";
+    if (n.status === "rejected") return "rejected";
+    if (n.type === "application_accepted" && n.status === "rejected") return "rejected";
+    if (n.type === "application_accepted") return "accepted";
     return "";
   };
 

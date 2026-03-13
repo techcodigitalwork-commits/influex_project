@@ -99,7 +99,7 @@ export default function CampaignApplications() {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ decision: "accepted" }),
       });
-      const creatorUserId = app?.influencer?.user || app?.influencer?._id || app?.userId;
+      const creatorUserId = app?.influencer?.user || app?.influencer?._id || app?.influencerId?._id || app?.userId;
       if (creatorUserId) {
         await fetch(`${API_BASE}/notification/create`, {
           method: "POST",
@@ -108,7 +108,7 @@ export default function CampaignApplications() {
             user: creatorUserId,
             message: `Your application for "${campaign?.title || "a campaign"}" has been accepted! 🎉`,
             type: "application_accepted",
-            link: `/campaigns`,
+            link: `/campaign/${id}`,
             applicationId: appId,
           }),
         });
@@ -138,7 +138,7 @@ export default function CampaignApplications() {
         body: JSON.stringify({ decision: "rejected" }),
       });
       // Creator ko notification bhejo
-      const creatorUserId = app?.influencer?.user || app?.influencer?._id || app?.userId;
+      const creatorUserId = app?.influencer?.user || app?.influencer?._id || app?.influencerId?._id || app?.userId;
       if (creatorUserId) {
         await fetch(`${API_BASE}/notification/create`, {
           method: "POST",
@@ -146,7 +146,8 @@ export default function CampaignApplications() {
           body: JSON.stringify({
             user: creatorUserId,
             message: `Your application for "${campaign?.title || "a campaign"}" was not selected this time. Keep applying! 💪`,
-            type: "application_rejected",
+            type: "application_accepted",
+            status: "rejected",
             link: `/discovery`,
             applicationId: appId,
           }),
@@ -235,15 +236,15 @@ export default function CampaignApplications() {
         .ap-ribbon.rejected { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
         .ap-ribbon.pending  { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
 
-        .ap-card-top { padding: 20px 20px 16px; display: flex; align-items: center; gap: 14px; }
+        .ap-card-top { padding: 14px 16px 10px; display: flex; align-items: center; gap: 12px; }
         .ap-avatar { width: 52px; height: 52px; border-radius: 14px; object-fit: cover; background: linear-gradient(135deg,#e0e0ff,#f0e0ff); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; color: #4f46e5; }
         .ap-avatar img { width: 100%; height: 100%; border-radius: 14px; object-fit: cover; }
         .ap-name-wrap { flex: 1; min-width: 0; }
         .ap-name { font-size: 15px; font-weight: 700; color: #111; margin: 0 0 3px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }
         .ap-location { font-size: 12px; color: #aaa; margin: 0; display: flex; align-items: center; gap: 4px; }
 
-        .ap-card-info { padding: 0 20px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .ap-info-item { background: #f9f9f8; border-radius: 10px; padding: 9px 12px; border: 1px solid #f0f0f0; }
+        .ap-card-info { padding: 0 16px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .ap-info-item { background: #f9f9f8; border-radius: 8px; padding: 7px 10px; border: 1px solid #f0f0f0; }
         .ap-info-label { font-size: 10px; color: #c0c0c0; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; margin-bottom: 2px; }
         .ap-info-val { font-size: 13px; font-weight: 700; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .ap-info-val.locked { color: #aaa; font-size: 12px; display: flex; align-items: center; gap: 4px; }
@@ -251,11 +252,11 @@ export default function CampaignApplications() {
         .ap-info-item.highlight .ap-info-label { color: #6366f1; }
         .ap-info-item.highlight .ap-info-val { color: #4f46e5; }
 
-        .ap-note { margin: 0 20px 16px; background: #f9f9f8; border-radius: 10px; padding: 10px 12px; border: 1px solid #f0f0f0; }
-        .ap-note-label { font-size: 10px; color: #c0c0c0; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; margin-bottom: 4px; }
-        .ap-note-text { font-size: 13px; color: #555; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .ap-note { margin: 0 16px 10px; background: #f9f9f8; border-radius: 8px; padding: 7px 10px; border: 1px solid #f0f0f0; }
+        .ap-note-label { font-size: 9px; color: #c0c0c0; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; margin-bottom: 2px; }
+        .ap-note-text { font-size: 12px; color: #666; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-        .ap-actions { padding: 0 20px 20px; display: flex; flex-direction: column; gap: 8px; }
+        .ap-actions { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 6px; }
         .ap-actions-row { display: flex; gap: 8px; }
         .ap-btn { flex: 1; padding: 10px 12px; border-radius: 10px; font-size: 12px; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; border: none; cursor: pointer; transition: all 0.2s; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
         .ap-btn-view   { background: #f5f5f3; color: #555; }
@@ -282,9 +283,9 @@ export default function CampaignApplications() {
         .mo-box { background: #fff; border-radius: 24px; max-width: 580px; width: 100%; max-height: 92vh; overflow-y: auto; position: relative; animation: slideUp 0.25s ease; }
         .mo-close { position: absolute; top: 14px; right: 16px; background: #f5f5f3; border: none; font-size: 16px; cursor: pointer; color: #888; padding: 6px; border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; z-index: 2; }
         .mo-close:hover { background: #ebebeb; }
-        .mo-img { width: 100%; height: 280px; border-radius: 24px 24px 0 0; background: linear-gradient(135deg,#e0e0ff,#f0e0ff); display: flex; align-items: center; justify-content: center; font-size: 72px; overflow: hidden; flex-shrink: 0; }
-        .mo-img img { width: 100%; height: 100%; border-radius: 24px 24px 0 0; object-fit: cover; object-position: top center; }
-        .mo-body { padding: 26px 30px 36px; }
+        .mo-img { width: 100%; height: 220px; border-radius: 24px 24px 0 0; background: linear-gradient(135deg,#e0e0ff,#f0e0ff); display: flex; align-items: center; justify-content: center; font-size: 72px; overflow: hidden; flex-shrink: 0; }
+        .mo-img img { width: 100%; height: 100%; border-radius: 24px 24px 0 0; object-fit: cover; object-position: center 10%; }
+        .mo-body { padding: 20px 24px 28px; }
         .mo-name { font-size: 24px; font-weight: 800; color: #111; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
         .mo-loc  { font-size: 13px; color: #aaa; margin-bottom: 18px; display: flex; align-items: center; gap: 5px; }
         .mo-section { font-size: 11px; color: #c0c0c0; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; margin-bottom: 10px; }
@@ -554,7 +555,10 @@ export default function CampaignApplications() {
                   <div className="ap-actions">
                     {/* Row 1: View + Accept/Reject */}
                     <div className="ap-actions-row">
-                      <button className="ap-btn ap-btn-view" onClick={() => setModalProfile(app)}>
+                      <button className="ap-btn ap-btn-view" onClick={() => {
+                        const creatorId = app?.influencer?._id || app?.influencer?.user || app?.influencerId?._id;
+                        router.push(`/campaigns/${id}/applications/creator/${creatorId}?appId=${app._id}`);
+                      }}>
                         👤 View Profile
                       </button>
                       {decision === "accepted" ? (
@@ -585,8 +589,6 @@ export default function CampaignApplications() {
     </>
   );
 }
-
-
 // "use client";
 
 // import { useParams, useRouter } from "next/navigation";
