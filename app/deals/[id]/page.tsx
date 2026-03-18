@@ -9,6 +9,7 @@ const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
 function DealDetailPageInner() {
   const { id }   = useParams();
   const router   = useRouter();
+  
 
   const [deal,          setDeal]          = useState<any>(null);
   const [escrow,        setEscrow]        = useState<any>(null);
@@ -366,7 +367,8 @@ function DealDetailPageInner() {
       <div className="dd">
         <div className="dd-hdr">
           <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <a href="/deals" className="dd-back">← Back</a>
+            {/* <a href="/deals" className="dd-back">← Back</a> */}
+            <button className="dd-back" onClick={() => router.back()}>← Back</button>
             <div className="dd-title">{deal.title || "Deal"}</div>
           </div>
           <div className="dd-badge" style={{

@@ -289,14 +289,14 @@ export default function DealsPage() {
           </div>
         )}
 
-        <div className="dl-flow">
+        {/* <div className="dl-flow">
           {["Campaign", "Apply", "Shortlist", "Deal", "Deposit", "Work", "Approve", "💰 Released"].map((step, i) => (
             <div key={i} style={{display:"flex",alignItems:"center"}}>
               <div className={`dl-flow-step ${i === 3 ? "active" : ""}`}>{step}</div>
               {i < 7 && <div className="dl-flow-arrow">→</div>}
             </div>
           ))}
-        </div>
+        </div> */}
 
         {deals.length > 0 && !loading && (
           <div className="dl-stats">
