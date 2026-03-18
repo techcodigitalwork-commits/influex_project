@@ -297,7 +297,9 @@ export default function BrowsePage() {
         setUnlockedInstagrams(ui);
         localStorage.setItem(`unlockedIg_${myId}`, JSON.stringify(ui));
       }
-      if (!email && !ig) alert("Contact info not available for this creator.");
+      if (!email && !ig) { alert("Contact info not available for this creator."); return; }
+      // ✅ Deduct 50 bits from localStorage + signal navbar to refresh
+      deductBitsLocally(50);
     } catch (e: any) { alert(e.message || "Something went wrong."); }
     finally { setUnlocking(null); }
   };
@@ -319,9 +321,24 @@ export default function BrowsePage() {
         setUnlockedEmails(ue);
         localStorage.setItem(`unlockedEmails_${myId}`, JSON.stringify(ue));
       }
-      if (!ig) alert("Instagram not available for this creator.");
+      if (!ig) { alert("Instagram not available for this creator."); return; }
+      // ✅ Deduct 50 bits from localStorage + signal navbar to refresh
+      deductBitsLocally(50);
     } catch (e: any) { alert(e.message || "Something went wrong."); }
     finally { setUnlocking(null); }
+  };
+
+  // ── Deduct bits locally + signal navbar ──────────────────────
+  const deductBitsLocally = (amount: number) => {
+    const stored = localStorage.getItem("cb_user");
+    if (!stored) return;
+    const parsed = JSON.parse(stored);
+    const currentBits = parsed.bits ?? 0;
+    const newBits = Math.max(0, currentBits - amount);
+    const updated = { ...parsed, bits: newBits };
+    localStorage.setItem("cb_user", JSON.stringify(updated));
+    // Signal navbar to re-read bits
+    window.dispatchEvent(new StorageEvent("storage", { key: "cb_user_bits", newValue: String(newBits) }));
   };
 
   // ── Data helpers ──────────────────────────────────────────────
