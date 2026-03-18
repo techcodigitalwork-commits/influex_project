@@ -558,7 +558,7 @@ export default function CampaignApplications() {
                     {decision === "accepted" && (
                       <div className="ap-actions-row">
                         <a href={`/deals/create?campaignId=${id}&creatorId=${app.influencer?._id || app._id}`} className="ap-btn ap-btn-deal">🤝 Deal</a>
-                        <a href={`/contracts/create?campaignId=${id}&creatorId=${app.influencer?._id || app._id}`} className="ap-btn ap-btn-contract">📄 Contract</a>
+                        {/* <a href={`/contracts/create?campaignId=${id}&creatorId=${app.influencer?._id || app._id}`} className="ap-btn ap-btn-contract">📄 Contract</a> */}
                       </div>
                     )}
                   </div>
