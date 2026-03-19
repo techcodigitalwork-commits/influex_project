@@ -377,6 +377,7 @@ export default function Navbar() {
                 <Link href="/browse"       className={`nav-link ${isActive("/browse") ? "active" : ""}`}>Discover</Link>
                 <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>Campaigns</Link>
                 <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
+
                 <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
                   Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                 </Link>
@@ -386,6 +387,8 @@ export default function Navbar() {
                 <Link href="/campaigns"    className={`nav-link ${isActive("/campaigns") ? "active" : ""}`}>Campaigns</Link>
                 <Link href="/deals"        className={`nav-link ${isActive("/deals") ? "active" : ""}`}>Deals</Link>
                 <Link href="/messages"     className={`nav-link ${isActive("/messages") ? "active" : ""}`}>Messages</Link>
+
+
                 <Link href="/notification" className={`nav-link ${isActive("/notification") ? "active" : ""}`} onClick={() => setUnreadCount(0)}>
                   Notifications{unreadCount > 0 && <span className="nav-notif-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                 </Link>
@@ -486,7 +489,7 @@ export default function Navbar() {
                         <Link href="/campaigns/post" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>📋 Post Campaign</Link>
                       </>)}
                       <div className="nav-dd-sep" />
-                      <Link href="/settings" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>⚙️ Settings</Link>
+                      {/* <Link href="/settings" className="nav-dd-item" onClick={() => setDropdownOpen(false)}>⚙️ Settings</Link> */}
                       <button className="nav-dd-item danger" onClick={handleLogout}>🚪 Logout</button>
                     </div>
                   )}
@@ -530,7 +533,7 @@ export default function Navbar() {
             <div className="nav-mobile-section">Account</div>
             <Link href="/upgrade"    className="nav-mobile-upgrade">⚡ Upgrade Plan</Link>
             <Link href="/my-profile" className={`nav-mobile-link ${isActive("/my-profile") ? "active" : ""}`}>Edit Profile</Link>
-            <Link href="/settings"   className={`nav-mobile-link ${isActive("/settings") ? "active" : ""}`}>Settings</Link>
+            {/* <Link href="/settings"   className={`nav-mobile-link ${isActive("/settings") ? "active" : ""}`}>Settings</Link> */}
             <button
               className="nav-mobile-link"
               style={{ color: "#ef4444", border: "none", background: "none", cursor: "pointer", textAlign: "left", width: "100%", fontFamily: "inherit" }}

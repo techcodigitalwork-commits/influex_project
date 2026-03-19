@@ -481,10 +481,10 @@ export default function CampaignBoard() {
               <span style={{ fontSize: 18 }}>🟢</span>
               <div><div className="cb-stat-chip-val">{campaigns.filter(c => c.status === "open").length}</div><div className="cb-stat-chip-lbl">Open</div></div>
             </div>
-            <div className="cb-stat-chip">
+            {/* <div className="cb-stat-chip">
               <span style={{ fontSize: 18 }}>⚡</span>
               <div><div className="cb-stat-chip-val">{campaigns.filter(c => c.status === "ongoing").length}</div><div className="cb-stat-chip-lbl">Ongoing</div></div>
-            </div>
+            </div> */}
             <div className="cb-stat-chip">
               <span style={{ fontSize: 18 }}>✅</span>
               <div><div className="cb-stat-chip-val">{campaigns.filter(c => c.status === "completed").length}</div><div className="cb-stat-chip-lbl">Completed</div></div>
@@ -523,8 +523,9 @@ export default function CampaignBoard() {
                 <div key={c._id} className="cb-card">
                   <div className="cb-card-top">
                     <h3 className="cb-card-title">{c.title || "Untitled"}</h3>
-                    <span className={`cb-badge ${c.status === "completed" ? "cb-badge-completed" : c.status === "ongoing" ? "cb-badge-ongoing" : "cb-badge-open"}`}>
-                      {c.status || "open"}
+                    <span className={`cb-badge ${c.status === "completed" ? "cb-badge-completed" : "cb-badge-open"}`}>
+                      {/* {c.status || "open"} */}
+                       {c.status === "completed" ? "Completed" : "Open"}
                     </span>
                   </div>
                   {c.description && <p className="cb-desc">{c.description}</p>}

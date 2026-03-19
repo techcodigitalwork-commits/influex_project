@@ -60,7 +60,9 @@ export default function BrowsePage() {
   const creatorsRef                       = useRef<Creator[]>([]); // always latest creators
   const [loading, setLoading]             = useState(true);
   const [token, setToken]                 = useState("");
+  // const [myId, setMyId]                   = useState("");
   const [myId, setMyId]                   = useState("");
+const myIdRef                           = useRef<string>("");
   const campaignIdRef                     = useRef<string>(""); // cached campaignId
   const [connecting, setConnecting]       = useState<string | null>(null);
   const [connectStatus, setConnectStatus] = useState<Record<string, ConnectStatus>>({});
@@ -82,8 +84,11 @@ export default function BrowsePage() {
     const t: string = parsed.token || localStorage.getItem("token") || "";
     if (!t) { router.push("/login"); return; }
     setToken(t);
-    const uid: string = parsed.user?._id || parsed._id || parsed.id || "";
+    // const uid: string = parsed.user?._id || parsed._id || parsed.id || "";
+    const uid: string = parsed.id || parsed._id || parsed.user?._id || parsed.user?.id || "";
+    // setMyId(uid);
     setMyId(uid);
+myIdRef.current = uid; 
     // Restore persisted connect status
     setConnectStatus(JSON.parse(localStorage.getItem(`connectStatus_${uid}`) || "{}"));
     // Restore unlocked contacts
@@ -141,7 +146,9 @@ export default function BrowsePage() {
 
   // ── Persist connect status ────────────────────────────────────
   const saveStatus = (status: Record<string, ConnectStatus>) => {
-    localStorage.setItem(`connectStatus_${myId}`, JSON.stringify(status));
+    // localStorage.setItem(`connectStatus_${myId}`, JSON.stringify(status));
+    const sid = myIdRef.current || myId;
+localStorage.setItem(`connectStatus_${sid}`, JSON.stringify(status));
     setConnectStatus({ ...status });
   };
 
@@ -290,12 +297,18 @@ export default function BrowsePage() {
       if (email) {
         const ue = { ...unlockedEmails, [profileId]: email };
         setUnlockedEmails(ue);
-        localStorage.setItem(`unlockedEmails_${myId}`, JSON.stringify(ue));
+        // const freshUid = JSON.parse(localStorage.getItem("cb_user") || "{}").id || myId;
+        const freshUid = myIdRef.current || myId;
+localStorage.setItem(`unlockedEmails_${freshUid}`, JSON.stringify(ue));
+        // localStorage.setItem(`unlockedEmails_${myId}`, JSON.stringify(ue));
       }
       if (ig) {
         const ui = { ...unlockedInstagrams, [profileId]: ig };
         setUnlockedInstagrams(ui);
-        localStorage.setItem(`unlockedIg_${myId}`, JSON.stringify(ui));
+        // const freshUid = JSON.parse(localStorage.getItem("cb_user") || "{}").id || myId;
+        const freshUid = myIdRef.current || myId;
+localStorage.setItem(`unlockedIg_${freshUid}`, JSON.stringify(ui));
+        // localStorage.setItem(`unlockedIg_${myId}`, JSON.stringify(ui));
       }
       if (!email && !ig) { alert("Contact info not available for this creator."); return; }
       // ✅ Deduct 50 bits from localStorage + signal navbar to refresh
@@ -314,12 +327,16 @@ export default function BrowsePage() {
       if (ig) {
         const ui = { ...unlockedInstagrams, [profileId]: ig };
         setUnlockedInstagrams(ui);
-        localStorage.setItem(`unlockedIg_${myId}`, JSON.stringify(ui));
+        // localStorage.setItem(`unlockedIg_${myId}`, JSON.stringify(ui));
+        const freshUid3 = JSON.parse(localStorage.getItem("cb_user") || "{}").id || myId;
+localStorage.setItem(`unlockedIg_${freshUid3}`, JSON.stringify(ui));
       }
       if (email && !unlockedEmails[profileId]) {
         const ue = { ...unlockedEmails, [profileId]: email };
         setUnlockedEmails(ue);
-        localStorage.setItem(`unlockedEmails_${myId}`, JSON.stringify(ue));
+        // localStorage.setItem(`unlockedEmails_${myId}`, JSON.stringify(ue));
+        const freshUid4 = JSON.parse(localStorage.getItem("cb_user") || "{}").id || myId;
+localStorage.setItem(`unlockedEmails_${freshUid4}`, JSON.stringify(ue));
       }
       if (!ig) { alert("Instagram not available for this creator."); return; }
       // ✅ Deduct 50 bits from localStorage + signal navbar to refresh
@@ -347,14 +364,32 @@ export default function BrowsePage() {
   const gImg       = (c: Creator) => c.profileImage || null;
   const gCats      = (c: Creator) => (Array.isArray(c.categories) ? c.categories : [c.categories as string]).filter(Boolean);
   const gCity      = (c: Creator) => c.city || c.location || "";
-  const gFollowers = (c: Creator) => {
-    const f = c.followers;
-    if (!f || f === "0" || f === 0) return "";
-    const n = Number(f);
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
-    return String(n);
-  };
+  // const gFollowers = (c: Creator) => {
+  //   const f = c.followers;
+  //   if (!f || f === "0" || f === 0) return "";
+  //   const n = Number(f);
+  //   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  //   if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
+  //   return String(n);
+  // };
+  const FOLLOWER_LABELS: Record<string, string> = {
+  "1000":  "1K – 5K",
+  "5000":  "5K – 10K",
+  "10000": "10K – 20K",
+  "30000": "20K – 50K",
+  "50000": "50K – 75K",
+  "99000": "99K+",
+};
+const gFollowers = (c: Creator) => {
+  const f = c.followers;
+  if (!f || f === "0" || f === 0) return "";
+  const key = String(f);
+  if (FOLLOWER_LABELS[key]) return FOLLOWER_LABELS[key];
+  const n = Number(f);
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+};
 
   const filtered = creators.filter(c => {
     const arr = Array.isArray(c.categories) ? c.categories : [c.categories as string];
