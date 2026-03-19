@@ -199,8 +199,17 @@ export default function NotificationsPage() {
     ));
   };
 
-  const getCampaignId = (n: any): string | null =>
-    extractMongoId(n.campaignId) || n.link?.split("/").filter(Boolean).pop() || null;
+  // const getCampaignId = (n: any): string | null =>
+  //   extractMongoId(n.campaignId) || n.link?.split("/").filter(Boolean).pop() || null;
+
+
+  const getCampaignId = (n: any): string | null => {
+  if (extractMongoId(n.campaignId)) return extractMongoId(n.campaignId);
+  // ✅ link se sirf valid MongoDB ObjectId lo (24 char hex)
+  const parts = n.link?.split("/").filter(Boolean) || [];
+  const validId = parts.find((p: string) => /^[a-f0-9]{24}$/i.test(p));
+  return validId || null;
+};
 
   const fetchProfile = async (userId: string) => {
     if (!userId || typeof userId !== "string") return null;
