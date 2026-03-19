@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 
-const API_BASE = "http://54.252.201.93:5000/api";
+const API_BASE = "https://api.collabzy.in/api";
 
 const PLAN_LIMITS: Record<string, { label: string; campaigns: number; tokens: number }> = {
   free:          { label: "Free",  campaigns: 2,   tokens: 200   },

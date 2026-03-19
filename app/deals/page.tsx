@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-const API = "http://54.252.201.93:5000/api";
+const API = "https://api.collabzy.in/api";
 
 export default function DealsPage() {
   const router = useRouter();

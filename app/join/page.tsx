@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const API = "http://54.252.201.93:5000/api";
+const API = "https://api.collabzy.in/api";
 
 enum UserRole {
   INFLUENCER = "INFLUENCER",

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API_BASE = "http://54.252.201.93:5000/api";
+const API_BASE = "https://api.collabzy.in/api";
 
 export default function SetupProfile() {
   const router = useRouter();
