@@ -189,9 +189,22 @@ export default function CampaignApplications() {
   const getImage      = (a: any) => a?.influencer?.profileImage || null;
   const getLocation   = (a: any) => a?.influencer?.location || "";
   const getCategories = (a: any) => { const c = a?.influencer?.categories || []; return Array.isArray(c) ? c.join(", ") : c || ""; };
+  // const getFollowers  = (a: any) => {
+  //   const f = a?.influencer?.followers;
+  //   if (!f && f !== 0) return null;
+  //   const num = Number(f);
+  //   if (!isNaN(num) && num >= 1000) return (num / 1000).toFixed(1) + "K";
+  //   return String(f);
+  // };
+  const FOLLOWER_LABELS: Record<string, string> = {
+    "1000": "1K – 5K", "5000": "5K – 10K", "10000": "10K – 20K",
+    "30000": "20K – 50K", "50000": "50K – 75K", "99000": "99K+",
+  };
   const getFollowers  = (a: any) => {
     const f = a?.influencer?.followers;
     if (!f && f !== 0) return null;
+    const key = String(f);
+    if (FOLLOWER_LABELS[key]) return FOLLOWER_LABELS[key];
     const num = Number(f);
     if (!isNaN(num) && num >= 1000) return (num / 1000).toFixed(1) + "K";
     return String(f);

@@ -213,12 +213,21 @@ function MessagesInner() {
         .catch(console.error);
     };
 
+    // loadMessages();
+
+    // // ✅ Har 1 second mein messages fetch karo - live updates
+    // const pollInterval = setInterval(loadMessages, 3000);
+
+    // return () => clearInterval(pollInterval);
+
     loadMessages();
 
-    // ✅ Har 1 second mein messages fetch karo - live updates
-    const pollInterval = setInterval(loadMessages, 1000);
-
-    return () => clearInterval(pollInterval);
+// ✅ Sirf visibility change pe fetch — tab switch karne par refresh
+const handleVisibility = () => {
+  if (document.visibilityState === "visible") loadMessages();
+};
+document.addEventListener("visibilitychange", handleVisibility);
+return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [activeConv, token]);
 
   // ✅ Socket se bhi messages refresh karo
@@ -413,7 +422,7 @@ function MessagesInner() {
         .wa-conv-av img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
         .wa-conv-info { flex: 1; min-width: 0; }
         .wa-conv-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
-        .wa-conv-name { font-size: 15px; font-weight: 600; color: var(--text1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+        .wa-conv-name { font-size: 15px; font-weight: 600; color: var(--text1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
         .wa-conv-time { font-size: 11px; color: var(--text2); }
         .wa-conv-time.unread-time { color: var(--badge); font-weight: 600; }
         .wa-conv-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

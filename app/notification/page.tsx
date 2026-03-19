@@ -756,11 +756,20 @@ export default function NotificationsPage() {
               <div className="pm-stats">
                 <div className="pm-stat">
                   <div className="pm-stat-num">
-                    {selectedProfile.followers
+                    {/* {selectedProfile.followers
                       ? Number(selectedProfile.followers) >= 1000
                         ? Math.floor(Number(selectedProfile.followers) / 1000) + "K"
                         : selectedProfile.followers
-                      : "—"}
+                      : "—"} */}
+                      {(() => {
+  const f = selectedProfile.followers;
+  if (!f) return "—";
+  const LABELS: Record<string, string> = {
+    "1000": "1K – 5K", "5000": "5K – 10K", "10000": "10K – 20K",
+    "30000": "20K – 50K", "50000": "50K – 75K", "99000": "99K+",
+  };
+  return LABELS[String(f)] || (Number(f) >= 1000 ? Math.floor(Number(f)/1000) + "K" : String(f));
+})()}
                   </div>
                   <div className="pm-stat-label">Followers</div>
                 </div>

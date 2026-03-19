@@ -45,7 +45,6 @@ function ApplyPageInner() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [activePlan, setActivePlan]     = useState<string>("free");
   const [appliesUsed, setAppliesUsed]   = useState(0);
-  // ✅ Deal for this campaign (if exists)
   const [campaignDeal, setCampaignDeal] = useState<any>(null);
 
   const showToast = (msg: string, type: "success" | "error" | "warn" = "success") => {
@@ -64,16 +63,13 @@ function ApplyPageInner() {
 
     const appliedList = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
     if (campaignId && appliedList.includes(campaignId)) setApplied(true);
-    // Also check from /api/application/my
     checkAlreadyApplied(t, campaignId);
 
     const subbed = parsed.isSubscribed ?? false;
     const plan   = toCanonical(parsed.activePlan || "free");
     setIsSubscribed(subbed);
     setActivePlan(subbed ? plan : "free");
-
-    // ✅ Fetch live bits from backend — don't rely on localStorage
-    fetchLiveBits(t, parsed, subbed, subbed ? plan : "free");
+    setBits(parsed.bits ?? 0);
     fetchAppliesUsed(t);
   }, []);
 
@@ -82,13 +78,6 @@ function ApplyPageInner() {
     fetchCampaign();
     fetchCampaignDeal();
   }, [token, campaignId]);
-
-  // ✅ bits localStorage se lo — login pe backend se sync hota hai
-  // parsed.bits = database se aaya hua accurate value
-  const fetchLiveBits = async (t: string, parsed: any, subbed: boolean, plan: string) => {
-    // parsed.bits is accurate — set directly from localStorage
-    setBits(parsed.bits ?? 0);
-  };
 
   const checkAlreadyApplied = async (t: string, campId: string) => {
     if (!campId) return;
@@ -114,29 +103,19 @@ function ApplyPageInner() {
       if (text.startsWith("<!")) return;
       const data = JSON.parse(text);
       const list: any[] = data.applications || data.data || [];
-      const raw       = localStorage.getItem("cb_user");
-      const parsed    = raw ? JSON.parse(raw) : {};
+      const raw    = localStorage.getItem("cb_user");
+      const parsed = raw ? JSON.parse(raw) : {};
       const planStart = parsed.planActivatedAt
         ? new Date(parsed.planActivatedAt)
         : (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
-      const sinceActivation = list.filter((a: any) => {
-        const d = new Date(a.createdAt || a.appliedAt || 0);
-        return d > planStart;
-      });
+      const sinceActivation = list.filter((a: any) => new Date(a.createdAt || a.appliedAt || 0) > planStart);
       const count = sinceActivation.length;
       setAppliesUsed(count);
-
-      // ✅ Recalculate bits based on actual applies used
-      // Free plan: 100 base tokens, 10 per apply
       const subbed = parsed.isSubscribed ?? false;
       if (!subbed && count > 0) {
-        const baseBits = 100; // free plan base
-        const costPerApply = 10;
-        const calculatedBits = Math.max(0, baseBits - (count * costPerApply));
+        const calculatedBits = Math.max(0, 100 - (count * 10));
         setBits(calculatedBits);
-        // Update localStorage
-        const updated = { ...parsed, bits: calculatedBits };
-        localStorage.setItem("cb_user", JSON.stringify(updated));
+        localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits: calculatedBits }));
         window.dispatchEvent(new StorageEvent("storage", { key: "cb_user_bits", newValue: String(calculatedBits) }));
       }
     } catch { /* silent */ }
@@ -154,17 +133,14 @@ function ApplyPageInner() {
     finally { setLoading(false); }
   };
 
-  // ✅ Fetch deal for this campaign
   const fetchCampaignDeal = async () => {
     try {
-      // First try campaign-specific route
-      const res  = await fetch(`${API}/deal/campaign/${campaignId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API}/deal/campaign/${campaignId}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
         const deals: any[] = Array.isArray(data) ? data : (data.deals || data.data || []);
         if (deals.length > 0) { setCampaignDeal(deals[0]); return; }
       }
-      // Fallback: get all my deals and filter by campaignId
       const res2 = await fetch(`${API}/deal/my`, { headers: { Authorization: `Bearer ${token}` } });
       if (res2.ok) {
         const data2 = await res2.json();
@@ -192,7 +168,6 @@ function ApplyPageInner() {
       showToast(`Monthly apply limit reached (${limit}/${limit}). Upgrade your plan!`, "error");
       return;
     }
-
     if (cost > 0 && bits < cost) {
       setShowModal(false);
       showToast(`Not enough tokens. Need ${cost} tokens to apply.`, "error");
@@ -202,21 +177,28 @@ function ApplyPageInner() {
     setProposalError("");
     try {
       setApplying(true);
-      const res  = await fetch(`${API}/campaigns/${campaignId}/apply`, {
+      const res = await fetch(`${API}/campaigns/${campaignId}/apply`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ proposal, bidAmount: Number(bidAmount) }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.message || "Apply failed", "error"); return; }
+      if (!res.ok) {
+        const msg = (data.message || "").toLowerCase();
+        if (msg.includes("already") || res.status === 400 || res.status === 500) {
+          // Apply happened — treat as success
+        } else {
+          showToast(data.message || "Apply failed", "error");
+          return;
+        }
+      }
 
       if (cost > 0) {
         const newBits = Math.max(0, bits - cost);
         setBits(newBits);
-        const stored  = localStorage.getItem("cb_user");
-        const p       = stored ? JSON.parse(stored) : {};
+        const stored = localStorage.getItem("cb_user");
+        const p = stored ? JSON.parse(stored) : {};
         localStorage.setItem("cb_user", JSON.stringify({ ...p, bits: newBits }));
-        // ✅ Signal navbar
         window.dispatchEvent(new StorageEvent("storage", { key: "cb_user_bits", newValue: String(newBits) }));
       }
 
@@ -227,6 +209,29 @@ function ApplyPageInner() {
       setShowModal(false);
       setApplied(true);
       showToast("🎉 Application submitted!", "success");
+
+      // ✅ Brand ko notification bhejo
+      try {
+        const brandId = typeof campaign?.brandId === "object"
+          ? (campaign?.brandId?._id || campaign?.brandId?.id || "")
+          : (campaign?.brandId || "");
+        console.log("Brand notification — brandId:", brandId, "campaign.brandId:", campaign?.brandId);
+        if (brandId) {
+          const notifRes = await fetch(`${API}/notification/create`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: String(brandId),
+              message: `New application received for "${campaign?.title || "your campaign"}"`,
+              type: "new_application",
+              link: `/campaigns/${campaignId}/applications`,
+            }),
+          });
+          const notifData = await notifRes.json();
+          console.log("Notification response:", notifData);
+        }
+      } catch (e) { console.error("Notification error:", e); }
+
     } catch {
       showToast("Network error. Please try again.", "error");
     } finally {
@@ -452,7 +457,6 @@ function ApplyPageInner() {
                 )}
               </div>
 
-              {/* ✅ Deal button — agar is campaign ke liye deal hai */}
               {campaignDeal && (
                 <button className="cd-deal-btn" onClick={() => router.push(`/deals/${campaignDeal._id}`)}>
                   🤝 View Deal — ₹{(campaignDeal.amount || 0).toLocaleString("en-IN")}
@@ -546,6 +550,566 @@ export default function ApplyPage() {
     </Suspense>
   );
 }
+
+
+// "use client";
+
+// import { useEffect, useState, Suspense } from "react";
+// import { useRouter } from "next/navigation";
+
+// const API = "http://54.252.201.93:5000/api";
+
+// const CREATOR_PLANS: Record<string, { label: string; appliesPerMonth: number | "unlimited"; tokens: number | "unlimited"; tokensPerApply: number; freeTrialOnly?: boolean }> = {
+//   free:          { label: "Free",  appliesPerMonth: 10,          tokens: 100,          tokensPerApply: 10, freeTrialOnly: true },
+//   pro:           { label: "Pro",   appliesPerMonth: 100,         tokens: 1000,         tokensPerApply: 0  },
+//   pro_plus:      { label: "Pro+",  appliesPerMonth: 200,         tokens: 2000,         tokensPerApply: 0  },
+//   pro_year:      { label: "Pro",   appliesPerMonth: "unlimited", tokens: "unlimited",  tokensPerApply: 0  },
+//   pro_plus_year: { label: "Pro+",  appliesPerMonth: "unlimited", tokens: "unlimited",  tokensPerApply: 0  },
+// };
+
+// const toCanonical = (s: string): string => {
+//   if (!s) return "free";
+//   const v = s.toLowerCase().trim();
+//   if (v === "pro+" || v === "pro_plus" || v === "proplus") return "pro_plus";
+//   if (v === "pro+year" || v === "pro_plus_year" || v === "proplusyear") return "pro_plus_year";
+//   if (v === "proyear" || v === "pro_year") return "pro_year";
+//   if (v === "pro") return "pro";
+//   return "free";
+// };
+
+// function ApplyPageInner() {
+//   const router = useRouter();
+
+//   const campaignId = typeof window !== "undefined"
+//     ? new URLSearchParams(window.location.search).get("id") || ""
+//     : "";
+
+//   const [campaign, setCampaign]           = useState<any>(null);
+//   const [loading, setLoading]             = useState(true);
+//   const [applying, setApplying]           = useState(false);
+//   const [applied, setApplied]             = useState(false);
+//   const [token, setToken]                 = useState("");
+//   const [showModal, setShowModal]         = useState(false);
+//   const [proposal, setProposal]           = useState("");
+//   const [bidAmount, setBidAmount]         = useState("");
+//   const [proposalError, setProposalError] = useState("");
+//   const [toast, setToast]                 = useState<{ msg: string; type: "success" | "error" | "warn" } | null>(null);
+
+//   const [bits, setBits]                 = useState<number>(0);
+//   const [isSubscribed, setIsSubscribed] = useState(false);
+//   const [activePlan, setActivePlan]     = useState<string>("free");
+//   const [appliesUsed, setAppliesUsed]   = useState(0);
+//   // ✅ Deal for this campaign (if exists)
+//   const [campaignDeal, setCampaignDeal] = useState<any>(null);
+
+//   const showToast = (msg: string, type: "success" | "error" | "warn" = "success") => {
+//     setToast({ msg, type });
+//     setTimeout(() => setToast(null), 4000);
+//   };
+
+//   useEffect(() => {
+//     if (typeof window === "undefined") return;
+//     const user = localStorage.getItem("cb_user");
+//     if (!user) { router.push("/login"); return; }
+//     const parsed = JSON.parse(user);
+//     const t = parsed.token || localStorage.getItem("token");
+//     if (!t) { router.push("/login"); return; }
+//     setToken(t);
+
+//     const appliedList = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
+//     if (campaignId && appliedList.includes(campaignId)) setApplied(true);
+//     // Also check from /api/application/my
+//     checkAlreadyApplied(t, campaignId);
+
+//     const subbed = parsed.isSubscribed ?? false;
+//     const plan   = toCanonical(parsed.activePlan || "free");
+//     setIsSubscribed(subbed);
+//     setActivePlan(subbed ? plan : "free");
+
+//     // ✅ Fetch live bits from backend — don't rely on localStorage
+//     fetchLiveBits(t, parsed, subbed, subbed ? plan : "free");
+//     fetchAppliesUsed(t);
+//   }, []);
+
+//   useEffect(() => {
+//     if (!token || !campaignId) return;
+//     fetchCampaign();
+//     fetchCampaignDeal();
+//   }, [token, campaignId]);
+
+//   // ✅ bits localStorage se lo — login pe backend se sync hota hai
+//   // parsed.bits = database se aaya hua accurate value
+//   const fetchLiveBits = async (t: string, parsed: any, subbed: boolean, plan: string) => {
+//     // parsed.bits is accurate — set directly from localStorage
+//     setBits(parsed.bits ?? 0);
+//   };
+
+//   const checkAlreadyApplied = async (t: string, campId: string) => {
+//     if (!campId) return;
+//     try {
+//       const appRes = await fetch(`${API}/application/my`, { headers: { Authorization: `Bearer ${t}` } });
+//       if (appRes.ok) {
+//         const appData = await appRes.json();
+//         const myApps: any[] = appData.applications || appData.data || [];
+//         const alreadyApplied = myApps.some((a: any) => {
+//           const cid = typeof a.campaignId === "object" ? a.campaignId?._id : a.campaignId;
+//           return cid === campId;
+//         });
+//         if (alreadyApplied) setApplied(true);
+//       }
+//     } catch { /* silent */ }
+//   };
+
+//   const fetchAppliesUsed = async (t: string) => {
+//     try {
+//       const res  = await fetch(`${API}/application/my`, { headers: { Authorization: `Bearer ${t}` } });
+//       if (!res.ok) return;
+//       const text = await res.text();
+//       if (text.startsWith("<!")) return;
+//       const data = JSON.parse(text);
+//       const list: any[] = data.applications || data.data || [];
+//       const raw       = localStorage.getItem("cb_user");
+//       const parsed    = raw ? JSON.parse(raw) : {};
+//       const planStart = parsed.planActivatedAt
+//         ? new Date(parsed.planActivatedAt)
+//         : (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+//       const sinceActivation = list.filter((a: any) => {
+//         const d = new Date(a.createdAt || a.appliedAt || 0);
+//         return d > planStart;
+//       });
+//       const count = sinceActivation.length;
+//       setAppliesUsed(count);
+
+//       // ✅ Recalculate bits based on actual applies used
+//       // Free plan: 100 base tokens, 10 per apply
+//       const subbed = parsed.isSubscribed ?? false;
+//       if (!subbed && count > 0) {
+//         const baseBits = 100; // free plan base
+//         const costPerApply = 10;
+//         const calculatedBits = Math.max(0, baseBits - (count * costPerApply));
+//         setBits(calculatedBits);
+//         // Update localStorage
+//         const updated = { ...parsed, bits: calculatedBits };
+//         localStorage.setItem("cb_user", JSON.stringify(updated));
+//         window.dispatchEvent(new StorageEvent("storage", { key: "cb_user_bits", newValue: String(calculatedBits) }));
+//       }
+//     } catch { /* silent */ }
+//   };
+
+//   const fetchCampaign = async () => {
+//     try {
+//       setLoading(true);
+//       const res  = await fetch(`${API}/campaigns/${campaignId}`, { headers: { Authorization: `Bearer ${token}` } });
+//       const data = await res.json();
+//       const c    = data.campaign || data.data || data;
+//       setCampaign(c);
+//       if (c?.hasApplied || c?.applied) setApplied(true);
+//     } catch (err) { console.error(err); }
+//     finally { setLoading(false); }
+//   };
+
+//   // ✅ Fetch deal for this campaign
+//   const fetchCampaignDeal = async () => {
+//     try {
+//       // First try campaign-specific route
+//       const res  = await fetch(`${API}/deal/campaign/${campaignId}`, { headers: { Authorization: `Bearer ${token}` } });
+//       if (res.ok) {
+//         const data = await res.json();
+//         const deals: any[] = Array.isArray(data) ? data : (data.deals || data.data || []);
+//         if (deals.length > 0) { setCampaignDeal(deals[0]); return; }
+//       }
+//       // Fallback: get all my deals and filter by campaignId
+//       const res2 = await fetch(`${API}/deal/my`, { headers: { Authorization: `Bearer ${token}` } });
+//       if (res2.ok) {
+//         const data2 = await res2.json();
+//         const allDeals: any[] = Array.isArray(data2) ? data2 : (data2.deals || data2.data || []);
+//         const match = allDeals.find((d: any) => {
+//           const cid = typeof d.campaignId === "object" ? d.campaignId?._id : d.campaignId;
+//           return cid === campaignId;
+//         });
+//         if (match) setCampaignDeal(match);
+//       }
+//     } catch { /* silent */ }
+//   };
+
+//   const handleApply = async () => {
+//     if (!bidAmount || Number(bidAmount) <= 0) { setProposalError("Please enter your bid amount"); return; }
+//     if (proposal.trim().length < 20) { setProposalError("Proposal must be at least 20 characters"); return; }
+
+//     const planInfo    = CREATOR_PLANS[activePlan] || CREATOR_PLANS["free"];
+//     const isUnlimited = planInfo.appliesPerMonth === "unlimited";
+//     const limit       = isUnlimited ? Infinity : (planInfo.appliesPerMonth as number);
+//     const cost        = planInfo.tokensPerApply;
+
+//     if (!isUnlimited && appliesUsed >= limit) {
+//       setShowModal(false);
+//       showToast(`Monthly apply limit reached (${limit}/${limit}). Upgrade your plan!`, "error");
+//       return;
+//     }
+
+//     if (cost > 0 && bits < cost) {
+//       setShowModal(false);
+//       showToast(`Not enough tokens. Need ${cost} tokens to apply.`, "error");
+//       return;
+//     }
+
+//     setProposalError("");
+//     try {
+//       setApplying(true);
+//       const res  = await fetch(`${API}/campaigns/${campaignId}/apply`, {
+//         method: "POST",
+//         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+//         body: JSON.stringify({ proposal, bidAmount: Number(bidAmount) }),
+//       });
+//       // const data = await res.json();
+//       // if (!res.ok) { showToast(data.message || "Apply failed", "error"); return; }
+//       const data = await res.json();
+// if (!res.ok) {
+//   const msg = (data.message || "").toLowerCase();
+//   if (msg.includes("already") || res.status === 400 || res.status === 500) {
+//     // Apply happened — treat as success
+//   } else {
+//     showToast(data.message || "Apply failed", "error");
+//     return;
+//   }
+// }
+
+//       if (cost > 0) {
+//         const newBits = Math.max(0, bits - cost);
+//         setBits(newBits);
+//         const stored  = localStorage.getItem("cb_user");
+//         const p       = stored ? JSON.parse(stored) : {};
+//         localStorage.setItem("cb_user", JSON.stringify({ ...p, bits: newBits }));
+//         // ✅ Signal navbar
+//         window.dispatchEvent(new StorageEvent("storage", { key: "cb_user_bits", newValue: String(newBits) }));
+//       }
+
+//       setAppliesUsed(prev => prev + 1);
+//       const list = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
+//       list.push(campaignId);
+//       localStorage.setItem("appliedCampaigns", JSON.stringify(list));
+//       setShowModal(false);
+//       setApplied(true);
+//       showToast("🎉 Application submitted!", "success");
+//     } catch {
+//       showToast("Network error. Please try again.", "error");
+//     } finally {
+//       setApplying(false);
+//     }
+//   };
+
+//   if (loading) return (
+//     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f0" }}>
+//       <div style={{ width: 36, height: 36, border: "3px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+//       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+//     </div>
+//   );
+
+//   if (!campaign) return (
+//     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f0", flexDirection: "column", gap: 16 }}>
+//       <div style={{ fontSize: 48 }}>🔍</div>
+//       <h2 style={{ fontFamily: "Plus Jakarta Sans,sans-serif", color: "#111" }}>Campaign not found</h2>
+//       <button onClick={() => router.push("/discovery")} style={{ padding: "10px 24px", background: "#4f46e5", color: "#fff", border: "none", borderRadius: 10, cursor: "pointer", fontFamily: "Plus Jakarta Sans,sans-serif" }}>Go Back</button>
+//     </div>
+//   );
+
+//   const planInfo     = CREATOR_PLANS[activePlan] || CREATOR_PLANS["free"];
+//   const isUnlimited  = planInfo.appliesPerMonth === "unlimited";
+//   const monthlyLimit = isUnlimited ? Infinity : (planInfo.appliesPerMonth as number);
+//   const appliesLeft  = isUnlimited ? Infinity : Math.max(0, monthlyLimit - appliesUsed);
+//   const costPerApply = planInfo.tokensPerApply;
+//   const canApply     = isUnlimited ? true : appliesLeft > 0 && (costPerApply === 0 || bits >= costPerApply);
+//   const isLow        = !isUnlimited && appliesLeft <= 3 && appliesLeft > 0;
+//   const barPct       = isUnlimited ? 100 : Math.min(100, (bits / (planInfo.tokens as number || 100)) * 100);
+//   const barColor     = bits <= 10 ? "#ef4444" : bits <= 30 ? "#f59e0b" : "#4f46e5";
+
+//   return (
+//     <>
+//       <style>{`
+//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+//         *{box-sizing:border-box;margin:0;padding:0}
+//         @keyframes spin{to{transform:rotate(360deg)}}
+//         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+//         @keyframes up{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+//         @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+//         .cd{font-family:'Plus Jakarta Sans',sans-serif;background:#f5f5f0;min-height:100vh}
+//         .cd-bar{background:#fff;border-bottom:1px solid #ebebeb;padding:14px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10}
+//         .cd-back{background:none;border:1.5px solid #ebebeb;border-radius:8px;width:36px;height:36px;cursor:pointer;font-size:16px;color:#555;display:flex;align-items:center;justify-content:center;transition:all .2s}
+//         .cd-back:hover{background:#f4f4f4}
+//         .cd-bar-title{font-size:15px;font-weight:700;color:#111}
+//         .cd-wrap{max-width:1080px;margin:0 auto;padding:28px 24px;display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+//         @media(max-width:900px){.cd-wrap{grid-template-columns:1fr;padding:16px}}
+//         @media(max-width:480px){.cd-wrap{padding:12px;gap:12px}}
+//         .cd-left{display:flex;flex-direction:column;gap:16px}
+//         .cd-card{background:#fff;border-radius:16px;border:1.5px solid #ebebeb;padding:20px}
+//         @media(max-width:480px){.cd-card{padding:16px;border-radius:14px}}
+//         .cd-title{font-size:22px;font-weight:800;color:#111;line-height:1.3;margin-bottom:14px}
+//         .cd-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+//         .cd-badge{padding:5px 12px;border-radius:100px;font-size:11px;font-weight:700}
+//         .cd-badge-open{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+//         .cd-badge-ongoing{background:#fefce8;color:#ca8a04;border:1px solid #fde68a}
+//         .cd-badge-completed{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
+//         .cd-metas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+//         .cd-meta{display:flex;align-items:center;gap:5px;font-size:13px;color:#888}
+//         .cd-sec-label{font-size:11px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;display:block}
+//         .cd-tags{display:flex;flex-wrap:wrap;gap:7px}
+//         .cd-tag{padding:5px 13px;border-radius:100px;background:#f5f5f0;border:1px solid #e8e8e8;font-size:12px;color:#555}
+//         .cd-tag-role{background:#eff6ff;border-color:#bfdbfe;color:#2563eb}
+//         .cd-desc{color:#555;font-size:15px;line-height:1.8;white-space:pre-wrap}
+//         .cd-side{display:flex;flex-direction:column;gap:16px;position:sticky;top:80px}
+//         @media(max-width:768px){.cd-side{position:static}}
+//         .cd-budget-label{font-size:12px;color:#aaa;margin-bottom:4px}
+//         .cd-budget-num{font-size:28px;font-weight:800;color:#111;margin-bottom:16px}
+//         .cd-info-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5}
+//         .cd-info-row:last-of-type{border-bottom:none}
+//         .cd-info-label{font-size:13px;color:#aaa}
+//         .cd-info-val{font-size:13px;font-weight:600;color:#111}
+//         .cd-plan-box{border-radius:12px;padding:14px;margin-top:16px;border:1px solid #f0f0f0;background:#fafafa}
+//         .cd-plan-box.unlimited{background:#f0fdf4;border-color:#bbf7d0}
+//         .cd-plan-box.warn{background:#fffbeb;border-color:#fde68a}
+//         .cd-plan-box.danger{background:#fff5f5;border-color:#fecaca}
+//         .cd-plan-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+//         .cd-plan-label{font-size:12px;color:#999}
+//         .cd-plan-val{font-size:14px;font-weight:700}
+//         .cd-plan-bar{height:5px;background:#f0f0f0;border-radius:100px;overflow:hidden;margin-bottom:5px}
+//         .cd-plan-fill{height:100%;border-radius:100px;transition:width .4s}
+//         .cd-plan-hint{font-size:11px;color:#bbb}
+//         .cd-plan-divider{height:1px;background:#f0f0f0;margin:8px 0}
+//         .cd-applies-row{display:flex;justify-content:space-between;align-items:center}
+//         .cd-applies-label{font-size:12px;color:#999}
+//         .cd-applies-val{font-size:13px;font-weight:700}
+//         .cd-apply-btn{width:100%;padding:15px;border-radius:12px;font-size:15px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;border:none;cursor:pointer;transition:all .2s;background:#4f46e5;color:#fff;margin-top:16px}
+//         .cd-apply-btn:hover:not(:disabled){background:#4338ca;transform:translateY(-1px)}
+//         .cd-apply-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+//         .cd-applied-btn{background:#f0fdf4!important;color:#16a34a!important;border:1.5px solid #bbf7d0!important;cursor:default!important}
+//         .cd-no-coins-btn{background:#fff5f5!important;color:#ef4444!important;border:1.5px solid #fecaca!important}
+//         .cd-deal-btn{width:100%;padding:13px;border-radius:12px;font-size:14px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;border:none;cursor:pointer;transition:all .2s;background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 10px rgba(34,197,94,.25)}
+//         .cd-deal-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(34,197,94,.35)}
+//         .cd-success-box{display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px;margin-top:12px}
+//         .cd-success-text{font-size:13px;color:#16a34a;font-weight:600}
+//         .cd-applied-note{font-size:12px;color:#aaa;text-align:center;margin-top:8px;line-height:1.5}
+//         .cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:999;padding:16px;animation:fadeIn .2s}
+//         .cd-modal{background:#fff;border-radius:22px;padding:28px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;animation:up .25s ease}
+//         @media(max-width:480px){.cd-modal{padding:16px;border-radius:16px}}
+//         .cd-modal-title{font-size:20px;font-weight:800;color:#111;margin-bottom:4px}
+//         .cd-modal-sub{font-size:13px;color:#aaa;margin-bottom:20px}
+//         .cd-modal-preview{background:#f5f5f0;border-radius:10px;padding:12px 14px;margin-bottom:18px}
+//         .cd-modal-campaign-name{font-size:14px;font-weight:700;color:#111;margin-bottom:3px}
+//         .cd-modal-campaign-meta{font-size:13px;color:#777}
+//         .cd-modal-label{font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:7px}
+//         .cd-input{width:100%;padding:13px 15px;border-radius:12px;border:1.5px solid #ebebeb;background:#fafafa;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;color:#111;outline:none;transition:border-color .2s}
+//         .cd-input:focus{border-color:#4f46e5;background:#fff}
+//         .cd-textarea{width:100%;padding:13px 15px;border-radius:12px;border:1.5px solid #ebebeb;background:#fafafa;font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;color:#111;outline:none;resize:none;transition:border-color .2s;line-height:1.6}
+//         .cd-textarea:focus{border-color:#4f46e5;background:#fff}
+//         .cd-textarea::placeholder,.cd-input::placeholder{color:#c0c0c0}
+//         .cd-char{font-size:11px;color:#ccc;text-align:right;margin-top:4px}
+//         .cd-err{font-size:12px;color:#ef4444;margin-top:5px}
+//         .cd-modal-btns{display:flex;gap:10px;margin-top:18px}
+//         .cd-cancel{flex:1;padding:13px;border-radius:11px;font-size:14px;color:#999;background:#f4f4f4;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif}
+//         .cd-cancel:hover{background:#eee;color:#555}
+//         .cd-submit{flex:2;padding:13px;border-radius:11px;font-size:14px;font-weight:700;color:#fff;background:#4f46e5;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all .2s}
+//         .cd-submit:hover:not(:disabled){background:#4338ca}
+//         .cd-submit:disabled{opacity:.4;cursor:not-allowed}
+//         .cd-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-size:13px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;z-index:99999;white-space:nowrap;animation:toastIn .3s ease;box-shadow:0 4px 20px rgba(0,0,0,.12)}
+//         .cd-toast.success{background:#111;color:#fff}
+//         .cd-toast.error{background:#ef4444;color:#fff}
+//         .cd-toast.warn{background:#f59e0b;color:#fff}
+//       `}</style>
+
+//       {toast && <div className={`cd-toast ${toast.type}`}>{toast.msg}</div>}
+
+//       <div className="cd">
+//         <div className="cd-bar">
+//           <button className="cd-back" onClick={() => router.push("/discovery")}>←</button>
+//           <span className="cd-bar-title">Campaign Details</span>
+//         </div>
+
+//         <div className="cd-wrap">
+//           <div className="cd-left">
+//             <div className="cd-card">
+//               <div className="cd-title-row">
+//                 <h1 className="cd-title">{campaign.title || "Untitled"}</h1>
+//                 <span className={`cd-badge ${campaign.status === "completed" ? "cd-badge-completed" : campaign.status === "ongoing" ? "cd-badge-ongoing" : "cd-badge-open"}`}>
+//                   {(campaign.status || "open").charAt(0).toUpperCase() + (campaign.status || "open").slice(1)}
+//                 </span>
+//               </div>
+//               <div className="cd-metas">
+//                 {campaign.city   && <span className="cd-meta">📍 {campaign.city.charAt(0).toUpperCase() + campaign.city.slice(1)}</span>}
+//                 {campaign.budget && <span className="cd-meta">💰 ₹{campaign.budget.toLocaleString()}</span>}
+//                 {campaign.applicationsCount !== undefined && <span className="cd-meta">👥 {campaign.applicationsCount} applicants</span>}
+//               </div>
+//               {campaign.categories?.length > 0 && (
+//                 <>
+//                   <span className="cd-sec-label">Categories</span>
+//                   <div className="cd-tags" style={{ marginBottom: campaign.roles?.length ? 16 : 0 }}>
+//                     {campaign.categories.map((cat: string, i: number) => <span key={i} className="cd-tag">{cat}</span>)}
+//                   </div>
+//                 </>
+//               )}
+//               {campaign.roles?.length > 0 && (
+//                 <>
+//                   <span className="cd-sec-label" style={{ marginTop: 14 }}>Looking For</span>
+//                   <div className="cd-tags">
+//                     {campaign.roles.map((r: string, i: number) => <span key={i} className="cd-tag cd-tag-role">{r}</span>)}
+//                   </div>
+//                 </>
+//               )}
+//             </div>
+//             {campaign.description && (
+//               <div className="cd-card">
+//                 <span className="cd-sec-label">About This Campaign</span>
+//                 <p className="cd-desc">{campaign.description}</p>
+//               </div>
+//             )}
+//           </div>
+
+//           <div className="cd-side">
+//             <div className="cd-card">
+//               <div className="cd-budget-label">Total Budget</div>
+//               <div className="cd-budget-num">₹{(campaign.budget || 0).toLocaleString()}</div>
+//               <div className="cd-info-row">
+//                 <span className="cd-info-label">Location</span>
+//                 <span className="cd-info-val">{campaign.city ? campaign.city.charAt(0).toUpperCase() + campaign.city.slice(1) : "—"}</span>
+//               </div>
+//               <div className="cd-info-row">
+//                 <span className="cd-info-label">Status</span>
+//                 <span className="cd-info-val">{campaign.status || "Open"}</span>
+//               </div>
+//               <div className="cd-info-row">
+//                 <span className="cd-info-label">Applicants</span>
+//                 <span className="cd-info-val">{campaign.applicationsCount || 0}</span>
+//               </div>
+
+//               <div className={`cd-plan-box ${isUnlimited ? "unlimited" : appliesLeft === 0 ? "danger" : isLow ? "warn" : ""}`}>
+//                 {costPerApply > 0 && (
+//                   <>
+//                     <div className="cd-plan-row">
+//                       <span className="cd-plan-label">🪙 Tokens remaining</span>
+//                       <span className="cd-plan-val" style={{ color: bits <= 10 ? "#ef4444" : bits <= 30 ? "#d97706" : "#111" }}>{bits}</span>
+//                     </div>
+//                     <div className="cd-plan-bar">
+//                       <div className="cd-plan-fill" style={{ width: `${barPct}%`, background: barColor }} />
+//                     </div>
+//                     <div className="cd-plan-hint">{costPerApply} tokens per apply · {planInfo.label} plan</div>
+//                     <div className="cd-plan-divider" />
+//                   </>
+//                 )}
+//                 <div className="cd-applies-row">
+//                   <span className="cd-applies-label">📩 Applies this month</span>
+//                   <span className="cd-applies-val" style={{ color: appliesLeft === 0 ? "#ef4444" : isLow ? "#d97706" : "#16a34a" }}>
+//                     {isUnlimited
+//                       ? <span style={{ color: "#16a34a" }}>∞ Unlimited</span>
+//                       : `${appliesUsed} / ${monthlyLimit}`}
+//                   </span>
+//                 </div>
+//                 {!isUnlimited && (
+//                   <div style={{ marginTop: 6, fontSize: 11, color: appliesLeft === 0 ? "#ef4444" : isLow ? "#d97706" : "#bbb" }}>
+//                     {appliesLeft === 0
+//                       ? planInfo.freeTrialOnly ? "Free trial limit reached — upgrade to keep applying" : "Monthly limit reached — upgrade to apply more"
+//                       : isLow ? `Only ${appliesLeft} applies left this month`
+//                       : planInfo.freeTrialOnly ? `${appliesLeft} applies left in free trial · Upgrade for more`
+//                       : `${appliesLeft} applies remaining · ${planInfo.label} plan`}
+//                   </div>
+//                 )}
+//                 {isUnlimited && (
+//                   <div style={{ marginTop: 4, fontSize: 11, color: "#16a34a" }}>{planInfo.label} yearly plan — unlimited applies</div>
+//                 )}
+//               </div>
+
+//               {/* ✅ Deal button — agar is campaign ke liye deal hai */}
+//               {campaignDeal && (
+//                 <button className="cd-deal-btn" onClick={() => router.push(`/deals/${campaignDeal._id}`)}>
+//                   🤝 View Deal — ₹{(campaignDeal.amount || 0).toLocaleString("en-IN")}
+//                 </button>
+//               )}
+
+//               {applied ? (
+//                 <>
+//                   <button className="cd-apply-btn cd-applied-btn" disabled>✓ Already Applied</button>
+//                   <div className="cd-success-box" style={{ marginTop: 12 }}>
+//                     <span>🎉</span>
+//                     <span className="cd-success-text">Application submitted!</span>
+//                   </div>
+//                   <p className="cd-applied-note">Brand will review your profile and contact you soon.</p>
+//                 </>
+//               ) : campaign.status === "completed" ? (
+//                 <button className="cd-apply-btn" disabled>Campaign Closed</button>
+//               ) : !canApply ? (
+//                 <button className="cd-apply-btn cd-no-coins-btn" onClick={() => router.push("/upgrade")}>
+//                   {appliesLeft === 0
+//                     ? planInfo.freeTrialOnly ? "🚫 Free trial ended — Upgrade Plan" : "🚫 Apply limit reached — Upgrade"
+//                     : "🪙 Not enough tokens — Upgrade"}
+//                 </button>
+//               ) : (
+//                 <button className="cd-apply-btn" onClick={() => setShowModal(true)}>
+//                   Apply Now →{costPerApply > 0 ? ` (${costPerApply} 🪙)` : ""}
+//                 </button>
+//               )}
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+
+//       {showModal && (
+//         <div className="cd-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+//           <div className="cd-modal">
+//             <h2 className="cd-modal-title">Apply to Campaign</h2>
+//             <p className="cd-modal-sub">Tell the brand why you're the perfect fit</p>
+//             <div className="cd-modal-preview">
+//               <div className="cd-modal-campaign-name">{campaign.title}</div>
+//               <div className="cd-modal-campaign-meta">₹{(campaign.budget || 0).toLocaleString()} · {campaign.city || "—"}</div>
+//             </div>
+//             <label className="cd-modal-label">Your Bid Amount (₹)</label>
+//             <div style={{ position: "relative", marginBottom: 16 }}>
+//               <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#aaa", fontSize: 16, fontWeight: 600 }}>₹</span>
+//               <input type="number" className="cd-input" style={{ paddingLeft: 32, height: 48 }}
+//                 placeholder={`Campaign budget: ₹${(campaign.budget || 0).toLocaleString()}`}
+//                 value={bidAmount} min="1"
+//                 onChange={e => { setBidAmount(e.target.value); setProposalError(""); }} />
+//             </div>
+//             {bidAmount && Number(bidAmount) > 0 && (
+//               <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#16a34a", fontWeight: 600 }}>
+//                 💰 You will receive ₹{Math.round(Number(bidAmount) * 0.9).toLocaleString()} (after 10% platform fee)
+//               </div>
+//             )}
+//             <label className="cd-modal-label">Your Proposal</label>
+//             <textarea className="cd-textarea" rows={6}
+//               placeholder="Describe why you're the best fit. Share your experience, audience, and what value you'll bring..."
+//               value={proposal}
+//               onChange={e => { setProposal(e.target.value); setProposalError(""); }} />
+//             <div className="cd-char">{proposal.length} characters</div>
+//             {proposalError && <p className="cd-err">{proposalError}</p>}
+//             {costPerApply > 0 && (
+//               <div style={{ background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: 10, padding: "10px 14px", marginTop: 12, fontSize: 13, color: "#555", display: "flex", justifyContent: "space-between" }}>
+//                 <span>Token cost</span>
+//                 <strong style={{ color: "#4f46e5" }}>−{costPerApply} 🪙</strong>
+//               </div>
+//             )}
+//             <div className="cd-modal-btns">
+//               <button className="cd-cancel" onClick={() => setShowModal(false)}>Cancel</button>
+//               <button className="cd-submit" onClick={handleApply} disabled={applying}>
+//                 {applying ? "Submitting..." : `Submit Application${costPerApply > 0 ? ` (−${costPerApply} 🪙)` : ""} →`}
+//               </button>
+//             </div>
+//           </div>
+//         </div>
+//       )}
+//     </>
+//   );
+// }
+
+// export default function ApplyPage() {
+//   return (
+//     <Suspense fallback={
+//       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f0" }}>
+//         <div style={{ width: 36, height: 36, border: "3px solid #e0e0e0", borderTopColor: "#4f46e5", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+//         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+//       </div>
+//     }>
+//       <ApplyPageInner />
+//     </Suspense>
+//   );
+// }
 
 
 // "use client";

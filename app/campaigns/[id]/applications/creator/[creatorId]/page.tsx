@@ -152,9 +152,22 @@ export default function CreatorProfilePage() {
     }
   };
 
+  // const followers = () => {
+  //   const f = profile?.followers;
+  //   if (!f && f !== 0) return "N/A";
+  //   const n = Number(f);
+  //   if (!isNaN(n) && n >= 1000) return (n / 1000).toFixed(1) + "K";
+  //   return String(f);
+  // };
+  const FOLLOWER_LABELS: Record<string, string> = {
+    "1000": "1K – 5K", "5000": "5K – 10K", "10000": "10K – 20K",
+    "30000": "20K – 50K", "50000": "50K – 75K", "99000": "99K+",
+  };
   const followers = () => {
     const f = profile?.followers;
     if (!f && f !== 0) return "N/A";
+    const key = String(f);
+    if (FOLLOWER_LABELS[key]) return FOLLOWER_LABELS[key];
     const n = Number(f);
     if (!isNaN(n) && n >= 1000) return (n / 1000).toFixed(1) + "K";
     return String(f);
