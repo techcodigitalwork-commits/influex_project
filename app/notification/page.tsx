@@ -123,7 +123,10 @@ export default function NotificationsPage() {
     // Fetch from campaign applications
     const n = notifications.find(x => x._id === notifId);
     if (!n) return applicationId;
-    const campId = getCampaignId(n);
+    const campId = extractMongoId(n.campaignId) || (() => {
+      const parts = (n.link || "").split("/").filter(Boolean);
+      return parts.find((p: string) => /^[a-f0-9]{24}$/i.test(p)) || null;
+    })();
     if (!campId) return applicationId;
     const { ok, data } = await safeFetch(`${API}/campaigns/${campId}/applications`, {
       headers: { Authorization: `Bearer ${user.token}` }
@@ -535,7 +538,6 @@ export default function NotificationsPage() {
     </>
   );
 }
-
 
 // "use client";
 
