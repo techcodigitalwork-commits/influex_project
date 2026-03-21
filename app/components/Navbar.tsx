@@ -538,7 +538,7 @@ export default function Navbar() {
             <div className="nav-mobile-section">Account</div>
             <Link href="/upgrade"    className="nav-mobile-upgrade">⚡ Upgrade Plan</Link>
             <Link href="/my-profile" className={`nav-mobile-link ${isActive("/my-profile") ? "active" : ""}`}>Edit Profile</Link>
-            {/* <Link href="/settings"   className={`nav-mobile-link ${isActive("/settings") ? "active" : ""}`}>Settings</Link> */}
+            <Link href="/setup-profile"   className={`nav-mobile-link ${isActive("/setup-profile") ? "active" : ""}`}>Viwe Profile</Link>
             <button
               className="nav-mobile-link"
               style={{ color: "#ef4444", border: "none", background: "none", cursor: "pointer", textAlign: "left", width: "100%", fontFamily: "inherit" }}
