@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
-const API             = "http://api.collabzy.in/api";
+const API             = "https://api.collabzy.in/api";
 const FREE_COINS      = 100;
 
 export default function DiscoveryPage() {

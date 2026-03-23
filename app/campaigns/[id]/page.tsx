@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const API_BASE = "http://api.collabzy.in/api";
+const API_BASE = "https://api.collabzy.in/api";
 
 export default function CampaignView() {
   const { id } = useParams();

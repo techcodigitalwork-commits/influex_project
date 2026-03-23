@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-const API = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
 
 export default function ContractsPage() {
   const router = useRouter();

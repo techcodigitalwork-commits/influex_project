@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const API = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
 
 export default function LandingPage() {
   const [categories, setCategories] = useState<any[]>([]);

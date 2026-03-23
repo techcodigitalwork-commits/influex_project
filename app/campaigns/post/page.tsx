@@ -4,8 +4,8 @@ import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 
-const API          = "http://54.252.201.93:5000/api/campaigns";
-const API_BASE     = "http://54.252.201.93:5000/api";
+const API          = "https://54.252.201.93:5000/api/campaigns";
+const API_BASE     = "https://54.252.201.93:5000/api";
 const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
 const PLAN_ID      = "plan_SKmSEwh4wl4Tv6";
 

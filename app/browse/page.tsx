@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 // GET  /api/campaigns/my                     → get brand's campaignId (needed for invite)
 // POST /api/invite/send  { influencerId, campaignId }  → send invite
 // POST /api/contact/unlock { influencerId, type }      → unlock email / instagram
-const API = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
 
 interface Creator {
   _id: string;

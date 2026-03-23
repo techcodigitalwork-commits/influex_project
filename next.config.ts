@@ -15,7 +15,7 @@ const nextConfig = {
     return [
       {
         source: "/api-proxy/:path*",
-        destination: "http://api.collabzy.in/api/:path*",
+        destination: "https://api.collabzy.in/api/:path*",
       },
     ];
   },

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
 
 export default function InvitePage() {
   const router = useRouter();

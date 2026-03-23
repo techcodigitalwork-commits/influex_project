@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 
-const API = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
 
 function CreateDealPageInner() {
   const router = useRouter();

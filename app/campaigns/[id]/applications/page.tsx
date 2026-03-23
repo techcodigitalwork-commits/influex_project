@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const API_BASE = "http://54.252.201.93:5000/api";
+const API_BASE = "https://54.252.201.93:5000/api";
 
 export default function CampaignApplications() {
   const { id } = useParams();

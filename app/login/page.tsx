@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { io } from "socket.io-client";
 
-const API = "http://api.collabzy.in/api";
-const SOCKET_URL = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
+const SOCKET_URL = "https://api.collabzy.in/api";
 
 const toCanonical = (s: string): string => {
   if (!s) return "free";

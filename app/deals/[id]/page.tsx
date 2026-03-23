@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-const API          = "http://api.collabzy.in/api";
+const API          = "https://api.collabzy.in/api";
 const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
 
 function DealDetailPageInner() {

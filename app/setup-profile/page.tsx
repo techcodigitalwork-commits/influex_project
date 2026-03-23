@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API_BASE = "http://api.collabzy.in/api";
+const API_BASE = "https://api.collabzy.in/api";
 
 const FOLLOWER_LABELS: Record<string, string> = {
   "1000":  "1K – 5K",

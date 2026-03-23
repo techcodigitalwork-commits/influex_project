@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
 
 const BADGES = [
   { id: "first_apply",     icon: "🚀", name: "First Step",      desc: "Apply to your first campaign",        points: 50,   color: "#6366f1" },

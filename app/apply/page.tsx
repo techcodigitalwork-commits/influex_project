@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter , useSearchParams} from "next/navigation";
 
-const API = "http://api.collabzy.in/api";
+const API = "https://api.collabzy.in/api";
 
 const CREATOR_PLANS: Record<string, { label: string; appliesPerMonth: number | "unlimited"; tokens: number | "unlimited"; tokensPerApply: number; freeTrialOnly?: boolean }> = {
   free:          { label: "Free",  appliesPerMonth: 10,          tokens: 100,          tokensPerApply: 10, freeTrialOnly: true },

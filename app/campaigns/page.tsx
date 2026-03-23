@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 
-const API_BASE        = "http://api.collabzy.in/api";
+const API_BASE        = "https://api.collabzy.in/api";
 const RAZORPAY_KEY    = "rzp_test_SL7M2uHDyhrU4A";
 const PLAN_ID         = "plan_SKmSEwh4wl4Tv6";
 const FREE_COINS      = 100;
