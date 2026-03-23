@@ -174,7 +174,23 @@ export default function LoginPage() {
         <div style={{maxWidth:440,width:"100%",background:"#fff",borderRadius:32,padding:"40px 36px",boxShadow:"0 20px 60px rgba(79,70,229,0.08)",border:"1px solid #e2e8f0"}}>
 
           <div style={{textAlign:"center",marginBottom:32}}>
-            <div style={{width:60,height:60,background:"linear-gradient(135deg,#4f46e5,#7c3aed)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:20,margin:"0 auto 16px",boxShadow:"0 8px 24px rgba(79,70,229,0.3)"}}>CB</div>
+            {/* <div style={{width:60,height:60,background:"linear-gradient(135deg,#4f46e5,#7c3aed)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:20,margin:"0 auto 16px",boxShadow:"0 8px 24px rgba(79,70,229,0.3)"}}>Collabzy</div> */}
+ <div style={{
+  width: 72,
+  height: 72,
+  minWidth: 72,
+  background: "linear-gradient(135deg,#4f46e5,#7c3aed)",
+  borderRadius: 20,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#fff",
+  fontWeight: 800,
+  fontSize: 15,
+  margin: "0 auto 16px",
+  boxShadow: "0 8px 24px rgba(79,70,229,0.3)",
+  flexShrink: 0,
+}}>Collabzy</div>
             <h2 style={{fontSize:28,fontWeight:800,color:"#0f172a",margin:"0 0 6px"}}>Welcome Back</h2>
             <p style={{color:"#64748b",fontSize:14,margin:0}}>Log in to manage your brand or profile</p>
           </div>
