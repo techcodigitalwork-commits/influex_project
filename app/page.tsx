@@ -209,6 +209,15 @@ export default function LandingPage() {
         .footer-links-col h4 { font-size: 12px; font-weight: 700; color: #111; margin-bottom: 12px; }
         .footer-links-col a { display: block; font-size: 13px; color: #9ca3af; text-decoration: none; margin-bottom: 9px; transition: color 0.15s; font-weight: 400; }
         .footer-links-col a:hover { color: #4f46e5; }
+        .footer-bottom { 
+  border-top: 1px solid #e5e7eb; 
+  padding-top: 20px; 
+  display: flex; 
+  justify-content: space-between;   /* already hai */
+  align-items: center; 
+  flex-wrap: wrap; 
+  gap: 10px; 
+}
         .footer-bottom { border-top: 1px solid #e5e7eb; padding-top: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .footer-copy { font-size: 12px; color: #9ca3af; font-weight: 400; }
       `}</style>
@@ -383,7 +392,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      <footer className="footer">
+      {/* <footer className="footer">
         <div className="footer-top">
           <div className="footer-brand">
             <Link href="/" className="footer-logo">
@@ -408,7 +417,52 @@ export default function LandingPage() {
           <span className="footer-copy">© 2026 collabzy. All rights reserved.</span>
           <span className="footer-copy">Made with ❤️ for Indian Creators</span>
         </div>
-      </footer>
+      </footer> */}
+    <footer className="footer">
+  <div className="footer-top">
+    <div className="footer-brand">
+      <Link href="/" className="footer-logo">
+        <div className="footer-logo-box">C</div>
+        <span className="footer-logo-text">collabzy</span>
+      </Link>
+      <p className="footer-tagline">India's premier platform connecting brands with top creators.</p>
+    </div>
+    <div className="footer-links-col">
+      <h4>Platform</h4>
+      <Link href="/login">Browse Campaigns</Link>
+      <Link href="/signup">For Creators</Link>
+      <Link href="/signup">For Brands</Link>
+    </div>
+    <div className="footer-links-col">
+      <h4>Account</h4>
+      <Link href="/login">Log In</Link>
+      <Link href="/signup">Sign Up Free</Link>
+    </div>
+  </div>
+  <div className="footer-bottom">
+    <span className="footer-copy">© 2026 collabzy. All rights reserved.</span>
+    <span className="footer-copy">Made with ❤️ for Indian Creators</span>
+    <span className="footer-copy" style={{display:"flex", alignItems:"center", gap:"16px"}}>
+      <Link
+        href="/terms"
+        style={{color:"#9ca3af", textDecoration:"none", fontSize:"12px", fontWeight:500}}
+        onMouseEnter={e => (e.currentTarget.style.color="#4f46e5")}
+        onMouseLeave={e => (e.currentTarget.style.color="#9ca3af")}
+      >
+        Terms of Service
+      </Link>
+      <span style={{color:"#e5e7eb"}}>·</span>
+      <Link
+        href="/privacy"
+        style={{color:"#9ca3af", textDecoration:"none", fontSize:"12px", fontWeight:500}}
+        onMouseEnter={e => (e.currentTarget.style.color="#4f46e5")}
+        onMouseLeave={e => (e.currentTarget.style.color="#9ca3af")}
+      >
+        Privacy Policy
+      </Link>
+    </span>
+  </div>
+</footer>
     </>
   );
 }

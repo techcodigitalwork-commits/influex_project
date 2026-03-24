@@ -691,7 +691,7 @@ function MessagesInner() {
 
             {selectedProfile?.categories && (Array.isArray(selectedProfile.categories) ? selectedProfile.categories : [selectedProfile.categories]).filter(Boolean).length > 0 && (
               <div className="prof-section">
-                <div className="prof-sec-label">Niches</div>
+                <div className="prof-sec-label">Categories</div>
                 <div className="prof-tag-wrap">
                   {(Array.isArray(selectedProfile.categories) ? selectedProfile.categories : [selectedProfile.categories]).filter(Boolean).map((cat: string, i: number) => (
                     <span key={i} className="prof-tag">{cat}</span>

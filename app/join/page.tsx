@@ -50,7 +50,6 @@ export default function JoinPage() {
 
       const token = data.token;
 
-      // ✅ Signup ke baad profile check karo
       const profileRes = await fetch(`${API}/profile/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -66,8 +65,6 @@ export default function JoinPage() {
       localStorage.setItem("cb_user", JSON.stringify(userData));
       localStorage.setItem("token", token);
 
-      // ✅ 1st time signup — profile nahi hogi → /my-profile
-      // Next time login → profile hogi → /discovery ya /campaigns
       if (!hasProfile) {
         router.push("/my-profile");
         return;
@@ -87,69 +84,113 @@ export default function JoinPage() {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center px-6 py-12 bg-slate-50/50">
-      <div className="max-w-4xl w-full">
+    <div style={{minHeight:"85vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"48px 24px", background:"#ffffff"}}>
+      <div style={{maxWidth:"896px", width:"100%"}}>
         {step === 1 ? (
           <div>
-            <div className="text-center mb-16">
-              <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 mb-4">
+            <div style={{textAlign:"center", marginBottom:"64px"}}>
+              <h1 style={{fontSize:"clamp(32px, 5vw, 48px)", fontWeight:900, color:"#0f172a", marginBottom:"12px", letterSpacing:"-0.02em"}}>
                 Choose Your Path
               </h1>
-              <p className="text-lg text-slate-500">
+              <p style={{fontSize:"17px", color:"#64748b", fontWeight:500}}>
                 Select your account type to get started
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+            <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:"24px", maxWidth:"720px", margin:"0 auto"}}>
+              
+              {/* Creator Card */}
               <button
                 onClick={() => handleRoleSelect(UserRole.INFLUENCER)}
-                className="bg-white p-10 rounded-[40px] border-2 border-slate-100 hover:border-indigo-600 transition-all text-left shadow-xl"
+                style={{
+                  background:"#ffffff",
+                  padding:"40px 36px",
+                  borderRadius:"28px",
+                  border:"2px solid #e2e8f0",
+                  textAlign:"left",
+                  cursor:"pointer",
+                  transition:"all 0.2s",
+                  boxShadow:"0 4px 24px rgba(0,0,0,0.06)",
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = "#4f46e5";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 12px 40px rgba(79,70,229,0.15)";
+                  (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-4px)";
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = "#e2e8f0";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 24px rgba(0,0,0,0.06)";
+                  (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
+                }}
               >
-                {/* <h3 className="text-2xl font-bold mb-2">I am a Creator</h3> */}
-                <h3 className="text-2xl font-bold mb-2" style={{color:"#111"}}>I am a Creator</h3>
-                <p className="text-slate-500 text-sm">Influencer, Model, Photographer</p>
+                {/* <div style={{fontSize:"40px", marginBottom:"16px"}}>🎨</div> */}
+                <h3 style={{fontSize:"22px", fontWeight:800, color:"#0f172a", marginBottom:"8px"}}>I am a Creator</h3>
+                <p style={{fontSize:"14px", color:"#64748b", fontWeight:500}}>Influencer, Model, Photographer</p>
               </button>
 
+              {/* Brand Card */}
               <button
                 onClick={() => handleRoleSelect(UserRole.BRAND)}
-                className="bg-white p-10 rounded-[40px] border-2 border-slate-100 hover:border-violet-600 transition-all text-left shadow-xl"
+                style={{
+                  background:"#ffffff",
+                  padding:"40px 36px",
+                  borderRadius:"28px",
+                  border:"2px solid #e2e8f0",
+                  textAlign:"left",
+                  cursor:"pointer",
+                  transition:"all 0.2s",
+                  boxShadow:"0 4px 24px rgba(0,0,0,0.06)",
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = "#7c3aed";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 12px 40px rgba(124,58,237,0.15)";
+                  (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-4px)";
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = "#e2e8f0";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 24px rgba(0,0,0,0.06)";
+                  (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
+                }}
               >
-                {/* <h3 className="text-2xl font-bold mb-2">I am a Brand</h3> */}
-                <h3 className="text-2xl font-bold mb-2" style={{color:"#111"}}>I am a Brand</h3>
-                <p className="text-slate-500 text-sm">Discover creators & run campaigns</p>
+                {/* <div style={{fontSize:"40px", marginBottom:"16px"}}>💼</div> */}
+                <h3 style={{fontSize:"22px", fontWeight:800, color:"#0f172a", marginBottom:"8px"}}>I am a Brand</h3>
+                <p style={{fontSize:"14px", color:"#64748b", fontWeight:500}}>Discover creators & run campaigns</p>
               </button>
             </div>
 
-            <p className="text-center mt-12 text-slate-500 font-medium">
+            <p style={{textAlign:"center", marginTop:"48px", color:"#64748b", fontWeight:500, fontSize:"15px"}}>
               Already have an account?{" "}
-              <Link href="/login" className="text-indigo-600 font-bold hover:underline">
+              <Link href="/login" style={{color:"#4f46e5", fontWeight:700, textDecoration:"none"}}>
                 Log in
               </Link>
             </p>
           </div>
+
         ) : (
-          <div className="max-w-md mx-auto bg-white rounded-[40px] p-10 shadow-2xl border">
+          <div style={{maxWidth:"440px", margin:"0 auto", background:"#ffffff", borderRadius:"32px", padding:"40px", boxShadow:"0 20px 60px rgba(0,0,0,0.1)", border:"1.5px solid #e2e8f0"}}>
             <button
               onClick={() => setStep(1)}
-              className="mb-6 text-sm text-slate-400 hover:text-indigo-600"
+              style={{marginBottom:"24px", fontSize:"13px", color:"#94a3b8", background:"none", border:"none", cursor:"pointer", fontWeight:500}}
             >
               ← Change Role
             </button>
 
-            <h2 className="text-3xl font-extrabold text-center mb-6">Create Account</h2>
+            <h2 style={{fontSize:"28px", fontWeight:900, textAlign:"center", color:"#0f172a", marginBottom:"28px", letterSpacing:"-0.02em"}}>
+              Create Account
+            </h2>
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm font-semibold">
+              <div style={{marginBottom:"16px", padding:"12px 16px", background:"#fef2f2", color:"#dc2626", borderRadius:"12px", fontSize:"13px", fontWeight:600}}>
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleJoin} className="space-y-5">
+            <form onSubmit={handleJoin} style={{display:"flex", flexDirection:"column", gap:"16px"}}>
               <input
                 required
                 type="text"
                 placeholder="Full Name"
-                className="w-full px-5 py-4 bg-slate-50 border rounded-2xl"
+                style={{width:"100%", padding:"14px 20px", background:"#f8fafc", border:"1.5px solid #e2e8f0", borderRadius:"16px", fontSize:"14px", color:"#0f172a", outline:"none"}}
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
@@ -158,34 +199,39 @@ export default function JoinPage() {
                 required
                 type="email"
                 placeholder="Email"
-                className="w-full px-5 py-4 bg-slate-50 border rounded-2xl"
+                style={{width:"100%", padding:"14px 20px", background:"#f8fafc", border:"1.5px solid #e2e8f0", borderRadius:"16px", fontSize:"14px", color:"#0f172a", outline:"none"}}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               />
 
-              <div className="relative">
+              <div style={{position:"relative"}}>
                 <input
                   required
                   type={showPass ? "text" : "password"}
                   placeholder="Password"
-                  className="w-full px-5 py-4 pr-12 bg-slate-50 border rounded-2xl"
+                  style={{width:"100%", padding:"14px 20px", paddingRight:"48px", background:"#f8fafc", border:"1.5px solid #e2e8f0", borderRadius:"16px", fontSize:"14px", color:"#0f172a", outline:"none"}}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
-                <img
-                  src="https://www.pngitem.com/pimgs/m/495-4950508_show-password-show-password-icon-png-transparent-png.png"
-                  alt="show password"
+                <span
                   onClick={() => setShowPass(!showPass)}
-                  className="absolute right-4 top-[14px] w-6 h-6 cursor-pointer opacity-70"
-                />
+                  style={{position:"absolute", right:"16px", top:"50%", transform:"translateY(-50%)", cursor:"pointer", fontSize:"18px", opacity:0.5}}
+                >
+                  {showPass ? "🙈" : "👁️"}
+                </span>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 disabled:opacity-50"
+                style={{
+                  width:"100%", padding:"15px", background:"linear-gradient(135deg,#4f46e5,#7c3aed)",
+                  color:"#fff", borderRadius:"16px", fontWeight:700, fontSize:"15px",
+                  border:"none", cursor:"pointer", opacity: loading ? 0.6 : 1,
+                  boxShadow:"0 4px 20px rgba(79,70,229,0.35)"
+                }}
               >
-                {loading ? "Creating Account..." : "Create Account"}
+                {loading ? "Creating Account..." : "Create Account →"}
               </button>
             </form>
           </div>
@@ -194,6 +240,204 @@ export default function JoinPage() {
     </div>
   );
 }
+
+
+// "use client";
+
+// import { useState, type FormEvent } from "react";
+// import Link from "next/link";
+// import { useRouter } from "next/navigation";
+
+// const API = "https://api.collabzy.in/api";
+
+// enum UserRole {
+//   INFLUENCER = "INFLUENCER",
+//   BRAND = "BRAND",
+// }
+
+// export default function JoinPage() {
+//   const router = useRouter();
+
+//   const [step, setStep] = useState(1);
+//   const [loading, setLoading] = useState(false);
+//   const [error, setError] = useState("");
+//   const [showPass, setShowPass] = useState(false);
+
+//   const [formData, setFormData] = useState({
+//     name: "",
+//     email: "",
+//     password: "",
+//     role: UserRole.INFLUENCER,
+//   });
+
+//   const handleRoleSelect = (role: UserRole) => {
+//     setFormData({ ...formData, role });
+//     setStep(2);
+//   };
+
+//   const handleJoin = async (e: FormEvent<HTMLFormElement>) => {
+//     e.preventDefault();
+//     setError("");
+
+//     try {
+//       setLoading(true);
+
+//       const res = await fetch(`${API}/auth/signup`, {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify(formData),
+//       });
+
+//       const data = await res.json();
+
+//       if (!res.ok) throw new Error(data.message || "Signup failed");
+
+//       const token = data.token;
+
+//       // ✅ Signup ke baad profile check karo
+//       const profileRes = await fetch(`${API}/profile/me`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       const profileData = await profileRes.json();
+//       const hasProfile = profileData.success && !!profileData.profile;
+
+//       const userData = {
+//         ...data.user,
+//         token,
+//         hasProfile,
+//       };
+
+//       localStorage.setItem("cb_user", JSON.stringify(userData));
+//       localStorage.setItem("token", token);
+
+//       // ✅ 1st time signup — profile nahi hogi → /my-profile
+//       // Next time login → profile hogi → /discovery ya /campaigns
+//       if (!hasProfile) {
+//         router.push("/my-profile");
+//         return;
+//       }
+
+//       if (userData.role === UserRole.BRAND) {
+//         router.push("/campaigns");
+//       } else {
+//         router.push("/discovery");
+//       }
+
+//     } catch (err: any) {
+//       setError(err.message || "Something went wrong");
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   return (
+//     <div className="min-h-[85vh] flex items-center justify-center px-6 py-12 bg-slate-50/50">
+//       <div className="max-w-4xl w-full">
+//         {step === 1 ? (
+//           <div>
+//             <div className="text-center mb-16">
+//               <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 mb-4">
+//                 Choose Your Path
+//               </h1>
+//               <p className="text-lg text-slate-500">
+//                 Select your account type to get started
+//               </p>
+//             </div>
+
+//             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+//               <button
+//                 onClick={() => handleRoleSelect(UserRole.INFLUENCER)}
+//                 className="bg-white p-10 rounded-[40px] border-2 border-slate-100 hover:border-indigo-600 transition-all text-left shadow-xl"
+//               >
+//                 {/* <h3 className="text-2xl font-bold mb-2">I am a Creator</h3> */}
+//                 <h3 className="text-2xl font-bold mb-2" style={{color:"#111"}}>I am a Creator</h3>
+//                 <p className="text-slate-500 text-sm">Influencer, Model, Photographer</p>
+//               </button>
+
+//               <button
+//                 onClick={() => handleRoleSelect(UserRole.BRAND)}
+//                 className="bg-white p-10 rounded-[40px] border-2 border-slate-100 hover:border-violet-600 transition-all text-left shadow-xl"
+//               >
+//                 {/* <h3 className="text-2xl font-bold mb-2">I am a Brand</h3> */}
+//                 <h3 className="text-2xl font-bold mb-2" style={{color:"#111"}}>I am a Brand</h3>
+//                 <p className="text-slate-500 text-sm">Discover creators & run campaigns</p>
+//               </button>
+//             </div>
+
+//             <p className="text-center mt-12 text-slate-500 font-medium">
+//               Already have an account?{" "}
+//               <Link href="/login" className="text-indigo-600 font-bold hover:underline">
+//                 Log in
+//               </Link>
+//             </p>
+//           </div>
+//         ) : (
+//           <div className="max-w-md mx-auto bg-white rounded-[40px] p-10 shadow-2xl border">
+//             <button
+//               onClick={() => setStep(1)}
+//               className="mb-6 text-sm text-slate-400 hover:text-indigo-600"
+//             >
+//               ← Change Role
+//             </button>
+
+//             <h2 className="text-3xl font-extrabold text-center mb-6">Create Account</h2>
+
+//             {error && (
+//               <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl text-sm font-semibold">
+//                 {error}
+//               </div>
+//             )}
+
+//             <form onSubmit={handleJoin} className="space-y-5">
+//               <input
+//                 required
+//                 type="text"
+//                 placeholder="Full Name"
+//                 className="w-full px-5 py-4 bg-slate-50 border rounded-2xl"
+//                 value={formData.name}
+//                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+//               />
+
+//               <input
+//                 required
+//                 type="email"
+//                 placeholder="Email"
+//                 className="w-full px-5 py-4 bg-slate-50 border rounded-2xl"
+//                 value={formData.email}
+//                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+//               />
+
+//               <div className="relative">
+//                 <input
+//                   required
+//                   type={showPass ? "text" : "password"}
+//                   placeholder="Password"
+//                   className="w-full px-5 py-4 pr-12 bg-slate-50 border rounded-2xl"
+//                   value={formData.password}
+//                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+//                 />
+//                 <img
+//                   src="https://www.pngitem.com/pimgs/m/495-4950508_show-password-show-password-icon-png-transparent-png.png"
+//                   alt="show password"
+//                   onClick={() => setShowPass(!showPass)}
+//                   className="absolute right-4 top-[14px] w-6 h-6 cursor-pointer opacity-70"
+//                 />
+//               </div>
+
+//               <button
+//                 type="submit"
+//                 disabled={loading}
+//                 className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 disabled:opacity-50"
+//               >
+//                 {loading ? "Creating Account..." : "Create Account"}
+//               </button>
+//             </form>
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   );
+// }
 
 
 // "use client";
