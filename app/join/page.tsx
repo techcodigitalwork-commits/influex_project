@@ -105,7 +105,8 @@ export default function JoinPage() {
                 onClick={() => handleRoleSelect(UserRole.INFLUENCER)}
                 className="bg-white p-10 rounded-[40px] border-2 border-slate-100 hover:border-indigo-600 transition-all text-left shadow-xl"
               >
-                <h3 className="text-2xl font-bold mb-2">I am a Creator</h3>
+                {/* <h3 className="text-2xl font-bold mb-2">I am a Creator</h3> */}
+                <h3 className="text-2xl font-bold mb-2" style={{color:"#111"}}>I am a Creator</h3>
                 <p className="text-slate-500 text-sm">Influencer, Model, Photographer</p>
               </button>
 
@@ -113,7 +114,8 @@ export default function JoinPage() {
                 onClick={() => handleRoleSelect(UserRole.BRAND)}
                 className="bg-white p-10 rounded-[40px] border-2 border-slate-100 hover:border-violet-600 transition-all text-left shadow-xl"
               >
-                <h3 className="text-2xl font-bold mb-2">I am a Brand</h3>
+                {/* <h3 className="text-2xl font-bold mb-2">I am a Brand</h3> */}
+                <h3 className="text-2xl font-bold mb-2" style={{color:"#111"}}>I am a Brand</h3>
                 <p className="text-slate-500 text-sm">Discover creators & run campaigns</p>
               </button>
             </div>

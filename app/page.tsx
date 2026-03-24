@@ -283,7 +283,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="sec">
+      <section className="sec"  style={{background:"#fff"}}>
         <div className="sec-in">
           <div className="eyebrow">🛠 Features</div>
           <h2 className="sec-h2">Everything You Need<br/>to Collaborate</h2>
@@ -328,7 +328,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="sec">
+      <section className="sec"  style={{background:"#fff"}}>
         <div className="sec-in">
           <div className="eyebrow">📍 Local Talent</div>
           <h2 className="sec-h2">Creators Across<br/>Every City</h2>

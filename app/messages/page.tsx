@@ -420,7 +420,7 @@ function MessagesInner() {
         .wa-chat::before { content:''; position:absolute; inset:0; opacity:0.08; background-image:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E"); pointer-events:none; z-index:0; }
         .wa-chat-hdr { background:#fff; padding:10px 16px; display:flex; align-items:center; gap:12px; height:60px; border-bottom:1px solid var(--border); position:relative; z-index:2; cursor:pointer; transition:background 0.15s; }
         .wa-chat-hdr:hover { background:#f5f6f6; }
-        .wa-back-btn { display:none; background:none; border:none; font-size:22px; cursor:pointer; color:var(--text2); padding:4px 8px 4px 0; line-height:1; }
+        .wa-back-btn { display: flex; background:none; border:none; font-size:22px; cursor:pointer; color:var(--text2); padding:4px 8px 4px 0; line-height:1; align-items: center; }
         .wa-chat-av { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,#667eea,#764ba2); display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:#fff; overflow:hidden; flex-shrink:0; }
         .wa-chat-av img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
         .wa-chat-name { font-size:15px; font-weight:600; color:var(--text1); }
@@ -512,6 +512,9 @@ function MessagesInner() {
           .wa-messages { padding:12px 4%; }
           .wa-safe-chip { display:none; }
         }
+          @media (min-width: 769px) {
+  .wa-back-btn { display: none !important; }
+}
       `}</style>
 
       <div className="wa-root">

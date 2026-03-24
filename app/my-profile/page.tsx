@@ -457,7 +457,7 @@ export default function SetupProfile() {
               <p className="pp-step-title">Creator Details</p>
 
               <div className="pp-field">
-                <label className="pp-label">Your Niche</label>
+                <label className="pp-label">Your Categories</label>
                 <div className="pp-chips">
                   {["Fashion", "Beauty", "Fitness", "Food", "Travel", "Tech"].map((cat) => (
                     <button key={cat}

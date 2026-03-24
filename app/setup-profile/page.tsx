@@ -207,7 +207,7 @@ export default function ViewProfile() {
             {category && (
               <div className="vp-stat">
                 <span className="vp-stat-val">{capitalize(category)}</span>
-                <span className="vp-stat-lbl">Niche</span>
+                <span className="vp-stat-lbl">Category</span>
               </div>
             )}
           </div>
