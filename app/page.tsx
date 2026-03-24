@@ -217,6 +217,69 @@ export default function LandingPage() {
   align-items: center; 
   flex-wrap: wrap; 
   gap: 10px; 
+}  @media (max-width: 600px) {
+
+  .footer-top {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .footer-brand {
+    grid-column: span 2;
+  }
+
+  /* 🔥 Platform (left) */
+  .footer-links-col:first-of-type {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  /* 🔥 Account (right) */
+  .footer-links-col:last-of-type {
+    align-items: flex-end;   /* 👈 push right */
+    text-align: right;       /* 👈 text right align */
+  }
+
+  .footer-links-col h4 {
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  .footer-links-col a {
+    font-size: 12px;
+  }
+}
+  @media (max-width: 600px) {
+
+  .footer-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;   /* 👈 center vertically */
+    text-align: center;
+    gap: 6px;
+  }
+
+  .footer-copy {
+    font-size: 11px;
+    text-align: center;
+  }
+
+  /* 🔥 Terms + Privacy ek line me center */
+  .footer-bottom span:last-child {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: nowrap;     /* 👈 break nahi hone dega */
+  }
+
+  /* links style consistent */
+  .footer-bottom a {
+    font-size: 11px;
+    text-align: center;
+  }
 }
         .footer-bottom { border-top: 1px solid #e5e7eb; padding-top: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .footer-copy { font-size: 12px; color: #9ca3af; font-weight: 400; }
