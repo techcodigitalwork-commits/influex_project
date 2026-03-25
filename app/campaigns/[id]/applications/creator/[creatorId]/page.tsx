@@ -104,22 +104,55 @@ export default function CreatorProfilePage() {
       // ✅ Fetch creator portfolio
       try {
         setPortfolioLoading(true);
-        const pr = await fetch(`${API}/portfolio/user/${id}`, { headers: { Authorization: `Bearer ${tok}` } });
+        // const pr = await fetch(`${API}/portfolio/user/${id}`, { headers: { Authorization: `Bearer ${tok}` } });
+        const pr = await fetch(`${API}/posts?userId=${id}`, {
+  headers: { Authorization: `Bearer ${tok}` }
+});
         if (pr.ok) {
-          const pd = await pr.json();
-          const items = pd?.portfolio || pd?.data || [];
-          // setPortfolio(Array.isArray(items) ? items : []);
+          // const pd = await pr.json();
+//           const items = pd?.portfolio || pd?.data || [];
+//           // setPortfolio(Array.isArray(items) ? items : []);
 
-          const normalized = (items || []).map((item: any) => {
-          const isVideo = item.urls?.length > 0;
+//           const normalized = (items || []).map((item: any) => {
+//           const isVideo = item.urls?.length > 0;
 
-  return {
-    type: isVideo ? "reel" : "post",
-    url: isVideo
-      ? item.urls[0]
-      : item.images?.[0] || item.media?.[0] || "",
-    caption: item.caption || "",
-  };
+//   return {
+//     type: isVideo ? "reel" : "post",
+//     url: isVideo
+//       ? item.urls[0]
+//       : item.images?.[0] || item.media?.[0] || "",
+//     caption: item.caption || "",
+//   };
+// });
+
+// setPortfolio(normalized);
+const pd = await pr.json();
+console.log("PORTFOLIO DATA 👉", pd);
+
+// ✅ FIXED data extraction
+const items =
+  pd?.portfolio ||
+  pd?.data?.posts ||
+  pd?.data ||
+  [];
+
+// ✅ FIXED normalization (multiple media support)
+const normalized = (items || []).flatMap((item: any) => {
+  const videos = item.urls || [];
+  const images = item.images || item.media || [];
+
+  return [
+    ...videos.map((v: string) => ({
+      type: "reel",
+      url: v,
+      caption: item.caption || "",
+    })),
+    ...images.map((img: string) => ({
+      type: "post",
+      url: img,
+      caption: item.caption || "",
+    })),
+  ];
 });
 
 setPortfolio(normalized);
