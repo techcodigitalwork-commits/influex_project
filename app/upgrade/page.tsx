@@ -6,6 +6,7 @@ import Script from "next/script";
 
 const API = "https://api.collabzy.in/api";
 const RAZORPAY_KEY = "rzp_live_SVOzjhbjcfQiiY";
+
 const PLAN_ID = "plan_SVPLspo3dTExLj";
 
 type Role = "creator" | "brand";
