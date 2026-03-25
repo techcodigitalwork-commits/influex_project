@@ -108,7 +108,21 @@ export default function CreatorProfilePage() {
         if (pr.ok) {
           const pd = await pr.json();
           const items = pd?.portfolio || pd?.data || [];
-          setPortfolio(Array.isArray(items) ? items : []);
+          // setPortfolio(Array.isArray(items) ? items : []);
+
+          const normalized = (items || []).map((item: any) => {
+          const isVideo = item.urls?.length > 0;
+
+  return {
+    type: isVideo ? "reel" : "post",
+    url: isVideo
+      ? item.urls[0]
+      : item.images?.[0] || item.media?.[0] || "",
+    caption: item.caption || "",
+  };
+});
+
+setPortfolio(normalized);
         }
       } catch { } finally {
         setPortfolioLoading(false);

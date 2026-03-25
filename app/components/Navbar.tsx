@@ -36,15 +36,26 @@ const cache: Record<string, { data: any; ts: number }> = {};
 const CACHE_TTL = 60_000;
 
 const cachedFetch = async (url: string, token: string) => {
-  const now = Date.now();
-  if (cache[url] && now - cache[url].ts < CACHE_TTL) return cache[url].data;
   try {
-    const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    cache[url] = { data, ts: now };
-    return data;
-  } catch { return null; }
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return await res.json();
+  } catch {
+    return null;
+  }
 };
+
+// const cachedFetch = async (url: string, token: string) => {
+//   const now = Date.now();
+//   if (cache[url] && now - cache[url].ts < CACHE_TTL) return cache[url].data;
+//   try {
+//     const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+//     const data = await res.json();
+//     cache[url] = { data, ts: now };
+//     return data;
+//   } catch { return null; }
+// };
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -243,7 +254,8 @@ export default function Navbar() {
     const plan     = subbed && ap ? (PLAN_LIMITS[toCanonical(ap)] ?? PLAN_LIMITS["free"]) : PLAN_LIMITS["free"];
     const liveBits   = bits ?? stored.bits ?? plan.tokens;
     const campsLeft  = Math.max(0, plan.campaigns - campsUsed);
-    const tokensLeft = subbed ? plan.tokens : Math.max(0, liveBits);
+    // const tokensLeft = subbed ? plan.tokens : Math.max(0, liveBits);
+    const tokensLeft = subbed ? Math.max(0, liveBits) : Math.max(0, liveBits);
     return { plan, campsLeft, tokensLeft };
   };
 

@@ -131,7 +131,10 @@ export default function LoginPage() {
         router.push("/discovery");
       }
 
-      router.refresh();
+      // router.refresh();
+      setTimeout(() => {
+  window.location.reload();
+}, 100);
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
