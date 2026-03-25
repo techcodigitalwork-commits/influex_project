@@ -6,7 +6,7 @@ import Script from "next/script";
 
 const API = "https://api.collabzy.in/api";
 const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
-const PLAN_ID = "plan_SKmSEwh4wl4Tv6";
+const PLAN_ID = "plan_SVPLspo3dTExLj";
 
 type Role = "creator" | "brand";
 type Tab = "plans" | "escrow" | "features";
@@ -33,7 +33,7 @@ const creatorMonthlyPlans = [
 const creatorYearlyPlans = [
   { id: "free", name: "Free", price: 0, originalPrice: null, period: "/year", badge: null, tokens: 100, applies: 10, features: [{ text: "100 tokens/month", ok: true },{ text: "10 campaign applications/month", ok: true },{ text: "Create your profile", ok: true },{ text: "Basic search visibility", ok: true },{ text: "Basic analytics", ok: true },{ text: "Brand contact hidden", ok: false },{ text: "Verified badge", ok: false },{ text: "Profile boost", ok: false },{ text: "AI campaign matching", ok: false },{ text: "Priority listing", ok: false }], cta: "Current Plan", ctaDisabled: true },
   { id: "pro_year", name: "Pro", price: 2999, originalPrice: null, period: "/year", badge: "Popular", tokens: "Unlimited", applies: "Unlimited", features: [{ text: "Unlimited tokens/year", ok: true },{ text: "Unlimited applications/year", ok: true },{ text: "Profile boost in search", ok: true },{ text: "Advanced analytics", ok: true },{ text: "Campaign alerts", ok: true },{ text: "Verified badge", ok: true },{ text: "Direct brand invite option", ok: false },{ text: "Priority support", ok: false },{ text: "Featured profile listing", ok: false },{ text: "AI campaign matching", ok: false }], cta: "Upgrade to Pro", ctaDisabled: false },
-  { id: "pro_plus_year", name: "Pro+", price: 5999, originalPrice: null, period: "/year", badge: "Best Value", tokens: "Unlimited", applies: "Unlimited", features: [{ text: "Unlimited tokens/year", ok: true },{ text: "Unlimited applications/year", ok: true },{ text: "Featured profile listing", ok: true },{ text: "Direct brand invite option", ok: true },{ text: "Priority support", ok: true },{ text: "AI campaign matching", ok: true },{ text: "Verified + Featured badge", ok: true },{ text: "Rewards & profile boost", ok: true },{ text: "Early access to campaigns", ok: true },{ text: "Dispute protection", ok: true }], cta: "Upgrade to Pro+", ctaDisabled: false },
+  { id: "pro_plus_year", name: "Pro+", price: 5499, originalPrice: null, period: "/year", badge: "Best Value", tokens: "Unlimited", applies: "Unlimited", features: [{ text: "Unlimited tokens/year", ok: true },{ text: "Unlimited applications/year", ok: true },{ text: "Featured profile listing", ok: true },{ text: "Direct brand invite option", ok: true },{ text: "Priority support", ok: true },{ text: "AI campaign matching", ok: true },{ text: "Verified + Featured badge", ok: true },{ text: "Rewards & profile boost", ok: true },{ text: "Early access to campaigns", ok: true },{ text: "Dispute protection", ok: true }], cta: "Upgrade to Pro+", ctaDisabled: false },
 ];
 
 const escrowSteps = [

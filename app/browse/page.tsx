@@ -472,7 +472,7 @@ export default function BrowsePage() {
                 <span>Once a creator accepts, <strong>chat opens automatically</strong> — no extra steps needed.</span>
               </div>
             </div>
-            <button className="nc-btn-primary" onClick={() => { setShowNoCampaignModal(false); router.push("/campaigns/new"); }}>
+            <button className="nc-btn-primary" onClick={() => { setShowNoCampaignModal(false); router.push("/campaigns/post"); }}>
               ➕ Create a Campaign Now
             </button>
             <button className="nc-btn-secondary" onClick={() => setShowNoCampaignModal(false)}>
