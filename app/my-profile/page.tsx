@@ -59,7 +59,7 @@ export default function SetupProfile() {
 
   const handleImage = async (file: File) => {
     setImageError(""); setImageSuccess(false);
-    if (file.size > 5 * 1024 * 1024) { setImageError("Image 5MB se choti honi chahiye"); return; }
+    if (file.size > 5 * 1024 * 1024) { setImageError("The image must be smaller than 5MB."); return; }
 
     const reader = new FileReader();
     reader.onload = () => setPreview(reader.result as string);
@@ -96,7 +96,7 @@ export default function SetupProfile() {
         handleChange("profileImage", "");
       }
     } catch {
-      setImageError("Network error — server se connect nahi ho raha");
+      setImageError("Network error — The app is unable to connect to the server.");
       setPreview(null);
       handleChange("profileImage", "");
     } finally { setUploading(false); }
