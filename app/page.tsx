@@ -86,8 +86,8 @@ export default function LandingPage() {
         .nav-login:hover { border-color: #4f46e5; color: #4f46e5; background: #faf5ff; }
         .nav-signup { padding: 8px 18px; border-radius: 10px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; font-size: 13px; font-weight: 700; text-decoration: none; transition: all 0.18s; box-shadow: 0 2px 10px rgba(79,70,229,0.3); }
         .nav-signup:hover { opacity: 0.9; transform: translateY(-1px); }
-        .hero-logged-out { padding-top: 68px; background: #07070f; min-height: 100vh; display: flex; flex-direction: column; position: relative; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif; }
-        .hero-logged-in { padding-top: 0; background: #07070f; min-height: 60vh; display: flex; flex-direction: column; position: relative; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .hero-logged-out { background: #07070f; min-height: 100vh; display: flex; flex-direction: column; position: relative; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif; }
+        .hero-logged-in { background: #07070f; min-height: 60vh; display: flex; flex-direction: column; position: relative; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif; }
         .hero-glow1 { position: absolute; top: 10%; left: -5%; width: 45vw; height: 45vw; max-width: 600px; max-height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(79,70,229,0.22) 0%, transparent 68%); pointer-events: none; }
         .hero-glow2 { position: absolute; bottom: 5%; right: -5%; width: 40vw; height: 40vw; max-width: 500px; max-height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 68%); pointer-events: none; }
         .hero-grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px); background-size: 60px 60px; pointer-events: none; }
@@ -299,17 +299,7 @@ export default function LandingPage() {
         }
       `}</style>
 
-      {!isLoggedIn && (
-        <nav className="lp-nav">
-          <Link href="/" className="nav-logo">
-            <img src="/logo.png" alt="collabzy" style={{height:"36px", width:"auto"}} />
-          </Link>
-          <div className="nav-right">
-            <Link href="/login" className="nav-login">LogIn</Link>
-            <Link href="/signup" className="nav-signup">SignUp →</Link>
-          </div>
-        </nav>
-      )}
+
 
       <section className={isLoggedIn ? "hero-logged-in" : "hero-logged-out"}>
         <div className="hero-glow1" />
@@ -474,21 +464,16 @@ export default function LandingPage() {
 
           {/* BRAND */}
           <div className="footer-brand">
-            {/* <Link href="/" className="footer-logo">
-              <img src="/favicon.png" alt="collabzy" style={{height:"32px", width:"auto"}} />
-            </Link> */}
-             
             <Link href="/" className="footer-logo">
               <img src="/favicon.png" alt="collabzy" style={{height:"32px", width:"auto"}} />
               <span className="footer-logo-text">collabzy</span>
             </Link>
-
             <p className="footer-tagline">
               India's premier platform connecting brands with top creators.
             </p>
 
             <div className="footer-socials">
-              <a href="#" target="_blank" rel="noreferrer">
+              <a href="https://www.instagram.com/collabzyofficial.in?igsh=eG11MXp0c2l4c3Vi&utm_source=qr" target="_blank" rel="noreferrer">
                 <span className="social-icon ig">
                   <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
                 </span>
@@ -538,6 +523,548 @@ export default function LandingPage() {
     </>
   );
 }
+
+
+// "use client";
+
+// import { useEffect, useState } from "react";
+// import Link from "next/link";
+
+// const API = "https://api.collabzy.in/api";
+
+// export default function LandingPage() {
+//   const [categories, setCategories] = useState<any[]>([]);
+//   const [loadingMeta, setLoadingMeta] = useState(true);
+//   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+//   const manualCities = [
+//     { name: "Mumbai",    img: "https://images.unsplash.com/photo-1570168007204-dfb528c6958f?w=600&q=80" },
+//     { name: "Bengaluru", img: "https://images.unsplash.com/photo-1596176530529-78163a4f7af2?w=600&q=80" },
+//     { name: "Indore",    img: "/indore.jpg" },
+//     { name: "Hyderabad", img: "/hyderbad.jpg" },
+//     { name: "Delhi",     img: "/Dehli.jpg" },
+//     { name: "Pune",      img: "https://images.unsplash.com/photo-1588416936097-41850ab3d86d?w=600&q=80" },
+//   ];
+
+//   const catMeta: Record<string, { emoji: string; color: string; bg: string }> = {
+//     fashion:     { emoji:"👗", color:"#be185d", bg:"#fdf2f8" },
+//     beauty:      { emoji:"💄", color:"#9333ea", bg:"#faf5ff" },
+//     fitness:     { emoji:"💪", color:"#16a34a", bg:"#f0fdf4" },
+//     food:        { emoji:"🍕", color:"#ea580c", bg:"#fff7ed" },
+//     travel:      { emoji:"✈️", color:"#0284c7", bg:"#f0f9ff" },
+//     tech:        { emoji:"💻", color:"#4f46e5", bg:"#eef2ff" },
+//     lifestyle:   { emoji:"🌟", color:"#d97706", bg:"#fffbeb" },
+//     gaming:      { emoji:"🎮", color:"#7c3aed", bg:"#f5f3ff" },
+//     music:       { emoji:"🎵", color:"#0891b2", bg:"#ecfeff" },
+//     sports:      { emoji:"⚽", color:"#15803d", bg:"#f0fdf4" },
+//     education:   { emoji:"📚", color:"#1d4ed8", bg:"#eff6ff" },
+//     comedy:      { emoji:"😂", color:"#ca8a04", bg:"#fefce8" },
+//     dance:       { emoji:"💃", color:"#db2777", bg:"#fdf2f8" },
+//     photography: { emoji:"📷", color:"#374151", bg:"#f9fafb" },
+//     art:         { emoji:"🎨", color:"#7c3aed", bg:"#f5f3ff" },
+//     business:    { emoji:"💼", color:"#334155", bg:"#f8fafc" },
+//   };
+
+//   useEffect(() => {
+//     const user = localStorage.getItem("cb_user");
+//     if (user) setIsLoggedIn(true);
+
+//     fetch(`${API}/meta/categories`)
+//       .then(r => r.json())
+//       .catch(() => ({}))
+//       .then((ctd) => {
+//         const rawCats = ctd.data || ctd.categories || (Array.isArray(ctd) ? ctd : []);
+//         const seenCat = new Set<string>();
+//         const uniqueCats = rawCats.filter((c: any) => {
+//           const nm = (typeof c === "string" ? c : c?.name || c?.category || "").toLowerCase().trim();
+//           if (!nm || seenCat.has(nm)) return false;
+//           seenCat.add(nm); return true;
+//         });
+//         setCategories(uniqueCats);
+//       })
+//       .finally(() => setLoadingMeta(false));
+//   }, []);
+
+//   const name  = (v: any) => typeof v === "string" ? v : v?.name || v?.city || v?.category || "";
+//   const count = (v: any) => typeof v === "string" ? null : v?.count || v?.creators || null;
+
+//   return (
+//     <>
+//       <style>{`
+//         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+//         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+//         html { scroll-behavior: smooth; }
+//         .lp-nav {
+//           position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+//           height: 68px;
+//           background: rgba(255,255,255,0.92);
+//           backdrop-filter: blur(20px) saturate(180%);
+//           border-bottom: 1px solid rgba(0,0,0,0.07);
+//           display: flex; align-items: center; justify-content: space-between;
+//           padding: 0 48px;
+//           font-family: 'Plus Jakarta Sans', sans-serif;
+//         }
+//         @media(max-width:600px){ .lp-nav{ padding: 0 20px; } }
+//         .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+//         .nav-logo-box { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 900; font-size: 14px; box-shadow: 0 4px 12px rgba(79,70,229,0.35); }
+//         .nav-logo-text { font-size: 17px; font-weight: 800; color: #111; white-space: nowrap; }
+//         .nav-right { display: flex; align-items: center; gap: 8px; }
+//         .nav-login { padding: 8px 18px; border-radius: 10px; border: 1.5px solid #e5e7eb; color: #374151; font-size: 13px; font-weight: 600; text-decoration: none; transition: all 0.18s; }
+//         .nav-login:hover { border-color: #4f46e5; color: #4f46e5; background: #faf5ff; }
+//         .nav-signup { padding: 8px 18px; border-radius: 10px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; font-size: 13px; font-weight: 700; text-decoration: none; transition: all 0.18s; box-shadow: 0 2px 10px rgba(79,70,229,0.3); }
+//         .nav-signup:hover { opacity: 0.9; transform: translateY(-1px); }
+//         .hero-logged-out { padding-top: 68px; background: #07070f; min-height: 100vh; display: flex; flex-direction: column; position: relative; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif; }
+//         .hero-logged-in { padding-top: 0; background: #07070f; min-height: 60vh; display: flex; flex-direction: column; position: relative; overflow: hidden; font-family: 'Plus Jakarta Sans', sans-serif; }
+//         .hero-glow1 { position: absolute; top: 10%; left: -5%; width: 45vw; height: 45vw; max-width: 600px; max-height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(79,70,229,0.22) 0%, transparent 68%); pointer-events: none; }
+//         .hero-glow2 { position: absolute; bottom: 5%; right: -5%; width: 40vw; height: 40vw; max-width: 500px; max-height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 68%); pointer-events: none; }
+//         .hero-grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px); background-size: 60px 60px; pointer-events: none; }
+//         .hero-body { flex: 1; max-width: 1200px; margin: 0 auto; width: 100%; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 48px; padding: 72px 48px; position: relative; z-index: 2; }
+//         @media(max-width:960px){ .hero-body { grid-template-columns: 1fr; padding: 48px 24px; gap: 0; text-align: center; } }
+//         @media(max-width:480px){ .hero-body { padding: 36px 20px; } }
+//         .hero-badge { display: inline-flex; align-items: center; gap: 7px; background: rgba(79,70,229,0.12); border: 1px solid rgba(99,102,241,0.3); color: #a5b4fc; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 100px; margin-bottom: 28px; letter-spacing: 0.02em; }
+//         .hero-badge-dot { width: 6px; height: 6px; border-radius: 50%; background: #818cf8; animation: pulse 2s infinite; }
+//         @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.8)} }
+//         .hero-h1 { font-size: 56px; font-weight: 900; line-height: 1.06; color: #f9fafb; margin-bottom: 22px; letter-spacing: -0.02em; }
+//         .hero-h1-grad { background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+//         @media(max-width:1100px){ .hero-h1 { font-size: 44px; } }
+//         @media(max-width:960px) { .hero-h1 { font-size: 38px; } }
+//         @media(max-width:480px) { .hero-h1 { font-size: 30px; } }
+//         .hero-p { font-size: 16px; color: #9ca3af; line-height: 1.75; margin-bottom: 36px; max-width: 460px; font-weight: 400; }
+//         @media(max-width:960px){ .hero-p { margin: 0 auto 32px; } }
+//         @media(max-width:480px){ .hero-p { font-size: 14px; } }
+//         .hero-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+//         @media(max-width:960px){ .hero-btns { justify-content: center; } }
+//         .hbtn-primary { padding: 13px 26px; border-radius: 12px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; font-size: 14px; font-weight: 600; text-decoration: none; display: inline-block; box-shadow: 0 4px 20px rgba(79,70,229,0.45); transition: all 0.2s; }
+//         .hbtn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(79,70,229,0.55); }
+//         .hbtn-outline { padding: 13px 26px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,0.12); color: #d1d5db; font-size: 14px; font-weight: 500; text-decoration: none; display: inline-block; transition: all 0.2s; }
+//         .hbtn-outline:hover { border-color: rgba(255,255,255,0.3); color: #fff; background: rgba(255,255,255,0.05); }
+//         .hero-stats { display: flex; gap: 32px; margin-top: 44px; flex-wrap: wrap; }
+//         @media(max-width:960px){ .hero-stats { justify-content: center; } }
+//         .hstat-n { font-size: 26px; font-weight: 800; color: #f9fafb; }
+//         .hstat-l { font-size: 12px; color: #6b7280; margin-top: 3px; font-weight: 500; }
+//         .hero-imgs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+//         @media(max-width:960px){ .hero-imgs { display: none; } }
+//         .hi-card { border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+//         .hi-card:nth-child(1){ margin-top: 48px; }
+//         .hi-card img { width: 100%; height: 260px; object-fit: cover; display: block; }
+//         .hi-overlay-card { background: rgba(15,14,30,0.9); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 12px 16px; margin-top: -16px; margin-left: 12px; margin-right: 12px; display: flex; align-items: center; gap: 10px; }
+//         .hi-av { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg,#4f46e5,#c084fc); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:14px; flex-shrink:0; }
+//         .hi-name { font-size: 13px; font-weight: 700; color: #f9fafb; }
+//         .hi-meta { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+//         .hi-badge-green { background: #dcfce7; color: #15803d; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 100px; margin-left: auto; }
+//         .trust-strip { background: #0d0c1a; border-top: 1px solid #1e1b38; padding: 16px 48px; display: flex; align-items: center; justify-content: center; gap: 28px; flex-wrap: wrap; position: relative; z-index: 2; }
+//         @media(max-width:600px){ .trust-strip { padding: 14px 20px; gap: 14px; } }
+//         .trust-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #6b7280; font-weight: 500; font-family: 'Plus Jakarta Sans', sans-serif; }
+//         .sec { padding: 88px 48px; font-family: 'Plus Jakarta Sans', sans-serif; }
+//         @media(max-width:600px){ .sec { padding: 56px 20px; } }
+//         .sec-in { max-width: 1100px; margin: 0 auto; }
+//         .eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 12px; background: #eef2ff; padding: 5px 12px; border-radius: 100px; }
+//         .sec-h2 { font-size: 36px; font-weight: 800; color: #0f172a; line-height: 1.15; margin-bottom: 12px; letter-spacing: -0.02em; }
+//         @media(max-width:600px){ .sec-h2 { font-size: 26px; } }
+//         .sec-p { font-size: 15px; color: #64748b; line-height: 1.7; max-width: 520px; margin-bottom: 44px; font-weight: 400; }
+//         @media(max-width:600px){ .sec-p { font-size: 14px; margin-bottom: 32px; } }
+//         .steps-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+//         @media(max-width:768px){ .steps-grid { grid-template-columns: 1fr; gap: 12px; } }
+//         .step-c { background: #fff; border: 1.5px solid #e2e8f0; border-radius: 20px; padding: 28px 24px; position: relative; overflow: hidden; transition: all 0.25s; }
+//         .step-c:hover { border-color: #c7d2fe; box-shadow: 0 16px 48px rgba(79,70,229,0.1); transform: translateY(-4px); }
+//         .step-ghost { position: absolute; top: -16px; right: 14px; font-size: 80px; font-weight: 900; line-height: 1; color: rgba(79,70,229,0.05); pointer-events: none; }
+//         .step-num { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; box-shadow: 0 4px 16px rgba(79,70,229,0.3); }
+//         .step-t { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+//         .step-d { font-size: 13px; color: #64748b; line-height: 1.75; font-weight: 400; }
+//         .feat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+//         @media(max-width:768px){ .feat-grid { grid-template-columns: 1fr; gap: 10px; } }
+//         .feat-c { background: linear-gradient(135deg, #fafafa 0%, #f8f5ff 100%); border: 1.5px solid #e2e8f0; border-radius: 18px; padding: 24px; transition: all 0.22s; }
+//         .feat-c:hover { border-color: #c7d2fe; transform: translateY(-3px); box-shadow: 0 12px 36px rgba(79,70,229,0.08); }
+//         .feat-ico { font-size: 28px; margin-bottom: 14px; }
+//         .feat-t { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 7px; }
+//         .feat-d { font-size: 13px; color: #64748b; line-height: 1.7; font-weight: 400; }
+//         .cats-g { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+//         @media(max-width:480px){ .cats-g { grid-template-columns: repeat(3,1fr); gap: 8px; } }
+//         .cat-c { border-radius: 14px; padding: 18px 10px; display: flex; flex-direction: column; align-items: center; gap: 7px; text-decoration: none; transition: all 0.2s; border: 1.5px solid transparent; }
+//         .cat-c:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+//         .cat-emo { font-size: 26px; }
+//         .cat-nm { font-size: 12px; font-weight: 600; text-align: center; }
+//         .cities-g { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+//         @media(max-width:768px){ .cities-g { grid-template-columns: repeat(2,1fr); } }
+//         @media(max-width:420px){ .cities-g { gap: 8px; } }
+//         .city-c { position: relative; height: 200px; border-radius: 18px; overflow: hidden; text-decoration: none; display: block; box-shadow: 0 4px 24px rgba(0,0,0,0.12); transition: transform 0.25s; }
+//         .city-c:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(0,0,0,0.18); }
+//         @media(max-width:600px){ .city-c { height: 140px; border-radius: 14px; } }
+//         .city-img { width:100%; height:100%; object-fit:cover; display:block; transition: transform 0.55s ease; }
+//         .city-c:hover .city-img { transform: scale(1.07); }
+//         .city-ov { position:absolute; inset:0; background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.1) 55%, transparent 100%); }
+//         .city-info { position:absolute; bottom:14px; left:14px; color:#fff; }
+//         .city-nm { font-size:16px; font-weight:700; line-height:1; }
+//         .city-ct { font-size:11px; opacity:.8; margin-top:3px; font-weight:500; }
+//         .test-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+//         @media(max-width:768px){ .test-grid { grid-template-columns: 1fr; gap: 12px; } }
+//         .test-c { background: #fff; border: 1.5px solid #e2e8f0; border-radius: 18px; padding: 24px; transition: all 0.22s; }
+//         .test-c:hover { border-color: #c7d2fe; box-shadow: 0 12px 36px rgba(79,70,229,0.08); transform: translateY(-3px); }
+//         .test-stars { color: #f59e0b; font-size: 14px; margin-bottom: 12px; letter-spacing: 2px; }
+//         .test-q { font-size: 13px; color: #374151; line-height: 1.75; margin-bottom: 18px; font-style: italic; font-weight: 400; }
+//         .test-au { display: flex; align-items: center; gap: 10px; }
+//         .test-av { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+//         .test-nm { font-size: 13px; font-weight: 700; color: #111; }
+//         .test-rl { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+//         .skel { background: linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 14px; }
+//         @keyframes shimmer { to { background-position: -200% 0; } }
+//         .cta-wrap { padding: 0 48px 88px; font-family: 'Plus Jakarta Sans', sans-serif; }
+//         @media(max-width:600px){ .cta-wrap { padding: 0 20px 56px; } }
+//         .cta-box { max-width: 1100px; margin: 0 auto; background: #07070f; border-radius: 24px; padding: 80px 48px; text-align: center; position: relative; overflow: hidden; border: 1px solid rgba(79,70,229,0.25); }
+//         @media(max-width:600px){ .cta-box { padding: 48px 20px; border-radius: 18px; } }
+//         .cta-glow { position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 500px; height: 400px; background: radial-gradient(circle, rgba(79,70,229,0.2) 0%, transparent 65%); pointer-events: none; }
+//         .cta-gl2 { position: absolute; bottom: -60px; left: 10%; width: 300px; height: 300px; background: radial-gradient(circle, rgba(192,132,252,0.12) 0%, transparent 65%); pointer-events: none; }
+//         .cta-grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 50px 50px; pointer-events: none; }
+//         .cta-h2 { font-size: 40px; font-weight: 800; color: #f9fafb; line-height: 1.1; margin-bottom: 14px; position: relative; z-index: 1; letter-spacing: -0.02em; }
+//         @media(max-width:600px){ .cta-h2 { font-size: 26px; } }
+//         .cta-h2 span { background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+//         .cta-p { font-size: 15px; color: #9ca3af; margin-bottom: 36px; position: relative; z-index: 1; font-weight: 400; }
+//         .cta-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; position: relative; z-index: 1; }
+//         .cta-btn-w { padding: 13px 28px; border-radius: 12px; background: #fff; color: #4f46e5; font-size: 14px; font-weight: 700; text-decoration: none; transition: all 0.2s; display: inline-block; }
+//         .cta-btn-w:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,255,255,0.2); }
+//         .cta-btn-b { padding: 13px 28px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,0.15); color: #d1d5db; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s; display: inline-block; }
+//         .cta-btn-b:hover { border-color: rgba(255,255,255,0.35); color: #fff; }
+
+//         /* ===================== FOOTER ===================== */
+//         .footer {
+//           background: #fafafa;
+//           border-top: 1px solid #e5e7eb;
+//           padding: 44px 48px 28px;
+//           font-family: 'Plus Jakarta Sans', sans-serif;
+//         }
+//         @media(max-width:600px){ .footer { padding: 32px 20px 20px; } }
+
+//         .footer-top {
+//           display: flex;
+//           justify-content: space-between;
+//           align-items: flex-start;
+//           flex-wrap: wrap;
+//           gap: 28px;
+//           margin-bottom: 36px;
+//         }
+//         @media(max-width:600px){
+//           .footer-top {
+//             display: grid;
+//             grid-template-columns: 1fr 1fr;
+//             gap: 20px;
+//           }
+//           .footer-brand { grid-column: span 2; }
+//           .footer-links-col:last-of-type { text-align: right; }
+//         }
+
+//         .footer-brand { max-width: 240px; }
+
+//         .footer-logo {
+//           display: flex; align-items: center; gap: 10px;
+//           text-decoration: none; margin-bottom: 10px;
+//         }
+//         .footer-logo-box {
+//           width: 30px; height: 30px; border-radius: 8px;
+//           background: linear-gradient(135deg,#4f46e5,#7c3aed);
+//           display: flex; align-items: center; justify-content: center;
+//           color: #fff; font-weight: 800; font-size: 12px; flex-shrink: 0;
+//         }
+//         .footer-logo-text { font-size: 15px; font-weight: 700; color: #111; }
+//         .footer-tagline { font-size: 12px; color: #9ca3af; line-height: 1.6; font-weight: 400; margin-bottom: 16px; }
+
+//         /* 🔥 SOCIAL — horizontal row, sirf icons */
+//         .footer-socials {
+//           display: flex;
+//           flex-direction: row;
+//           gap: 10px;
+//           margin-top: 4px;
+//         }
+//         .footer-socials a {
+//           display: flex;
+//           align-items: center;
+//           text-decoration: none;
+//           transition: opacity 0.2s, transform 0.2s;
+//         }
+//         .footer-socials a:hover { opacity: 0.85; transform: translateY(-2px); }
+//         .social-icon {
+//           width: 36px; height: 36px; border-radius: 10px;
+//           display: flex; align-items: center; justify-content: center;
+//           flex-shrink: 0;
+//         }
+//         .social-icon svg { width: 18px; height: 18px; fill: #fff; }
+//         .social-icon.ig { background: linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); }
+//         .social-icon.fb { background: #1877f2; }
+//         .social-icon.tw { background: #000; }
+
+//         /* Links columns */
+//         .footer-links-col { display: flex; flex-direction: column; gap: 10px; min-width: 130px; }
+//         .footer-links-col h4 { font-size: 12px; font-weight: 700; color: #111; margin-bottom: 2px; }
+//         .footer-links-col a { display: block; font-size: 13px; color: #9ca3af; text-decoration: none; margin-bottom: 0; transition: color 0.15s; font-weight: 400; }
+//         .footer-links-col a:hover { color: #4f46e5; }
+
+//         /* Bottom bar */
+//         .footer-bottom {
+//           border-top: 1px solid #e5e7eb;
+//           padding-top: 20px;
+//           display: flex;
+//           justify-content: space-between;
+//           align-items: center;
+//           flex-wrap: wrap;
+//           gap: 10px;
+//         }
+//         .footer-copy { font-size: 12px; color: #9ca3af; font-weight: 400; }
+//         .footer-link { color: #9ca3af; text-decoration: none; font-size: 12px; font-weight: 500; }
+//         .footer-link:hover { color: #4f46e5; }
+
+//         @media(max-width:600px){
+//           .footer-bottom {
+//             flex-direction: column;
+//             align-items: center;
+//             text-align: center;
+//             gap: 6px;
+//           }
+//           .footer-copy { font-size: 11px; }
+//           .footer-bottom span:last-child {
+//             display: flex; align-items: center;
+//             justify-content: center; gap: 8px;
+//           }
+//         }
+//       `}</style>
+
+//       {!isLoggedIn && (
+//         <nav className="lp-nav">
+//           <Link href="/" className="nav-logo">
+//             <img src="/logo.png" alt="collabzy" style={{height:"36px", width:"auto"}} />
+//           </Link>
+//           <div className="nav-right">
+//             <Link href="/login" className="nav-login">LogIn</Link>
+//             <Link href="/signup" className="nav-signup">SignUp →</Link>
+//           </div>
+//         </nav>
+//       )}
+
+//       <section className={isLoggedIn ? "hero-logged-in" : "hero-logged-out"}>
+//         <div className="hero-glow1" />
+//         <div className="hero-glow2" />
+//         <div className="hero-grid-lines" />
+//         <div className="hero-body">
+//           <div>
+//             <div className="hero-badge"><span className="hero-badge-dot" />🇮🇳 India's #1 Creator Marketplace</div>
+//             <h1 className="hero-h1">Where Brands<br />Meet <span className="hero-h1-grad">Top Creators</span></h1>
+//             <p className="hero-p">Connect with influencers, models & photographers across India. Launch campaigns, receive proposals, and grow — all in one platform.</p>
+//             <div className="hero-btns">
+//               {isLoggedIn ? (
+//                 <><Link href="/discovery" className="hbtn-primary">Go to Dashboard →</Link><Link href="/discovery" className="hbtn-outline">Browse Campaigns</Link></>
+//               ) : (
+//                 <><Link href="/join" className="hbtn-primary">Start as a Brand →</Link><Link href="/join" className="hbtn-outline">Join as Creator</Link></>
+//               )}
+//             </div>
+//             <div className="hero-stats">
+//               {[["10K+","Creators"],["500+","Campaigns"],["50+","Cities"],["₹2Cr+","Paid Out"]].map(([n,l]) => (
+//                 <div key={l}><div className="hstat-n">{n}</div><div className="hstat-l">{l}</div></div>
+//               ))}
+//             </div>
+//           </div>
+//           <div className="hero-imgs">
+//             <div>
+//               <div className="hi-card"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&q=80&auto=format&fit=crop" alt="Creator" /></div>
+//               <div className="hi-overlay-card"><div className="hi-av">R</div><div><div className="hi-name">Riya Sharma</div><div className="hi-meta">Fashion · Mumbai · 45K followers</div></div><span className="hi-badge-green">Active</span></div>
+//             </div>
+//             <div>
+//               <div className="hi-card" style={{marginTop:"40px"}}><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&q=80&auto=format&fit=crop" alt="Creator" /></div>
+//               <div className="hi-overlay-card"><div className="hi-av" style={{background:"linear-gradient(135deg,#0891b2,#7c3aed)"}}>A</div><div><div className="hi-name">Arjun Mehta</div><div className="hi-meta">Tech · Delhi · 82K followers</div></div><span className="hi-badge-green">Active</span></div>
+//             </div>
+//           </div>
+//         </div>
+//         <div className="trust-strip">
+//           {[["✓","Verified Creators"],["🔒","Secure Payments"],["💬","Real-time Chat"],["📊","Analytics"],["🌏","Pan-India"]].map(([ic,tx]) => (
+//             <div key={tx} className="trust-item"><span>{ic}</span><span>{tx}</span></div>
+//           ))}
+//         </div>
+//       </section>
+
+//       <section className="sec" style={{background:"#f8fafc"}}>
+//         <div className="sec-in">
+//           <div className="eyebrow">⚡ How It Works</div>
+//           <h2 className="sec-h2">From Signup to<br/>First Collab in Minutes</h2>
+//           <p className="sec-p">A seamless workflow designed for both brands and creators</p>
+//           <div className="steps-grid">
+//             {[
+//               {n:"1",t:"Create Your Profile",d:"Sign up, add your niche, city, followers & portfolio. Your profile is your brand — make it shine."},
+//               {n:"2",t:"Discover Campaigns",d:"Browse live campaigns filtered by category, budget & location. Find the perfect brand match."},
+//               {n:"3",t:"Apply & Get Paid",d:"Submit your bid & proposal. Get accepted, create content, and receive payment directly."},
+//             ].map(s => (
+//               <div key={s.n} className="step-c"><div className="step-ghost">{s.n}</div><div className="step-num">{s.n}</div><div className="step-t">{s.t}</div><p className="step-d">{s.d}</p></div>
+//             ))}
+//           </div>
+//         </div>
+//       </section>
+
+//       <section className="sec" style={{background:"#fff"}}>
+//         <div className="sec-in">
+//           <div className="eyebrow">🛠 Features</div>
+//           <h2 className="sec-h2">Everything You Need<br/>to Collaborate</h2>
+//           <p className="sec-p">Built for the Indian creator economy</p>
+//           <div className="feat-grid">
+//             {[
+//               {i:"🎯",t:"Smart Matching",d:"AI-powered campaign matching based on your niche, location, and follower count."},
+//               {i:"💬",t:"Real-time Messaging",d:"WhatsApp-style chat between brands and creators. Discuss, negotiate, collaborate."},
+//               {i:"📋",t:"Campaign Board",d:"Manage all your active campaigns with applications, status tracking, and analytics."},
+//               {i:"🔒",t:"Secure Payments",d:"Bid-based system with transparent platform fees. Know exactly what you'll earn."},
+//               {i:"📊",t:"Analytics Dashboard",d:"Track campaign performance, application rates, and earnings in one place."},
+//               {i:"🌟",t:"Verified Profiles",d:"All creators are verified with real follower counts and authentic portfolios."},
+//             ].map(f => (
+//               <div key={f.t} className="feat-c"><div className="feat-ico">{f.i}</div><div className="feat-t">{f.t}</div><p className="feat-d">{f.d}</p></div>
+//             ))}
+//           </div>
+//         </div>
+//       </section>
+
+//       <section className="sec" style={{background:"#f8fafc"}}>
+//         <div className="sec-in">
+//           <div className="eyebrow">🎨 Browse by Niche</div>
+//           <h2 className="sec-h2">Every Category</h2>
+//           <p className="sec-p">From fashion to fintech — find creators across all industries</p>
+//           {loadingMeta ? (
+//             <div className="cats-g">{Array.from({length:12}).map((_,i)=><div key={i} className="skel" style={{height:"80px"}}/>)}</div>
+//           ) : (
+//             <div className="cats-g">
+//               {categories.map((cat:any) => {
+//                 const nm = name(cat);
+//                 const key = nm.toLowerCase();
+//                 const m = catMeta[key] || {emoji:"✨", color:"#4f46e5", bg:"#eef2ff"};
+//                 return (
+//                   <Link key={nm} href="/login" className="cat-c" style={{background:m.bg}}>
+//                     <span className="cat-emo">{m.emoji}</span>
+//                     <span className="cat-nm" style={{color:m.color}}>{nm.charAt(0).toUpperCase()+nm.slice(1)}</span>
+//                   </Link>
+//                 );
+//               })}
+//             </div>
+//           )}
+//         </div>
+//       </section>
+
+//       <section className="sec" style={{background:"#fff"}}>
+//         <div className="sec-in">
+//           <div className="eyebrow">📍 Local Talent</div>
+//           <h2 className="sec-h2">Creators Across<br/>Every City</h2>
+//           <p className="sec-p">Hyper-local campaigns with creators who know your market</p>
+//           <div className="cities-g">
+//             {manualCities.map((city) => (
+//               <Link key={city.name} href="/login" className="city-c">
+//                 <img src={city.img} className="city-img" alt={city.name} />
+//                 <div className="city-ov" />
+//                 <div className="city-info">
+//                   <div className="city-nm">{city.name}</div>
+//                 </div>
+//               </Link>
+//             ))}
+//           </div>
+//         </div>
+//       </section>
+
+//       <section className="sec" style={{background:"#f8fafc"}}>
+//         <div className="sec-in">
+//           <div className="eyebrow">❤️ Loved By Creators</div>
+//           <h2 className="sec-h2">What They're Saying</h2>
+//           <p className="sec-p">Thousands of creators and brands trust CreatorBridge</p>
+//           <div className="test-grid">
+//             {[
+//               {q:"CreatorBridge helped me land my first brand deal within a week! The application process is so smooth.",au:"Priya Verma",rl:"Fashion Creator · Mumbai · 32K followers",av:"P",ac:"linear-gradient(135deg,#be185d,#9333ea)"},
+//               {q:"As a brand, we found 5 perfect creators for our campaign in just 2 days. The quality of applicants is amazing.",au:"Rahul Gupta",rl:"Marketing Head · TechCorp India",av:"R",ac:"linear-gradient(135deg,#4f46e5,#0891b2)"},
+//               {q:"The messaging feature makes collaboration so easy. I can negotiate and discuss deliverables all in one place.",au:"Ananya Singh",rl:"Lifestyle Creator · Delhi · 58K followers",av:"A",ac:"linear-gradient(135deg,#ea580c,#f59e0b)"},
+//             ].map(t => (
+//               <div key={t.au} className="test-c">
+//                 <div className="test-stars">★★★★★</div>
+//                 <p className="test-q">"{t.q}"</p>
+//                 <div className="test-au"><div className="test-av" style={{background:t.ac}}>{t.av}</div><div><div className="test-nm">{t.au}</div><div className="test-rl">{t.rl}</div></div></div>
+//               </div>
+//             ))}
+//           </div>
+//         </div>
+//       </section>
+
+//       <div className="cta-wrap">
+//         <div className="cta-box">
+//           <div className="cta-glow" /><div className="cta-gl2" /><div className="cta-grid-lines" />
+//           <h2 className="cta-h2">Ready to <span>Bridge the Gap?</span></h2>
+//           <p className="cta-p">Join 10,000+ creators and 500+ brands. Free to get started.</p>
+//           <div className="cta-btns">
+//             {isLoggedIn ? (
+//               <><Link href="/campaigns" className="cta-btn-w">Go to Dashboard →</Link><Link href="/discovery" className="cta-btn-b">Browse Campaigns</Link></>
+//             ) : (
+//               <><Link href="/join" className="cta-btn-w">Start for Free →</Link><Link href="/login" className="cta-btn-b">Already have an account</Link></>
+//             )}
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* ===================== FOOTER ===================== */}
+//       <footer className="footer">
+//         <div className="footer-top">
+
+//           {/* BRAND */}
+//           <div className="footer-brand">
+//             {/* <Link href="/" className="footer-logo">
+//               <img src="/favicon.png" alt="collabzy" style={{height:"32px", width:"auto"}} />
+//             </Link> */}
+             
+//             <Link href="/" className="footer-logo">
+//               <img src="/favicon.png" alt="collabzy" style={{height:"32px", width:"auto"}} />
+//               <span className="footer-logo-text">collabzy</span>
+//             </Link>
+
+//             <p className="footer-tagline">
+//               India's premier platform connecting brands with top creators.
+//             </p>
+
+//             <div className="footer-socials">
+//               <a href="https://www.instagram.com/collabzyofficial.in?igsh=eG11MXp0c2l4c3Vi&utm_source=qr" target="_blank" rel="noreferrer">
+//                 <span className="social-icon ig">
+//                   <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+//                 </span>
+//               </a>
+//               <a href="#" target="_blank" rel="noreferrer">
+//                 <span className="social-icon fb">
+//                   <svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+//                 </span>
+//               </a>
+//               <a href="#" target="_blank" rel="noreferrer">
+//                 <span className="social-icon tw">
+//                   <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+//                 </span>
+//               </a>
+//             </div>
+//           </div>
+
+//           {/* PLATFORM */}
+//           <div className="footer-links-col">
+//             <h4>Platform</h4>
+//             <Link href="/login">Browse Campaigns</Link>
+//             <Link href="/join">For Creators</Link>
+//             <Link href="/join">For Brands</Link>
+//           </div>
+
+//           {/* ACCOUNT */}
+//           <div className="footer-links-col">
+//             <h4>Account</h4>
+//             <Link href="/login">Log In</Link>
+//             <Link href="/join">Sign Up Free</Link>
+//             <Link href="/contact">Contact</Link>
+//           </div>
+
+//         </div>
+
+//         {/* BOTTOM */}
+//         <div className="footer-bottom">
+//           <span className="footer-copy">© 2026 collabzy. All rights reserved.</span>
+//           <span className="footer-copy">Made with ❤️ for Indian Creators</span>
+//           <span className="footer-copy" style={{display:"flex",alignItems:"center",gap:"16px",justifyContent:"center",flexWrap:"wrap"}}>
+//             <Link href="/terms" className="footer-link">Terms of Service</Link>
+//             <span style={{color:"#e5e7eb"}}>·</span>
+//             <Link href="/privacy" className="footer-link">Privacy Policy</Link>
+//           </span>
+//         </div>
+//       </footer>
+//     </>
+//   );
+// }
 
 
 // "use client";
