@@ -22,13 +22,49 @@ const CREATOR_PLAN_LIMITS: Record<string, { label: string; applies: number | "un
   pro_plus_year: { label: "Pro+",  applies: "unlimited", tokens: "unlimited"  },
 };
 
+// const toCanonical = (s: string): string => {
+//   if (!s) return "free";
+//   const v = s.toLowerCase().trim();
+//   if (v === "pro+" || v === "pro_plus" || v === "proplus") return "pro_plus";
+//   if (v === "pro+year" || v === "pro_plus_year" || v === "proplusyear") return "pro_plus_year";
+//   if (v === "proyear" || v === "pro_year") return "pro_year";
+//   if (v === "pro") return "pro";
+//   return "free";
+// };
+
+// const toCanonical = (s: string): string => {
+//   if (!s) return "free";
+//   const v = s.toLowerCase().trim();
+
+//   // ✅ backend → frontend mapping fix
+//   if (v === "pro_monthly") return "pro_monthly";
+//   if (v === "pro_plus_monthly") return "pro_plus_monthly";
+//   if (v === "pro_yearly") return "pro_yearly";
+//   if (v === "pro_plus_yearly") return "pro_plus_yearly";
+
+//   // fallback cases
+//   if (v === "pro") return "pro_monthly";
+//   if (v === "pro_plus") return "pro_plus_monthly";
+
+//   return "free";
+// };
+
 const toCanonical = (s: string): string => {
   if (!s) return "free";
   const v = s.toLowerCase().trim();
-  if (v === "pro+" || v === "pro_plus" || v === "proplus") return "pro_plus";
-  if (v === "pro+year" || v === "pro_plus_year" || v === "proplusyear") return "pro_plus_year";
-  if (v === "proyear" || v === "pro_year") return "pro_year";
+
+  // brand plans
+  if (v === "pro_monthly") return "pro_monthly";
+  if (v === "pro_plus_monthly") return "pro_plus_monthly";
+  if (v === "pro_yearly") return "pro_yearly";
+  if (v === "pro_plus_yearly") return "pro_plus_yearly";
+
+  // creator mapping fix 👇
   if (v === "pro") return "pro";
+  if (v === "pro_plus") return "pro_plus";
+  if (v === "pro_year") return "pro_year";
+  if (v === "pro_plus_year") return "pro_plus_year";
+
   return "free";
 };
 
@@ -62,6 +98,7 @@ export default function Navbar() {
   const router   = useRouter();
 
   const [user, setUser]               = useState<any>(null);
+  const planKey = toCanonical(user?.plan);
   const [profile, setProfile]         = useState<any>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -259,22 +296,60 @@ export default function Navbar() {
     return { plan, campsLeft, tokensLeft };
   };
 
+  // const getCreatorPlanStats = () => {
+  //   const stored  = JSON.parse(localStorage.getItem("cb_user") || "{}");
+  //   const subbed  = stored.isSubscribed ?? false;
+  //   const ap      = stored.activePlan ?? null;
+  //   const canon   = subbed && ap ? toCanonical(ap) : "free";
+  //   const plan    = CREATOR_PLAN_LIMITS[canon] ?? CREATOR_PLAN_LIMITS["free"];
+  //   const isUnlim = plan.applies === "unlimited";
+  //   const appliesLeft: number | "∞" = isUnlim ? "∞" : Math.max(0, (plan.applies as number) - appliesUsed);
+  //   const planTokens   = plan.tokens === "unlimited" ? 0 : (plan.tokens as number);
+  //   const storedBits   = bits ?? stored.bits ?? planTokens;
+  //   const bitsLeft     = subbed ? (storedBits <= planTokens ? storedBits : planTokens) : storedBits;
+  //   const tokensLeft: number | "∞" = plan.tokens === "unlimited" ? "∞" : Math.max(0, bitsLeft);
+  //   const tokensTotal  = plan.tokens === "unlimited" ? "∞" : plan.tokens;
+  //   const appliesTotal = plan.applies === "unlimited" ? "∞" : plan.applies;
+  //   return { plan, appliesLeft, appliesTotal, tokensLeft, tokensTotal, isUnlim };
+  // };
+
   const getCreatorPlanStats = () => {
-    const stored  = JSON.parse(localStorage.getItem("cb_user") || "{}");
-    const subbed  = stored.isSubscribed ?? false;
-    const ap      = stored.activePlan ?? null;
-    const canon   = subbed && ap ? toCanonical(ap) : "free";
-    const plan    = CREATOR_PLAN_LIMITS[canon] ?? CREATOR_PLAN_LIMITS["free"];
-    const isUnlim = plan.applies === "unlimited";
-    const appliesLeft: number | "∞" = isUnlim ? "∞" : Math.max(0, (plan.applies as number) - appliesUsed);
-    const planTokens   = plan.tokens === "unlimited" ? 0 : (plan.tokens as number);
-    const storedBits   = bits ?? stored.bits ?? planTokens;
-    const bitsLeft     = subbed ? (storedBits <= planTokens ? storedBits : planTokens) : storedBits;
-    const tokensLeft: number | "∞" = plan.tokens === "unlimited" ? "∞" : Math.max(0, bitsLeft);
-    const tokensTotal  = plan.tokens === "unlimited" ? "∞" : plan.tokens;
-    const appliesTotal = plan.applies === "unlimited" ? "∞" : plan.applies;
-    return { plan, appliesLeft, appliesTotal, tokensLeft, tokensTotal, isUnlim };
+  const stored  = JSON.parse(localStorage.getItem("cb_user") || "{}");
+  const subbed  = stored.isSubscribed ?? false;
+  const ap      = stored.activePlan ?? null;
+
+  const canon   = subbed && ap ? toCanonical(ap) : "free";
+  const plan    = CREATOR_PLAN_LIMITS[canon] ?? CREATOR_PLAN_LIMITS["free"];
+
+  const isUnlim = plan.applies === "unlimited";
+
+  const appliesLeft: number | "∞" = isUnlim
+    ? "∞"
+    : Math.max(0, (plan.applies as number) - appliesUsed);
+
+  const planTokens   = plan.tokens === "unlimited" ? Infinity : Number(plan.tokens);
+  const storedBits   = Number(bits ?? stored.bits ?? planTokens);
+
+  let tokensLeft: number | "∞";
+
+  if (plan.tokens === "unlimited") {
+    tokensLeft = "∞";
+  } else {
+    tokensLeft = Math.max(0, Math.min(storedBits, planTokens));
+  }
+
+  const tokensTotal  = plan.tokens === "unlimited" ? "∞" : plan.tokens;
+  const appliesTotal = plan.applies === "unlimited" ? "∞" : plan.applies;
+
+  return {
+    plan,
+    appliesLeft,
+    appliesTotal,
+    tokensLeft,
+    tokensTotal,
+    isUnlim
   };
+};
 
   const handleLogout = () => {
     const stored = localStorage.getItem("cb_user");
