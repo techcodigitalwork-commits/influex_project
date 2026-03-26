@@ -258,7 +258,7 @@ export default function ViewProfile() {
               ✏️ Edit
             </button>
             {!isBrand && (
-              <button className="vp-edit-btn vp-banner-edit" onClick={() => router.push("/bank-details")}
+              <button className="vp-edit-btn vp-banner-edit" onClick={() => router.push("/Bankdetails")}
                 style={{ background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)" }}>
                 🏦 Bank
               </button>
