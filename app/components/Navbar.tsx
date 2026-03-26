@@ -111,14 +111,32 @@ export default function Navbar() {
   const [bits, setBits]               = useState<number | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const storedUser = localStorage.getItem("cb_user");
-    if (!storedUser) { setUser(null); setProfile(null); setUnreadCount(0); return; }
-    const parsedUser = JSON.parse(storedUser);
-    const token = parsedUser.token || localStorage.getItem("token");
-    if (!token) { setUser(null); setProfile(null); return; }
+    // if (typeof window === "undefined") return;
+    // const storedUser = localStorage.getItem("cb_user");
+    // if (!storedUser) { setUser(null); setProfile(null); setUnreadCount(0); return; }
+    // const parsedUser = JSON.parse(storedUser);
+    // const token = parsedUser.token || localStorage.getItem("token");
+    // if (!token) { setUser(null); setProfile(null); return; }
 
-    setUser(parsedUser);
+    // setUser(parsedUser);
+
+     if (typeof window === "undefined") return;
+  const storedUser = localStorage.getItem("cb_user");
+  if (!storedUser) { setUser(null); setProfile(null); setUnreadCount(0); return; }
+  const parsedUser = JSON.parse(storedUser);
+
+  // ✅ Fix for missing activePlan
+  if (parsedUser.isSubscribed && !parsedUser.activePlan) {
+    parsedUser.activePlan = "pro_monthly";
+    localStorage.setItem("cb_user", JSON.stringify(parsedUser));
+  }
+
+  const token = parsedUser.token || localStorage.getItem("token");
+  if (!token) { setUser(null); setProfile(null); return; }
+
+  setUser(parsedUser);
+
+
 
     cachedFetch(`${API_BASE}/profile/me`, token).then(data => {
       if (data?.success && data.profile) setProfile(data.profile);
@@ -510,11 +528,11 @@ export default function Navbar() {
                           const applyColor = appliesLeft === "∞" ? "#16a34a" : (appliesLeft as number) === 0 ? "#ef4444" : (appliesLeft as number) <= 3 ? "#f59e0b" : "#4f46e5";
                           return (
                             <div className="nav-plan-box">
-                              <div className="nav-plan-stat">
+                              {/* <div className="nav-plan-stat">
                                 <div className="nav-plan-stat-label">Applies</div>
                                 <div className="nav-plan-stat-val" style={{ color: applyColor }}>{fmtNum(appliesLeft)}</div>
                                 <div className="nav-plan-stat-sub">of {fmtNum(appliesTotal)} left</div>
-                              </div>
+                              </div> */}
                               <div className="nav-plan-stat">
                                 <div className="nav-plan-stat-label">Tokens</div>
                                 <div className="nav-plan-stat-val" style={{ color: "#7c3aed" }}>{fmtNum(tokensLeft)}</div>
@@ -534,11 +552,11 @@ export default function Navbar() {
                           const campColor = campsLeft === 0 ? "#ef4444" : campsLeft <= 2 ? "#f59e0b" : "#4f46e5";
                           return (
                             <div className="nav-plan-box">
-                              <div className="nav-plan-stat">
+                              {/* <div className="nav-plan-stat">
                                 <div className="nav-plan-stat-label">Campaigns</div>
                                 <div className="nav-plan-stat-val" style={{ color: campColor }}>{campsLeft}</div>
                                 <div className="nav-plan-stat-sub">of {plan.campaigns} left</div>
-                              </div>
+                              </div> */}
                               <div className="nav-plan-stat">
                                 <div className="nav-plan-stat-label">Tokens</div>
                                 <div className="nav-plan-stat-val" style={{ color: "#7c3aed" }}>{fmtNum(tokensLeft)}</div>
