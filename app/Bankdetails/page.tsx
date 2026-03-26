@@ -63,7 +63,7 @@ export default function BankDetailsPage() {
 
     try {
       // STEP 1: create contact
-      const contactRes = await fetch(`${API_BASE}/payout/create-contact`, {
+      const contactRes = await fetch(`${API_BASE}/payment/create-contact`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: form.name, email: form.email }),
@@ -72,7 +72,7 @@ export default function BankDetailsPage() {
       if (!contactRes.ok) throw new Error(contactData.message || "Contact creation failed.");
 
       // STEP 2: create fund account
-      const fundRes = await fetch(`${API_BASE}/payout/create-fund-account`, {
+      const fundRes = await fetch(`${API_BASE}/payment/create-fund-account`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: form.name, account_number: form.account_number, ifsc: form.ifsc.toUpperCase() }),
