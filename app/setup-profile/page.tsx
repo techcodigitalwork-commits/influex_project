@@ -53,7 +53,12 @@ function PortfolioSection() {
           const fallback = await fetch(`${API_BASE}/posts`, { headers: { Authorization: `Bearer ${token}` } });
           const d = await fallback.json();
           const allPosts: PortfolioPost[] = d.data || d.posts || [];
-          const mine = currentUserId ? allPosts.filter(p => (p.user || p.userId) === currentUserId) : allPosts;
+          // const mine = currentUserId ? allPosts.filter(p => (p.user || p.userId) === currentUserId) : allPosts;
+          const mine = currentUserId
+  ? allPosts.filter(p => 
+      (typeof p.user === "object" ? p.user._id : p.user || p.userId) === currentUserId
+    )
+  : allPosts;
           return { success: true, data: mine };
         }
         if (!res.ok) throw new Error("Failed");

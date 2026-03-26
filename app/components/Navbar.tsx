@@ -134,6 +134,40 @@ export default function Navbar() {
   const [appliesUsed, setAppliesUsed] = useState(0);
   const [bits, setBits]             = useState<number | null>(null);
 
+
+
+  useEffect(() => {
+  if (typeof window === "undefined") return;
+  
+  // ✅ AUTO FIX - mobile/desktop dono pe kaam karega
+  const stored = localStorage.getItem("cb_user");
+  if (!stored) return;
+  const parsed = JSON.parse(stored);
+  
+  if (parsed.isSubscribed === true) {
+    const planDbMap: Record<string, string> = {
+      "pro":           "pro_monthly",
+      "pro_plus":      "pro_plus_monthly", 
+      "pro_year":      "pro_yearly",
+      "pro_plus_year": "pro_plus_yearly",
+    };
+    
+    const rawPlan = parsed.activePlan || parsed.plan || "";
+    const fixedPlan = planDbMap[rawPlan] || rawPlan;
+    
+    // Sirf tab update karo jab galat value ho
+    if (fixedPlan !== rawPlan || !parsed.planActivatedAt) {
+      const updated = {
+        ...parsed,
+        activePlan: fixedPlan,
+        plan: fixedPlan,
+        planActivatedAt: parsed.planActivatedAt || new Date().toISOString(),
+      };
+      localStorage.setItem("cb_user", JSON.stringify(updated));
+    }
+  }
+}, []); // ← sirf ek baar on mount
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const storedUser = localStorage.getItem("cb_user");
