@@ -624,7 +624,7 @@ const [backendSubscribed, setBackendSubscribed] = useState(false);
                         })()}
 
                         {isBrand && (() => {
-                          const { plan, campsLeft, tokensLeft } = getBrandPlanStats();
+                          const { plan, tokensLeft } = getBrandPlanStats();
                           return (
                             <div className="nav-plan-box">
                               <div className="nav-plan-stat">
