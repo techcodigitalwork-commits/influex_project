@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 const API          = "https://api.collabzy.in/api";
-const RAZORPAY_KEY = "rzp_test_SL7M2uHDyhrU4A";
+const RAZORPAY_KEY = "rzp_live_SVOzjhbjcfQiiY";
 
 function DealDetailPageInner() {
   const { id }   = useParams();
