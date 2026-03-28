@@ -81,95 +81,250 @@ export default function InfluencerPortfolio() {
   const reelSlotsRemaining = Math.max(0, MAX_REELS - existingReels - reels.length);
   const postSlotsRemaining = Math.max(0, MAX_POSTS - existingPosts - posts.length);
 
+  // const uploadFile = useCallback(
+  //   async (
+  //     mediaFile: MediaFile,
+  //     setter: React.Dispatch<React.SetStateAction<MediaFile[]>>,
+  //     type: "reel" | "post"
+  //   ) => {
+  //     const err = validateFile(mediaFile.file, type);
+  //     if (err) {
+  //       setter(prev => prev.map(f => f.id === mediaFile.id ? { ...f, uploading: false, error: err } : f));
+  //       return;
+  //     }
+
+  //     setter(prev => prev.map(f => f.id === mediaFile.id ? { ...f, uploading: true, progress: 0, error: undefined } : f));
+
+  //     const formData = new FormData();
+  //     const isReel = type === "reel";
+  //     formData.append(isReel ? "videos" : "image", mediaFile.file);
+
+  //     try {
+  //       const token = getToken();
+  //       if (!token) throw new Error("Not logged in. Please login again.");
+
+  //       const endpoint = isReel ? `${API_BASE}/create-post` : `${API_BASE}/upload/image`;
+
+  //       const progressInterval = setInterval(() => {
+  //         setter(prev => prev.map(f =>
+  //           f.id === mediaFile.id && f.progress < 85
+  //             ? { ...f, progress: f.progress + 8 }
+  //             : f
+  //         ));
+  //       }, 400);
+
+  //       let res: Response;
+  //       try {
+  //         res = await fetch(endpoint, {
+  //           method: "POST",
+  //           headers: { Authorization: `Bearer ${token}` },
+  //           body: formData,
+  //         });
+  //       } catch {
+  //         clearInterval(progressInterval);
+  //         throw new Error("Network error. Check your connection.");
+  //       }
+
+  //       clearInterval(progressInterval);
+
+  //       let data: any = {};
+  //       try { data = await res.json(); } catch { data = { success: false, message: `Server error (${res.status})` }; }
+
+  //       if (!res.ok || !data.success) throw new Error(data.message || `Upload failed (${res.status})`);
+
+  //       const url = isReel
+  //         ? data.urls?.[0] || data.url || data.post?.videoUrl || ""
+  //         : data.url || "";
+
+  //       if (!isReel && url) {
+  //         const postData = new FormData();
+  //         postData.append("images", url);
+  //         try {
+  //           await fetch(`${API_BASE}/create-post`, {
+  //             method: "POST",
+  //             headers: { Authorization: `Bearer ${token}` },
+  //             body: postData,
+  //             console.log("📦 Selected file size:", file.size / (1024 * 1024), "MB");
+  //           });
+  //           // ✅ update existing count after successful DB save
+  //           setExistingPosts(prev => prev + 1);
+  //         } catch {}
+  //       }
+
+  //       if (isReel) {
+  //         // ✅ update existing reel count after upload
+  //         setExistingReels(prev => prev + 1);
+  //       }
+
+  //       setter(prev => prev.map(f =>
+  //         f.id === mediaFile.id
+  //           ? { ...f, uploading: false, uploaded: true, url, progress: 100, error: undefined }
+  //           : f
+  //       ));
+  //     } catch (err: any) {
+  //       setter(prev => prev.map(f =>
+  //         f.id === mediaFile.id
+  //           ? { ...f, uploading: false, uploaded: false, error: err.message, progress: 0 }
+  //           : f
+  //       ));
+  //     }
+  //   },
+  //   []
+  // );
+
   const uploadFile = useCallback(
-    async (
-      mediaFile: MediaFile,
-      setter: React.Dispatch<React.SetStateAction<MediaFile[]>>,
-      type: "reel" | "post"
-    ) => {
-      const err = validateFile(mediaFile.file, type);
-      if (err) {
-        setter(prev => prev.map(f => f.id === mediaFile.id ? { ...f, uploading: false, error: err } : f));
-        return;
-      }
+  async (
+    mediaFile: MediaFile,
+    setter: React.Dispatch<React.SetStateAction<MediaFile[]>>,
+    type: "reel" | "post"
+  ) => {
+    console.log("🚀 Upload started:", { mediaFile, type });
 
-      setter(prev => prev.map(f => f.id === mediaFile.id ? { ...f, uploading: true, progress: 0, error: undefined } : f));
+    const err = validateFile(mediaFile.file, type);
+    if (err) {
+      console.log("❌ Validation error:", err);
+      setter(prev =>
+        prev.map(f =>
+          f.id === mediaFile.id
+            ? { ...f, uploading: false, error: err }
+            : f
+        )
+      );
+      return;
+    }
 
-      const formData = new FormData();
-      const isReel = type === "reel";
-      formData.append(isReel ? "videos" : "image", mediaFile.file);
+    console.log("📦 File size:", mediaFile.file.size / (1024 * 1024), "MB");
 
-      try {
-        const token = getToken();
-        if (!token) throw new Error("Not logged in. Please login again.");
+    setter(prev =>
+      prev.map(f =>
+        f.id === mediaFile.id
+          ? { ...f, uploading: true, progress: 0, error: undefined }
+          : f
+      )
+    );
 
-        const endpoint = isReel ? `${API_BASE}/create-post` : `${API_BASE}/upload/image`;
+    const formData = new FormData();
+    const isReel = type === "reel";
+    formData.append(isReel ? "videos" : "image", mediaFile.file);
 
-        const progressInterval = setInterval(() => {
-          setter(prev => prev.map(f =>
+    try {
+      const token = getToken();
+      console.log("🔑 Token:", token);
+
+      if (!token) throw new Error("Not logged in. Please login again.");
+
+      const endpoint = isReel
+        ? `${API_BASE}/create-post`
+        : `${API_BASE}/upload/image`;
+
+      console.log("🌐 Endpoint:", endpoint);
+
+      const progressInterval = setInterval(() => {
+        setter(prev =>
+          prev.map(f =>
             f.id === mediaFile.id && f.progress < 85
               ? { ...f, progress: f.progress + 8 }
               : f
-          ));
-        }, 400);
+          )
+        );
+      }, 400);
 
-        let res: Response;
+      let res: Response;
+
+      try {
+        console.log("📤 Sending request...");
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        console.log("📥 Response received:", res.status);
+      } catch (error) {
+        clearInterval(progressInterval);
+        console.log("❌ Network error:", error);
+        throw new Error("Network error. Check your connection.");
+      }
+
+      clearInterval(progressInterval);
+
+      let data: any = {};
+      try {
+        data = await res.json();
+        console.log("📦 Response data:", data);
+      } catch (e) {
+        console.log("❌ JSON parse error:", e);
+        data = { success: false, message: `Server error (${res.status})` };
+      }
+
+      if (!res.ok || !data.success) {
+        console.log("❌ Upload failed:", data.message);
+        throw new Error(data.message || `Upload failed (${res.status})`);
+      }
+
+      const url = isReel
+        ? data.urls?.[0] || data.url || data.post?.videoUrl || ""
+        : data.url || "";
+
+      console.log("✅ Uploaded URL:", url);
+
+      if (!isReel && url) {
+        const postData = new FormData();
+        postData.append("images", url);
+
         try {
-          res = await fetch(endpoint, {
+          console.log("📤 Saving image URL to DB...");
+          await fetch(`${API_BASE}/create-post`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` },
-            body: formData,
+            body: postData,
           });
-        } catch {
-          clearInterval(progressInterval);
-          throw new Error("Network error. Check your connection.");
+          console.log("✅ Image saved to DB");
+
+          setExistingPosts(prev => prev + 1);
+        } catch (e) {
+          console.log("❌ Error saving image to DB:", e);
         }
-
-        clearInterval(progressInterval);
-
-        let data: any = {};
-        try { data = await res.json(); } catch { data = { success: false, message: `Server error (${res.status})` }; }
-
-        if (!res.ok || !data.success) throw new Error(data.message || `Upload failed (${res.status})`);
-
-        const url = isReel
-          ? data.urls?.[0] || data.url || data.post?.videoUrl || ""
-          : data.url || "";
-
-        if (!isReel && url) {
-          const postData = new FormData();
-          postData.append("images", url);
-          try {
-            await fetch(`${API_BASE}/create-post`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-              body: postData,
-            });
-            // ✅ update existing count after successful DB save
-            setExistingPosts(prev => prev + 1);
-          } catch {}
-        }
-
-        if (isReel) {
-          // ✅ update existing reel count after upload
-          setExistingReels(prev => prev + 1);
-        }
-
-        setter(prev => prev.map(f =>
-          f.id === mediaFile.id
-            ? { ...f, uploading: false, uploaded: true, url, progress: 100, error: undefined }
-            : f
-        ));
-      } catch (err: any) {
-        setter(prev => prev.map(f =>
-          f.id === mediaFile.id
-            ? { ...f, uploading: false, uploaded: false, error: err.message, progress: 0 }
-            : f
-        ));
       }
-    },
-    []
-  );
+
+      if (isReel) {
+        console.log("🎬 Reel uploaded successfully");
+        setExistingReels(prev => prev + 1);
+      }
+
+      setter(prev =>
+        prev.map(f =>
+          f.id === mediaFile.id
+            ? {
+                ...f,
+                uploading: false,
+                uploaded: true,
+                url,
+                progress: 100,
+                error: undefined,
+              }
+            : f
+        )
+      );
+    } catch (err: any) {
+      console.log("🔥 Final error:", err.message);
+
+      setter(prev =>
+        prev.map(f =>
+          f.id === mediaFile.id
+            ? {
+                ...f,
+                uploading: false,
+                uploaded: false,
+                error: err.message,
+                progress: 0,
+              }
+            : f
+        )
+      );
+    }
+  },
+  []
+);
 
   const handleReelSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
