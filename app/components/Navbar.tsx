@@ -114,21 +114,7 @@ export default function Navbar() {
       }).catch(() => {});
 
 
-      fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-  .then(r => r.json())
-  .then(data => {
-    if (data?.success && data.user) {
-      const updatedUser = { 
-        ...parsedUser, 
-        isSubscribed: data.user.isSubscribed,
-        plan: data.user.plan || data.user.activePlan,
-        bits: data.user.bits,
-      };
-      localStorage.setItem("cb_user", JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      setBits(Number(updatedUser.bits));
-    }
-  }).catch(() => {});
+      
 
     if (parsedUser.role?.toLowerCase() === "brand") {
       fetch(`${API_BASE}/campaigns/my`, { headers: { Authorization: `Bearer ${token}` } })

@@ -75,9 +75,33 @@ function ResetPasswordForm() {
 
           {/* Logo */}
           <div style={{textAlign:"center",marginBottom:32}}>
-            <div style={{width:85,height:32,background:"linear-gradient(135deg,#4f46e5,#7c3aed)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:600,fontSize:12,margin:"0 auto 12px",boxShadow:"0 4px 12px rgba(79,70,229,0.25)"}}>
+            {/* <div style={{width:85,height:32,background:"linear-gradient(135deg,#4f46e5,#7c3aed)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:600,fontSize:12,margin:"0 auto 12px",boxShadow:"0 4px 12px rgba(79,70,229,0.25)"}}>
               Collabzy
-            </div>
+            </div> */}
+            <div
+  style={{
+    width:120,
+    height:50,
+    borderRadius:10,
+    display:"flex",
+    alignItems:"center",
+    justifyContent:"center",
+    margin:"0 auto 12px",
+    boxShadow:"0 4px 12px rgba(79,70,229,0.25)",
+    overflow:"hidden",
+    background:"#fff" // optional
+  }}
+>
+  <img
+    src="/collabzy-logo.png" // 👈 apni image ka path
+    alt="logo"
+    style={{
+      width:"100%",
+      height:"100%",
+      objectFit:"contain"
+    }}
+  />
+</div>
             <h2 style={{fontSize:26,fontWeight:800,color:"#0f172a",margin:"0 0 6px"}}>Set New Password</h2>
             <p style={{color:"#64748b",fontSize:14,margin:0}}>Choose a strong password for your account</p>
           </div>
