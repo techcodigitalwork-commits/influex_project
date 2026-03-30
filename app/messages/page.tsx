@@ -91,6 +91,27 @@ function MessagesInner() {
     }
   }, []);
 
+// Browser back button intercept — mobile pe
+useEffect(() => {
+  if (!activeConv) return;
+  
+  // Jab chat open ho, history mein ek entry push karo
+  window.history.pushState({ chatOpen: true }, "");
+  
+  const handlePopState = (e: PopStateEvent) => {
+    // Back press = chat band karo, sidebar dikhao
+    setShowSidebar(true);
+    setActiveConv(null);
+    activeConvRef.current = null;
+    setMessages([]);
+    setBannedWord(null);
+    setShowWarning(false);
+  };
+  
+  window.addEventListener("popstate", handlePopState);
+  return () => window.removeEventListener("popstate", handlePopState);
+}, [activeConv]);
+
   const dispatchMsgCount = (counts: Record<string, number>) => {
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     msgChannel?.postMessage({ type: "msg_unread_update", count: total });
