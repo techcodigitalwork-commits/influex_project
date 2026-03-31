@@ -192,7 +192,9 @@ function MessagesInner() {
         setUnreadCounts(updated);
 
         // ✅ Navbar ko LIVE update karo — localStorage + events
-        const total = Object.values(updated).reduce((a, b) => a + b, 0);
+        // const total = Object.values(updated).reduce((a, b) => a + b, 0);
+        const total = Object.values(updated)
+  .reduce((a, b) => (a as number) + (b as number), 0);
         syncMsgCount(total);
 
         // Conversation top pe le jao
