@@ -16,7 +16,8 @@ interface Creator {
   followers?: number | string;
   platform?: string;
   createdAt?: string;
-  user?: string;
+  // user?: string;
+   user?: string | { _id: string };
 }
 
 type ConnectStatus = "none" | "pending" | "accepted";
