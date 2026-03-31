@@ -245,19 +245,47 @@ useEffect(() => {
   useEffect(() => {
     if (!token || !activeConv) return;
     activeConvRef.current = activeConv;
-    const loadMessages = () => {
-      fetch(`${API}/conversations/messages/${activeConv._id}`, {
-        headers: { Authorization: `Bearer ${tokenRef.current || token}` },
-      }).then(r => r.json()).then(data => {
-        const incoming = data?.data || [];
-        if (incoming.length > 0) {
-          setMessages(prev => {
-            if (incoming.length === prev.filter(m => !m._temp).length) return prev;
-            return incoming;
-          });
-        }
-      }).catch(console.error);
-    };
+    // const loadMessages = () => {
+    //   fetch(`${API}/conversations/messages/${activeConv._id}`, {
+    //     headers: { Authorization: `Bearer ${tokenRef.current || token}` },
+    //   }).then(r => r.json()).then(data => {
+    //     const incoming = data?.data || [];
+    //     if (incoming.length > 0) {
+    //       setMessages(prev => {
+    //         if (incoming.length === prev.filter(m => !m._temp).length) return prev;
+    //         return incoming;
+    //       });
+    //     }
+    //   }).catch(console.error);
+    // };
+     
+   const convId = activeConv._id; // ✅ SIRF YEH LINE ADD KARO UPAR
+
+const loadMessages = () => {
+  fetch(`${API}/conversations/messages/${convId}`, {  // activeConv._id → convId
+    headers: { Authorization: `Bearer ${tokenRef.current || token}` },
+  }).then(r => r.json()).then(data => {
+    const incoming = data?.data || [];
+    if (incoming.length > 0) {
+      setMessages(prev => {
+        if (incoming.length === prev.filter(m => !m._temp).length) return prev;
+        return incoming;
+      });
+    }
+
+    setUnreadCounts(prev => {
+      if (!prev[convId]) return prev;  // activeConv._id → convId
+      const updated = { ...prev };
+      delete updated[convId];          // activeConv._id → convId
+      dispatchMsgCount(updated);
+      return updated;
+    });
+
+  }).catch(console.error);
+};
+
+
+
     loadMessages();
     const poll = setInterval(loadMessages, 3000);
     return () => clearInterval(poll);
@@ -350,18 +378,39 @@ useEffect(() => {
     } finally { setSending(false); }
   };
 
-  const openConv = (conv: any) => {
-    setActiveConv(conv);
-    setShowSidebar(false);
-    setBannedWord(null);
-    setShowWarning(false);
-    setUnreadCounts(prev => {
-      const updated = { ...prev };
-      delete updated[conv._id];
-      dispatchMsgCount(updated);
-      return updated;
-    });
-  };
+  // const openConv = (conv: any) => {
+  //   setActiveConv(conv);
+  //   setShowSidebar(false);
+  //   setBannedWord(null);
+  //   setShowWarning(false);
+  //   setUnreadCounts(prev => {
+  //     const updated = { ...prev };
+  //     delete updated[conv._id];
+  //     dispatchMsgCount(updated);
+  //     return updated;
+  //   });
+  // };
+
+const openConv = (conv: any) => {
+    const convId = conv._id;
+  setActiveConv(conv);
+  setShowSidebar(false);
+  setBannedWord(null);
+  setShowWarning(false);
+  setUnreadCounts(prev => {
+    const updated = { ...prev };
+    delete updated[conv._id];
+    dispatchMsgCount(updated);
+    return updated;
+  });
+
+  // ✅ YEH ADD KARO
+  fetch(`${API}/conversations/read/${conv._id}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tokenRef.current}` },
+  }).catch(() => {});
+};
+
 
   const handleProfileClick = async () => {
     const other  = activeConv ? getOtherParticipant(activeConv) : null;
