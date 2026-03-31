@@ -734,9 +734,9 @@ const handleUnlockEmail = async (userId: string) => {
         // Backend returns "id" field — use _id which we normalized from id
         // const creatorUserId  = (modalCreator as any).userId || (modalCreator as any).user || id;
         const creatorUserId =
-  typeof modalCreator.user === "string"
-    ? modalCreator.user
-    : modalCreator.user?._id || modalCreator._id;
+        typeof modalCreator.user === "string"
+        ? modalCreator.user
+        : modalCreator.user?._id || modalCreator._id;
         const emailUnlocked  = unlockedEmails[id];
         const igUnlocked     = unlockedInstagrams[id];
         const isUnlockEmail  = unlocking === `email_${id}`;
