@@ -162,24 +162,63 @@ useEffect(() => {
         }
       } else if (!isMe && msgConvId) {
         setUnreadCounts(prev => {
-          const updated = { ...prev, [msgConvId]: (prev[msgConvId] || 0) + 1 };
-          dispatchMsgCount(updated);
-          return updated;
-        });
+  const updated = { ...prev, [msgConvId]: (prev[msgConvId] || 0) + 1 };
+
+  // 👇 force re-render conversations
+  setConversations(prevConvs => [...prevConvs]);
+
+  dispatchMsgCount(updated);
+  return updated;
+});
+        // setUnreadCounts(prev => {
+        //   const updated = { ...prev, [msgConvId]: (prev[msgConvId] || 0) + 1 };
+        //   dispatchMsgCount(updated);
+        //   return updated;
+        // });
+        // setConversations(prev => {
+        //   const idx = prev.findIndex(c => c._id?.toString() === msgConvId);
+        //   if (idx <= 0) return prev;
+        //   const updated = [...prev];
+        //   const [moved] = updated.splice(idx, 1);
+        //   return [moved, ...updated];
+        // });
+
         setConversations(prev => {
-          const idx = prev.findIndex(c => c._id?.toString() === msgConvId);
-          if (idx <= 0) return prev;
-          const updated = [...prev];
-          const [moved] = updated.splice(idx, 1);
-          return [moved, ...updated];
-        });
+  const idx = prev.findIndex(c => c._id?.toString() === msgConvId);
+
+  if (idx === -1) return prev; // ❗ correct check
+
+  const updated = [...prev];
+  const [moved] = updated.splice(idx, 1);
+
+  return [
+    {
+      ...moved,
+      lastMessage: msg.text,
+      updatedAt: msg.createdAt,
+    },
+    ...updated,
+  ];
+});
       }
-      setConversations(prev =>
-        prev.map(c => c._id?.toString() === msgConvId
-          ? { ...c, lastMessage: msg.text, updatedAt: msg.createdAt }
-          : c
-        )
-      );
+      // setConversations(prev =>
+      //   prev.map(c => c._id?.toString() === msgConvId
+      //     ? { ...c, lastMessage: msg.text, updatedAt: msg.createdAt }
+      //     : c
+      //   )
+      // );
+setConversations(prev =>
+  prev.map(c =>
+    c._id?.toString() === msgConvId
+      ? {
+          ...c,
+          lastMessage: msg.text,
+          updatedAt: msg.createdAt,
+        }
+      : c
+  )
+);
+
     });
     return () => { socket.disconnect(); socketRef.current = null; };
   }, [token]);

@@ -166,15 +166,41 @@ export default function Navbar() {
     } catch { }
   };
 
+  // const fetchMsgUnread = async (token: string) => {
+  //   try {
+  //     const res  = await fetch(`${API_BASE}/conversations/my`, { headers: { Authorization: `Bearer ${token}` } });
+  //     const data = await res.json();
+  //     const convs: any[] = data?.data || data?.conversations || data || [];
+  //     const total = convs.reduce((sum: number, c: any) => sum + (c.unreadCount || c.unread || 0), 0);
+  //     setMsgUnread(total);
+  //   } catch { }
+  // };
+
+
   const fetchMsgUnread = async (token: string) => {
-    try {
-      const res  = await fetch(`${API_BASE}/conversations/my`, { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      const convs: any[] = data?.data || data?.conversations || data || [];
-      const total = convs.reduce((sum: number, c: any) => sum + (c.unreadCount || c.unread || 0), 0);
-      setMsgUnread(total);
-    } catch { }
-  };
+  try {
+    const res  = await fetch(`${API_BASE}/conversations/my`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const data = await res.json();
+    const convs: any[] = data?.data || data?.conversations || data || [];
+
+    const myId =
+      user?._id ||
+      user?.id ||
+      user?.user?._id ||
+      user?.user?.id;
+
+    const total = convs.reduce((sum: number, c: any) => {
+      const uc = c.unreadCounts?.[myId] || 0;
+      return sum + uc;
+    }, 0);
+
+    setMsgUnread(total);
+
+  } catch {}
+};
 
   useEffect(() => {
     if (!pathname?.startsWith("/notification")) return;
