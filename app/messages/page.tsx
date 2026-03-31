@@ -205,11 +205,21 @@ useEffect(() => {
         convs.sort((a: any, b: any) => new Date(b.updatedAt||0).getTime() - new Date(a.updatedAt||0).getTime());
         setConversations(convs);
 
+        // const counts: Record<string, number> = {};
+        // convs.forEach((c: any) => {
+        //   const uc = c.unreadCount || c.unread || 0;
+        //   if (uc > 0) counts[c._id] = uc;
+        // });
         const counts: Record<string, number> = {};
-        convs.forEach((c: any) => {
-          const uc = c.unreadCount || c.unread || 0;
-          if (uc > 0) counts[c._id] = uc;
-        });
+convs.forEach((c: any) => {
+  const uc =
+    c.unreadCount ??
+    c.unread ??
+    c.unreadCounts?.[myIdRef.current] ??
+    0;
+
+  if (uc > 0) counts[c._id] = uc;
+});
         if (Object.keys(counts).length > 0) { setUnreadCounts(counts); dispatchMsgCount(counts); }
 
         const targetUserId = searchParams?.get("userId") || searchParams?.get("with");
