@@ -96,10 +96,10 @@ export default function DiscoveryPage() {
       // Merge: open campaigns + any extra applied campaigns not in open list
       // const merged = [...openCampaigns, ...extraCampaigns];
       const merged = [...openCampaigns, ...extraCampaigns].sort((a, b) => {
-  const dateA = new Date(a.createdAt || a.updatedAt || 0).getTime();
-  const dateB = new Date(b.createdAt || b.updatedAt || 0).getTime();
-  return dateB - dateA; // newest first
-});
+       const dateA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+        const dateB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+        return dateB - dateA; // newest first
+           });
 
       // Mark applied status on all
       const savedApplied = JSON.parse(localStorage.getItem("appliedCampaigns") || "[]");
