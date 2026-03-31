@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
 const API = "https://api.collabzy.in/api";
-const SOCKET_URL = "https://api.collabzy.in/api";
+const SOCKET_URL = "https://api.collabzy.in";
 
 const BANNED_KEYWORDS = [
   "whatsapp","whatsapp number","wp number","wapp",
@@ -193,9 +193,12 @@ function MessagesInner() {
 
         // ✅ Navbar ko LIVE update karo — localStorage + events
         // const total = Object.values(updated).reduce((a, b) => a + b, 0);
-        const total = Object.values(updated)
-  .reduce((a, b) => (a as number) + (b as number), 0);
-        syncMsgCount(total);
+  //       const total = Object.values(updated)
+  // .reduce((a, b) => (a as number) + (b as number), 0);
+  //       syncMsgCount(total);
+
+  const total: number = Object.values(updated as Record<string, number>)
+  .reduce((a, b) => a + b, 0);
 
         // Conversation top pe le jao
         setConversations(prev => {
@@ -476,7 +479,9 @@ function MessagesInner() {
   };
 
   const activeOther = activeConv ? getOtherParticipant(activeConv) : null;
-  const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+  // const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+  const totalUnread = Object.values(unreadCounts as Record<string, number>)
+  .reduce((a, b) => a + b, 0);
 
   const grouped = messages.reduce((acc: any[], msg, i) => {
     const currDate = new Date(msg.createdAt).toDateString();
