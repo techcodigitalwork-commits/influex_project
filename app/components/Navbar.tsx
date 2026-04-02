@@ -245,6 +245,8 @@ export default function Navbar() {
     // ✅ CustomEvent: plan update hone pe navbar live update
     const handlePlanUpdate = () => {
       syncUserFromStorage();
+       const latest = readUserFromStorage();
+      if (latest?.bits != null) setBits(Number(latest.bits));
     };
 
     let bc: BroadcastChannel | null = null;
@@ -280,21 +282,38 @@ export default function Navbar() {
   // ✅ POLLING: har 5 second mein localStorage se sync karo (same tab ke liye)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const interval = setInterval(() => {
-      const latest = readUserFromStorage();
-      if (!latest) return;
-      setUser((prev: any) => {
-        // sirf tab update karo jab plan/bits/isSubscribed change hua ho
-        const planChanged    = (latest.plan || latest.activePlan) !== (prev?.plan || prev?.activePlan);
-        const bitsChanged    = latest.bits !== prev?.bits;
-        const subChanged     = latest.isSubscribed !== prev?.isSubscribed;
-        if (planChanged || bitsChanged || subChanged) {
-          if (latest.bits != null) setBits(Number(latest.bits));
-          return latest;
-        }
-        return prev;
-      });
-    }, 5000);
+    // const interval = setInterval(() => {
+    //   const latest = readUserFromStorage();
+    //   if (!latest) return;
+    //   setUser((prev: any) => {
+    //     // sirf tab update karo jab plan/bits/isSubscribed change hua ho
+    //     const planChanged    = (latest.plan || latest.activePlan) !== (prev?.plan || prev?.activePlan);
+    //     const bitsChanged    = latest.bits !== prev?.bits;
+    //     const subChanged     = latest.isSubscribed !== prev?.isSubscribed;
+    //     if (planChanged || bitsChanged || subChanged) {
+    //       if (latest.bits != null) setBits(Number(latest.bits));
+    //       return latest;
+    //     }
+    //     return prev;
+    //   });
+    // }, 5000);
+    // Navbar.tsx — polling useEffect mein yeh fix karo
+const interval = setInterval(() => {
+  const latest = readUserFromStorage();
+  if (!latest) return;
+  setUser((prev: any) => {
+    const planChanged    = (latest.plan || latest.activePlan) !== (prev?.plan || prev?.activePlan);
+    const bitsChanged    = latest.bits !== prev?.bits;
+    const subChanged     = latest.isSubscribed !== prev?.isSubscribed;
+    
+    const activePlanChanged = latest.activePlan !== prev?.activePlan; // ← YEH ADD KAR
+    if (planChanged || bitsChanged || subChanged || activePlanChanged) {
+      if (latest.bits != null) setBits(Number(latest.bits));
+      return latest; // full user replace karo
+    }
+    return prev;
+  });
+}, 1000); // ← 5000 se 1000 kar do taaki fast update ho
     return () => clearInterval(interval);
   }, [readUserFromStorage]);
 

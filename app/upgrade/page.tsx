@@ -325,6 +325,8 @@ export default function UpgradePage() {
         setUser(updated);
         setIsSubscribed(true);
         setActivePlan(planId); // UI ke liye frontend ID
+        const freshBits = data.bits ?? data.user?.bits;
+        if (freshBits != null) setBits(Number(freshBits));
 
         // ✅ FIX 5: CustomEvent — same tab mein navbar live update
         // StorageEvent same tab mein kaam nahi karta tha — yahi root cause tha
@@ -539,7 +541,12 @@ export default function UpgradePage() {
               </div>
               <div className="plans-grid">
                 {plans.map((plan: any, i: number) => {
-                  const isThisActive = isSubscribed && plan.id !== "free" && !!activePlan && toC(activePlan) === toC(plan.id);
+                  // const isThisActive = isSubscribed && plan.id !== "free" && !!activePlan && toC(activePlan) === toC(plan.id);
+                  const isThisActive = isSubscribed && plan.id !== "free" && (
+  (!!activePlan && toC(activePlan) === toC(plan.id)) ||
+  (!!user?.plan && toC(user.plan) === toC(plan.id)) ||
+  (!!user?.activePlan && toC(user.activePlan) === toC(plan.id))
+);
                   const isLoading = loadingPlanId === plan.id;
                   return (
                     <div
