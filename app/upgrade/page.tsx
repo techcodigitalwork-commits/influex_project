@@ -325,8 +325,8 @@ export default function UpgradePage() {
         setUser(updated);
         setIsSubscribed(true);
         setActivePlan(planId); // UI ke liye frontend ID
-        const freshBits = data.bits ?? data.user?.bits;
-        if (freshBits != null) setBits(Number(freshBits));
+        // const freshBits = data.bits ?? data.user?.bits;
+        // if (freshBits != null) setBits(Number(freshBits));
 
         // ✅ FIX 5: CustomEvent — same tab mein navbar live update
         // StorageEvent same tab mein kaam nahi karta tha — yahi root cause tha
