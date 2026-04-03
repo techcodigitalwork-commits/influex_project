@@ -238,7 +238,10 @@ if (userRes.ok && stored && userData?.user) {
 }
 
 // 👉 navbar update
-window.dispatchEvent(new Event("plan_updated"));
+// window.dispatchEvent(new Event("plan_updated"));
+window.dispatchEvent(new CustomEvent("plan_updated", {
+  detail: { refresh: true }
+}));
         
       // ✅ Optimistic token deduction
 // const newTokens = Math.max(0, availableTokens - TOKENS_PER_CAMPAIGN);
@@ -308,7 +311,10 @@ window.dispatchEvent(new Event("plan_updated"));
           setActivePlan(canonicalPlan);
            setAvailableTokens(newBits);
           setShowUpgradeModal(false);
-          window.dispatchEvent(new Event("plan_updated"));
+          // window.dispatchEvent(new Event("plan_updated"));
+          window.dispatchEvent(new CustomEvent("plan_updated", {
+  detail: { refresh: true }
+}));
           showToast(`🎉 ${planName} activated!`, "success");
         } else {
           showToast("Activation failed. Contact support.", "error");

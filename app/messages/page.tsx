@@ -138,9 +138,9 @@ function MessagesInner() {
   useEffect(() => {
     if (!token || !myId || socketRef.current) return;
     const socket = io(SOCKET_URL, {
-      transports: [ "websocket , polling"],  
+      transports: [ "websocket"],  
       auth: { token },
-      withCredentials: true,
+      // withCredentials: true,
       reconnection: true,
       reconnectionAttempts: 15,
       reconnectionDelay: 1000,

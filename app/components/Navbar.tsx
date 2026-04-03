@@ -64,34 +64,72 @@ export default function Navbar() {
   const pathnameRef = useRef<string>(pathname || "");
   useEffect(() => { pathnameRef.current = pathname || ""; }, [pathname]);
 
-  // ✅ Full re-read from localStorage — plan + bits + isSubscribed sab
-  const syncFromStorage = useCallback(() => {
-    try {
-      const raw = localStorage.getItem("cb_user");
-      if (!raw) return;
-      const latest = JSON.parse(raw);
-      // setUser((prev: any) => {
-      //   // hamesha update karo — plan change detect karne ki zarurat nahi
-      //   return { ...latest };
-      // });
-  //     setUser(JSON.parse(JSON.stringify(latest))); // 🔥 force re-render
-  //     if (latest.bits != null) setBits(Number(latest.bits));
-  //   } catch {}
-  // }, []);
-  setUser((prev: any) => {
-  if (!prev) return latest;
+//   // ✅ Full re-read from localStorage — plan + bits + isSubscribed sab
+//   const syncFromStorage = useCallback(() => {
+//     try {
+//       const raw = localStorage.getItem("cb_user");
+//       if (!raw) return;
+//       const latest = JSON.parse(raw);
+//       // setUser((prev: any) => {
+//       //   // hamesha update karo — plan change detect karne ki zarurat nahi
+//       //   return { ...latest };
+//       // });
+//   //     setUser(JSON.parse(JSON.stringify(latest))); // 🔥 force re-render
+//   //     if (latest.bits != null) setBits(Number(latest.bits));
+//   //   } catch {}
+//   // }, []);
+//   setUser((prev: any) => {
+//   if (!prev) return latest;
 
-  const prevBits = prev.bits;
-  const newBits  = latest.bits;
+//   const prevBits = prev.bits;
+//   const newBits  = latest.bits;
 
-  if (prevBits !== newBits) {
-    if (latest.bits != null) setBits(Number(latest.bits));
+//   if (prevBits !== newBits) {
+//     if (latest.bits != null) setBits(Number(latest.bits));
 
-    return JSON.parse(JSON.stringify(latest)); // ✅ FORCE RE-RENDER
+//     return JSON.parse(JSON.stringify(latest)); // ✅ FORCE RE-RENDER
+//   }
+
+//   return prev;
+// });
+    
+const syncFromStorage = useCallback(() => {
+  try {
+    const raw = localStorage.getItem("cb_user");
+    if (!raw) return;
+
+    const latest = JSON.parse(raw);
+
+    setUser((prev: any) => {
+      if (!prev) return latest;
+
+      const prevPlan = prev.plan || prev.activePlan;
+      const newPlan  = latest.plan || latest.activePlan;
+
+      const prevSub  = prev.isSubscribed;
+      const newSub   = latest.isSubscribed;
+
+      const prevBits = prev.bits;
+      const newBits  = latest.bits;
+
+      // ✅ IMPORTANT: sab compare karo
+      if (
+        prevPlan !== newPlan ||
+        prevSub  !== newSub  ||
+        prevBits !== newBits
+      ) {
+         setUser({ ...latest });
+        if (latest.bits != null) setBits(Number(latest.bits));
+        return { ...latest }; // simpler than JSON.parse(JSON.stringify)
+      }
+
+      return prev;
+    });
+
+  } catch (err) {
+    console.log("sync error", err);
   }
-
-  return prev;
-});
+}, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -252,16 +290,34 @@ export default function Navbar() {
     // const handlePlanUpdated = () => {
     //   syncFromStorage();
     // };
-    const handlePlanUpdated = () => {
-  syncFromStorage();
+//     const handlePlanUpdated = () => {
+//   syncFromStorage();
 
-  // 🔥 bits ko force update karo
-  const raw = localStorage.getItem("cb_user");
-  if (raw) {
-    const parsed = JSON.parse(raw);
-    if (parsed.bits != null) {
-      setBits(Number(parsed.bits));
+//   // 🔥 bits ko force update karo
+//   const raw = localStorage.getItem("cb_user");
+//   if (raw) {
+//     const parsed = JSON.parse(raw);
+//     if (parsed.bits != null) {
+//       setBits(Number(parsed.bits));
+//     }
+//   }
+// };
+const handlePlanUpdated = (e: any) => {
+  try {
+    const raw = localStorage.getItem("cb_user");
+    if (!raw) return;
+
+    const latest = JSON.parse(raw);
+
+    // ✅ FORCE FULL UPDATE
+    setUser({ ...latest });
+
+    if (latest.bits != null) {
+      setBits(Number(latest.bits));
     }
+
+  } catch (err) {
+    console.log("plan update error", err);
   }
 };
 
