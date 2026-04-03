@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
 const API        = "https://api.collabzy.in/api/conversations";
-const SOCKET_URL = "https://api.collabzy.in";
+const SOCKET_URL = "wss://api.collabzy.in";
 
 const BANNED_KEYWORDS = [
   "whatsapp","whatsapp number","wp number","wapp",
@@ -133,12 +133,12 @@ function MessagesInner() {
   }, [activeConv]);
 
   /* ════════════════════════════════════════════
-     SOCKET.IO
+     SOCKET.IO polling
   ════════════════════════════════════════════ */
   useEffect(() => {
     if (!token || !myId || socketRef.current) return;
     const socket = io(SOCKET_URL, {
-      transports: ["polling", "websocket"],
+      transports: [ "websocket"],  
       auth: { token },
       // withCredentials: true,
       reconnection: true,
