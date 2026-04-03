@@ -294,120 +294,8 @@ export default function BrowsePage() {
     }
   };
 
-  // const handleUnlockEmail = async (profileId: string, userId: string) => {
-  //   if (unlockedEmails[profileId] || unlocking === `email_${profileId}`) return;
-  //   setUnlocking(`email_${profileId}`);
-  //   try {
-  //     const raw = await doUnlock(profileId, userId);
-  //     const { email, ig } = extractContact(raw);
-  //     if (!email && !ig) { alert("Contact info not available for this creator."); return; }
-  //     saveUnlocked(profileId, email, ig);
-  //     deductBitsLocally(50);
-  //   } catch (e: any) { alert(e.message || "Something went wrong."); }
-  //   finally { setUnlocking(null); }
-  // };
-
-//   const handleUnlockEmail = async (profile) => {
-//   const profileId = profile._id;
-//   const userId = profile.user; // ✅ correct user id
-
-//   if (!userId) {
-//     alert("Creator ID missing");
-//     return;
-//   }
-
-//   if (unlockedEmails[profileId] || unlocking === `email_${profileId}`) return;
-
-//   setUnlocking(`email_${profileId}`);
-
-//   try {
-//     const raw = await doUnlock(profileId, userId);
-
-//     const email =
-//       raw.email || raw.contactEmail || raw.contact?.email || "";
-
-//     const ig =
-//       raw.platform || raw.instagram || raw.contact?.instagram || "";
-
-//     if (!email && !ig) {
-//       alert("Contact info not available");
-//       return;
-//     }
-
-//     // save email
-//     if (email) {
-//       const ue = { ...unlockedEmails, [profileId]: email };
-//       setUnlockedEmails(ue);
-//       localStorage.setItem("unlockedEmails", JSON.stringify(ue));
-//     }
-
-//     // save instagram
-//     if (ig) {
-//       const ui = { ...unlockedInstagrams, [profileId]: ig };
-//       setUnlockedInstagrams(ui);
-//       localStorage.setItem("unlockedIg", JSON.stringify(ui));
-//     }
-
-//     deductBitsLocally(50);
-
-//   } catch (e) {
-//     alert(e.message || "Unlock failed");
-//   } finally {
-//     setUnlocking(null);
-//   }
-// };
 
 
-// const handleUnlockEmail = async (userId: string) => {
-//   if (!userId) {
-//     alert("User ID missing");
-//     return;
-//   }
-
-//   console.log("✅ CORRECT USER ID:", userId);
-
-//   try {
-//     const res = await fetch(`${API}/contact/unlock`, {
-//       method: "POST",
-//       headers: {
-//         Authorization: `Bearer ${token}`,
-//         "Content-Type": "application/json"
-//       },
-//       body: JSON.stringify({ influencerId: userId })
-//     });
-
-//     const data = await res.json();
-//     console.log("UNLOCK RESPONSE:", data);
-
-//     if (!res.ok) {
-//       alert(data.message || "Unlock failed");
-//       return;
-//     }
-
-//     const email = data.email;
-//     const ig = data.platform;
-
-//     if (email) {
-//       setUnlockedEmails(prev => {
-//         const updated = { ...prev, [modalCreator._id]: email };
-//         localStorage.setItem("unlockedEmails", JSON.stringify(updated));
-//         return updated;
-//       });
-//     }
-
-//     if (ig) {
-//       setUnlockedInstagrams(prev => {
-//         const updated = { ...prev, [modalCreator._id]: ig };
-//         localStorage.setItem("unlockedIg", JSON.stringify(updated));
-//         return updated;
-//       });
-//     }
-
-//   } catch (err) {
-//     console.error(err);
-//     alert("Something went wrong");
-//   }
-// };
 
 
 const handleUnlockEmail = async (userId: string) => {
@@ -438,13 +326,6 @@ const handleUnlockEmail = async (userId: string) => {
       return;
     }
 
-    // if (data.email) {
-    //   setUnlockedEmails(prev => {
-    //     const updated = { ...prev, [modalCreator._id]: data.email };
-    //     localStorage.setItem(`unlockedEmails_${myId}`, JSON.stringify(updated));
-    //     return updated;
-    //   });
-    // }
     
     if (data.email) {
   setUnlockedEmails(prev => {
@@ -455,6 +336,7 @@ const handleUnlockEmail = async (userId: string) => {
 
     return updated;
   });
+   deductBitsLocally(50);
 }
 
 
@@ -464,67 +346,7 @@ const handleUnlockEmail = async (userId: string) => {
   }
 };
 
-  // const handleUnlockInstagram = async (profileId: string, userId: string) => {
-  //   if (unlockedInstagrams[profileId] || unlocking === `ig_${profileId}`) return;
-  //   setUnlocking(`ig_${profileId}`);
-  //   try {
-  //     const raw = await doUnlock(profileId, userId);
-  //     const { email, ig } = extractContact(raw);
-  //     if (!ig) { alert("Instagram not available for this creator."); return; }
-  //     saveUnlocked(profileId, email, ig);
-  //     deductBitsLocally(50);
-  //   } catch (e: any) { alert(e.message || "Something went wrong."); }
-  //   finally { setUnlocking(null); }
-  // };
 
-//   const handleUnlockInstagram = async (profile) => {
-//   const profileId = profile._id;
-//   const userId = profile.user; // ✅ correct user id
-
-//   if (!userId) {
-//     alert("Creator ID missing");
-//     return;
-//   }
-
-//   if (unlockedInstagrams[profileId] || unlocking === `ig_${profileId}`) return;
-
-//   setUnlocking(`ig_${profileId}`);
-
-//   try {
-//     const raw = await doUnlock(profileId, userId);
-
-//     const email =
-//       raw.email || raw.contactEmail || raw.contact?.email || "";
-
-//     const ig =
-//       raw.platform || raw.instagram || raw.contact?.instagram || "";
-
-//     if (!ig) {
-//       alert("Instagram not available");
-//       return;
-//     }
-
-//     // save both
-//     if (email) {
-//       const ue = { ...unlockedEmails, [profileId]: email };
-//       setUnlockedEmails(ue);
-//       localStorage.setItem("unlockedEmails", JSON.stringify(ue));
-//     }
-
-//     if (ig) {
-//       const ui = { ...unlockedInstagrams, [profileId]: ig };
-//       setUnlockedInstagrams(ui);
-//       localStorage.setItem("unlockedIg", JSON.stringify(ui));
-//     }
-
-//     deductBitsLocally(50);
-
-//   } catch (e) {
-//     alert(e.message || "Unlock failed");
-//   } finally {
-//     setUnlocking(null);
-//   }
-// };
 
 const handleUnlockInstagram = async (userId: string) => {
   if (!userId || !modalCreator) return;
@@ -555,13 +377,7 @@ const handleUnlockInstagram = async (userId: string) => {
       return;
     }
 
-    // if (data.platform) {
-    //   setUnlockedInstagrams(prev => {
-    //     const updated = { ...prev, [profileId]: data.platform };
-    //     localStorage.setItem(`unlockedIg_${myId}`, JSON.stringify(updated));
-    //     return updated;
-    //   });
-    // }
+ 
 
     if (data.platform) {
   setUnlockedInstagrams(prev => {
@@ -572,6 +388,7 @@ const handleUnlockInstagram = async (userId: string) => {
 
     return updated;
   });
+  deductBitsLocally(50);
 }
 
   } catch (err: any) {

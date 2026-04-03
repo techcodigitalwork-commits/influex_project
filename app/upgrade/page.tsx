@@ -94,7 +94,7 @@ export default function UpgradePage() {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
   };
-
+  
   useEffect(() => {
   const stored = localStorage.getItem("cb_user");
   if (!stored) return;

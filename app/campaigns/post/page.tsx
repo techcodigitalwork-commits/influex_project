@@ -198,16 +198,69 @@ export default function PostCampaignPage() {
       }
 
       // ✅ Optimistic token deduction
-      const newTokens = Math.max(0, availableTokens - TOKENS_PER_CAMPAIGN);
-      setAvailableTokens(newTokens);
-      const stored = localStorage.getItem("cb_user");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits: newTokens }));
-      }
+
+      // ✅ REAL DATA SYNC (NO GUESS WORK)
+// const token = user.token || localStorage.getItem("token");
+
+// const userRes = await fetch(`${API_BASE}/profile/me`, {
+//   headers: {
+//     Authorization: `Bearer ${token}`
+//   }
+// });
+
+// const userData = await userRes.json();
+
+// if (userData?.user) {
+//   localStorage.setItem("cb_user", JSON.stringify(userData.user));
+//   setAvailableTokens(Number(userData.user.bits || 0));
+// }
+const userRes = await fetch(`${API_BASE}/profile/me`, {
+  headers: {
+    Authorization: `Bearer ${token}`
+  }
+});
+
+const userData = await userRes.json();
+
+const stored = localStorage.getItem("cb_user");
+
+if (userRes.ok && stored && userData?.user) {
+  const parsed = JSON.parse(stored);
+
+  const updatedUser = {
+    ...parsed,
+    ...userData.user,
+    token: parsed.token || userData.user.token
+  };
+
+  localStorage.setItem("cb_user", JSON.stringify(updatedUser));
+  setAvailableTokens(Number(updatedUser.bits || 0));
+}
+
+// 👉 navbar update
+window.dispatchEvent(new Event("plan_updated"));
+        
+      // ✅ Optimistic token deduction
+// const newTokens = Math.max(0, availableTokens - TOKENS_PER_CAMPAIGN);
+// setAvailableTokens(newTokens);
+// const stored = localStorage.getItem("cb_user");
+// if (stored) {
+//   const parsed = JSON.parse(stored);
+//   localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits: newTokens }));
+// }
+ 
+// window.dispatchEvent(new CustomEvent("plan_updated"));
+      
+      // const newTokens = Math.max(0, availableTokens - TOKENS_PER_CAMPAIGN);
+      // setAvailableTokens(newTokens);
+      // const stored = localStorage.getItem("cb_user");
+      // if (stored) {
+      //   const parsed = JSON.parse(stored);
+      //   localStorage.setItem("cb_user", JSON.stringify({ ...parsed, bits: newTokens }));
+      // }
        
-      // ✅ Navbar ko live update karo
-      window.dispatchEvent(new CustomEvent("plan_updated"));
+      // // ✅ Navbar ko live update karo
+      // window.dispatchEvent(new CustomEvent("plan_updated"));
 
       showToast("Campaign created successfully! 🚀", "success");
       setTimeout(() => router.push("/campaigns"), 1200);
@@ -251,8 +304,11 @@ export default function PostCampaignPage() {
           const newBits = PLAN_LIMITS[canonicalPlan]?.tokens ?? 0;
           const updated = { ...parsed, isSubscribed: true, activePlan: canonicalPlan, plan: canonicalPlan, planActivatedAt: new Date().toISOString(), bits: newBits };
           localStorage.setItem("cb_user", JSON.stringify(updated));
-          setUser(updated); setActivePlan(canonicalPlan); setAvailableTokens(newBits);
+          setUser(updated); 
+          setActivePlan(canonicalPlan);
+           setAvailableTokens(newBits);
           setShowUpgradeModal(false);
+          window.dispatchEvent(new Event("plan_updated"));
           showToast(`🎉 ${planName} activated!`, "success");
         } else {
           showToast("Activation failed. Contact support.", "error");
