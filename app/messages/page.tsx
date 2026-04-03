@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
 const API        = "https://api.collabzy.in/api/conversations";
-const SOCKET_URL = "wss://api.collabzy.in";
+const SOCKET_URL = "https://api.collabzy.in";
 
 const BANNED_KEYWORDS = [
   "whatsapp","whatsapp number","wp number","wapp",
@@ -140,7 +140,7 @@ function MessagesInner() {
     const socket = io(SOCKET_URL, {
       transports: [ "websocket"],  
       auth: { token },
-      withCredentials: true,
+      // withCredentials: true,
       reconnection: true,
       reconnectionAttempts: 15,
       reconnectionDelay: 1000,

@@ -70,13 +70,28 @@ export default function Navbar() {
       const raw = localStorage.getItem("cb_user");
       if (!raw) return;
       const latest = JSON.parse(raw);
-      setUser((prev: any) => {
-        // hamesha update karo — plan change detect karne ki zarurat nahi
-        return { ...latest };
-      });
-      if (latest.bits != null) setBits(Number(latest.bits));
-    } catch {}
-  }, []);
+      // setUser((prev: any) => {
+      //   // hamesha update karo — plan change detect karne ki zarurat nahi
+      //   return { ...latest };
+      // });
+  //     setUser(JSON.parse(JSON.stringify(latest))); // 🔥 force re-render
+  //     if (latest.bits != null) setBits(Number(latest.bits));
+  //   } catch {}
+  // }, []);
+  setUser((prev: any) => {
+  if (!prev) return latest;
+
+  const prevBits = prev.bits;
+  const newBits  = latest.bits;
+
+  if (prevBits !== newBits) {
+    if (latest.bits != null) setBits(Number(latest.bits));
+
+    return JSON.parse(JSON.stringify(latest)); // ✅ FORCE RE-RENDER
+  }
+
+  return prev;
+});
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -234,9 +249,21 @@ export default function Navbar() {
     };
 
     // ✅ plan_updated event — SAME TAB mein turant sync karo
+    // const handlePlanUpdated = () => {
+    //   syncFromStorage();
+    // };
     const handlePlanUpdated = () => {
-      syncFromStorage();
-    };
+  syncFromStorage();
+
+  // 🔥 bits ko force update karo
+  const raw = localStorage.getItem("cb_user");
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    if (parsed.bits != null) {
+      setBits(Number(parsed.bits));
+    }
+  }
+};
 
     let bc: BroadcastChannel | null = null;
     try {
