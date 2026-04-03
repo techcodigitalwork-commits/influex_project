@@ -140,7 +140,7 @@ function MessagesInner() {
     const socket = io(SOCKET_URL, {
       transports: [ "websocket"],  
       auth: { token },
-      // withCredentials: true,
+      withCredentials: true,
       reconnection: true,
       reconnectionAttempts: 15,
       reconnectionDelay: 1000,
