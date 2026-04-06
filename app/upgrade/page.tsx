@@ -104,7 +104,7 @@ export default function UpgradePage() {
   const [role, setRole]       = useState<Role>("creator");
   const [tab, setTab]         = useState<Tab>("plans");
   const [billing, setBilling] = useState<Billing>("monthly");
-
+    
   const [user, setUser]             = useState<any>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
   // activePlan is always stored as normalPlan() canonical form
@@ -488,6 +488,7 @@ export default function UpgradePage() {
               <div className="billing-wrap">
                 <div className="billing-toggle">
                   <button className={`billing-btn ${billing === "monthly" ? "active" : ""}`} onClick={() => setBilling("monthly")}>Monthly</button>
+                    {/* <button className={`billing-btn ${billing === "yearly" ? "active" : ""}`} onClick={() => setBilling("yearly")}>Yearly</button> */}
                 </div>
               </div>
 
