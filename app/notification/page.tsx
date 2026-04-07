@@ -200,7 +200,7 @@ export default function NotificationsPage() {
 
   const sendNotif = async (creatorId: string, type: string, message: string, appId: string) => {
     try {
-      await safeFetch(`${API}/notification/initiate`, {
+      await safeFetch(`${API}/notification/craete`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
         body: JSON.stringify({ userId: creatorId, sender: user.id, message, type, applicationId: appId, link: "/notification" }),

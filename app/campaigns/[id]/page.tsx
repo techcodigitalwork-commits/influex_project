@@ -19,7 +19,7 @@ export default function CampaignView() {
     if (!storedUser) { router.push("/login"); return; }
     const { token } = JSON.parse(storedUser);
     fetchCampaign(token);
-    fetchAppCount(token);
+    // fetchAppCount(token);
   }, [id]);
 
   const fetchCampaign = async (token: string) => {
@@ -36,18 +36,18 @@ export default function CampaignView() {
     }
   };
 
-  const fetchAppCount = async (token: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/campaigns/${id}/applications`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      const apps = data?.applications || data?.data || [];
-      setAppCount(Array.isArray(apps) ? apps.length : 0);
-    } catch {
-      setAppCount(0);
-    }
-  };
+  // const fetchAppCount = async (token: string) => {
+  //   try {
+  //     const res = await fetch(`${API_BASE}/campaigns/${id}/applications`, {
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     });
+  //     const data = await res.json();
+  //     const apps = data?.applications || data?.data || [];
+  //     setAppCount(Array.isArray(apps) ? apps.length : 0);
+  //   } catch {
+  //     setAppCount(0);
+  //   }
+  // };
 
   if (loading)
     return (
