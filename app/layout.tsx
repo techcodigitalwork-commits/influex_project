@@ -31,7 +31,7 @@ export default function RootLayout({
      
       <head>
         {/* Tailwind CDN (NOT recommended for prod) */}
-        {/* <script src="https://cdn.tailwindcss.com"></script> */}
+        <script src="https://cdn.tailwindcss.com"></script>
 
         {/* Google Font */}
         <link
