@@ -382,7 +382,8 @@ export default function CampaignBoard() {
             <p className="cb-sub">{campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""} total</p>
           </div>
           <div className="cb-header-right">
-            <Link href="/campaigns/post" className="cb-create-btn">+ Create Campaign</Link>
+            {/* <Link href="/campaigns/post" className="cb-create-btn">+ Create Campaign</Link> */}
+            <Link href="/campaigns/post" prefetch={false} className="cb-create-btn">+ Create Campaign</Link>
           </div>
         </div>
 
@@ -418,7 +419,8 @@ export default function CampaignBoard() {
             <div className="cb-empty-icon">📋</div>
             <h3 className="cb-empty-title">No campaigns yet</h3>
             <p className="cb-empty-sub">Create your first campaign to start finding creators for your brand</p>
-            <Link href="/campaigns/post" className="cb-create-btn">+ Create Campaign</Link>
+            {/* <Link href="/campaigns/post" className="cb-create-btn">+ Create Campaign</Link> */}
+            <Link href="/campaigns/post" prefetch={false} className="cb-create-btn">+ Create Campaign</Link>
           </div>
         ) : (
           <div className="cb-grid">
@@ -453,7 +455,8 @@ export default function CampaignBoard() {
                   </div>
                 </div>
                 <div className="cb-actions">
-                  <Link href={`/campaigns/${c._id}`} className="cb-btn cb-btn-view">View</Link>
+                  {/* <Link href={`/campaigns/${c._id}`} className="cb-btn cb-btn-view">View</Link> */}
+                  <Link href={`/campaigns/${c._id}`} prefetch={false} className="cb-btn cb-btn-view">View</Link>
                   <button className="cb-btn cb-btn-edit" onClick={() => openEdit(c)}>Edit</button>
                   {c.status !== "completed" && (
                     <button
