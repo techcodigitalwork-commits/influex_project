@@ -579,6 +579,116 @@ const handleUnlockInstagram = async (userId: string) => {
         .nc-btn-secondary{width:100%;padding:12px;border-radius:12px;background:#f4f4f4;color:#666;font-size:14px;font-weight:600;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:background 0.2s}
         .nc-btn-secondary:hover{background:#eee}
         /* Replace karo existing @media(max-width:520px) block ko is se: */
+        @media(max-width:520px){
+  .mo{
+    padding:0;
+    align-items:flex-end;
+  }
+  .mo-box{
+    border-radius:24px 24px 0 0;
+    max-height:92vh;
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden;
+    overflow-y:auto;
+  }
+  .mo-banner-top{
+    border-radius:24px 24px 0 0;
+    height:80px;
+  }
+  .mo-avwrap{
+    margin-top:-40px;
+  }
+  .mo-av, .mo-avph{
+    width:72px;
+    height:72px;
+  }
+  .mo-avph{
+    font-size:26px;
+  }
+  .mo-body{
+    padding:0 14px 32px !important;
+  }
+  .mo-stats{
+    grid-template-columns:repeat(3,1fr) !important;
+    gap:6px !important;
+  }
+  .mo-sval{
+    font-size:13px !important;
+    word-break:break-word;
+  }
+  .mo-slbl{
+    font-size:9px !important;
+  }
+  .mo-stat{
+    padding:10px 4px;
+  }
+  .mo-bio{
+    font-size:13px;
+    padding:12px;
+  }
+  .mo-row{
+    font-size:12px;
+    gap:6px;
+    flex-wrap:nowrap;
+    align-items:center;
+    overflow:hidden;
+  }
+  .mo-unlock-row{
+    display:flex;
+    align-items:center;
+    flex-wrap:nowrap;
+    gap:6px;
+    overflow:hidden;
+  }
+  /* Masked text ko truncate karo — overflow nahi */
+  .mo-masked{
+    font-size:11px;
+    flex:1;
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .mo-unlock-action{
+    flex-shrink:0;
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    gap:4px;
+  }
+  .mo-unlock-lbl{
+    font-size:11px;
+    white-space:nowrap;
+  }
+  .mo-unlock-cost{
+    font-size:9px;
+    white-space:nowrap;
+  }
+  .mo-tags{
+    gap:4px;
+  }
+  .mo-tag{
+    font-size:11px;
+    padding:3px 8px;
+  }
+  .mo-acts{
+    flex-direction:column;
+    gap:8px;
+  }
+  .mo-btn{
+    width:100%;
+    padding:12px;
+    font-size:13px;
+  }
+  .mo-info-banner{
+    text-align:left;
+    padding:10px 12px;
+  }
+  .mo-info-sub{
+    font-size:11px;
+  }
+}
 
 // @media(max-width:520px){
 //   .mo{padding:0;align-items:flex-end}

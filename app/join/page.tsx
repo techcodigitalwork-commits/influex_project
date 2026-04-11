@@ -53,6 +53,7 @@ export default function JoinPage() {
           localStorage.setItem("cb_user", JSON.stringify({
             ...data.user,
             token: data.token,
+             emailVerified: false, 
             hasProfile: false,
             // ✅ email explicitly save karo
             email: data.user.email || formData.email,

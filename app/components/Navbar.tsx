@@ -116,6 +116,7 @@ export default function Navbar() {
       const raw = localStorage.getItem("cb_user");
       if (!raw) return;
       const latest = JSON.parse(raw);
+       if (!latest.emailVerified) return;
       setUser({ ...latest });
       if (latest.bits != null) setBits(Number(latest.bits));
     } catch {}
@@ -205,6 +206,13 @@ export default function Navbar() {
     try { parsedUser = JSON.parse(storedRaw); } catch { return; }
 
     const token = parsedUser.token || localStorage.getItem("token");
+      
+     // ← Yeh add karo:
+if (!parsedUser.emailVerified) {
+  setUser(null); setProfile(null);
+  return;
+}
+
     if (!token) { setUser(null); setProfile(null); return; }
 
     setUser(parsedUser);

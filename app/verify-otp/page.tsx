@@ -105,7 +105,7 @@ function VerifyOtpForm() {
       if (data.token) {
         localStorage.setItem("token", data.token);
         if (data.user) {
-          const userData = { ...data.user, token: data.token, hasProfile: false };
+          const userData = { ...data.user, token: data.token, hasProfile: false, emailVerified: true };
           localStorage.setItem("cb_user", JSON.stringify(userData));
         }
       }
