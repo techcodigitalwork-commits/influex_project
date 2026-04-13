@@ -63,6 +63,10 @@ export default function LoginPage() {
       const profileData = await profileRes.json();
       const hasProfile = profileData.success && !!profileData.profile;
 
+      const profileName = profileData?.profile?.name 
+  || profileData?.profile?.companyName 
+  || "";
+
       // const isSubscribed    = data.user.isSubscribed ?? false;
       // ✅ NAYA - backend se aata hai true, save karo sahi se
 const isSubscribed = data.user.isSubscribed === true;
@@ -96,7 +100,9 @@ const isSubscribed = data.user.isSubscribed === true;
         activePlan: restoredPlan,
         // ✅ email explicitly save karo — backend data.user mein ho ya na ho
         email:      data.user.email || email,
+         name: profileName || data.user.name || data.user.username || "",
         ...(restoredPlanActivatedAt ? { planActivatedAt: restoredPlanActivatedAt } : {}),
+        
       };
 
       if (typeof window !== "undefined") {

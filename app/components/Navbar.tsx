@@ -116,7 +116,7 @@ export default function Navbar() {
       const raw = localStorage.getItem("cb_user");
       if (!raw) return;
       const latest = JSON.parse(raw);
-       if (!latest.emailVerified) return;
+       if (latest.emailVerified  === false) return;
       setUser({ ...latest });
       if (latest.bits != null) setBits(Number(latest.bits));
     } catch {}
@@ -208,7 +208,8 @@ export default function Navbar() {
     const token = parsedUser.token || localStorage.getItem("token");
       
      // ← Yeh add karo:
-if (!parsedUser.emailVerified) {
+// if (!parsedUser.emailVerified  === false)
+if (parsedUser.emailVerified === false) {
   setUser(null); setProfile(null);
   return;
 }
@@ -404,6 +405,7 @@ if (!parsedUser.emailVerified) {
 
   // ─── Hide navbar on landing page if logged in ─────────────────────────────
   if (pathname === "/" && user) return null;
+  if (pathname?.startsWith("/verify-otp")) return null; 
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
   const fmtNum = (n: number | string) => {
