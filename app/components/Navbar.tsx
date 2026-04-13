@@ -470,9 +470,13 @@ if (parsedUser.emailVerified === false) {
   const isAdmin      = role === "admin";
   const isInfluencer = role === "influencer";
 
+  // const displayName = isBrand
+  //   ? (profile?.companyName || user?.companyName || user?.name || "User")
+  //   : (profile?.name || user?.name || "User");
+
   const displayName = isBrand
-    ? (profile?.companyName || user?.companyName || user?.name || "User")
-    : (profile?.name || user?.name || "User");
+  ? (profile?.companyName || user?.companyName || user?.name || "User")
+  : (profile?.name || user?.name || "User");
 
   const displayImage     = profile?.profileImage || user?.profileImage || null;
   const isActive         = (path: string) => pathname?.startsWith(path);

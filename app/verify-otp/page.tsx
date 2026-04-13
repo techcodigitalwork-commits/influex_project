@@ -138,15 +138,20 @@ function VerifyOtpForm() {
       setVerified(true);
 
       // ── Step 2: Role ke hisaab se redirect karo ──
-      setTimeout(() => {
-        const stored = localStorage.getItem("cb_user");
-        const role = stored ? JSON.parse(stored).role?.toLowerCase() : "";
-        if (role === "brand") {
-          router.push("/campaigns");
-        } else {
-          router.push("/discovery");
-        }
-      }, 2000);
+      // setTimeout(() => {
+      //   const stored = localStorage.getItem("cb_user");
+      //   const role = stored ? JSON.parse(stored).role?.toLowerCase() : "";
+      //   if (role === "brand") {
+      //     router.push("/campaigns");
+      //   } else {
+      //     router.push("/discovery");
+      //   }
+      // }, 2000);
+
+      // ── Step 2: my-profile pe redirect karo ──
+setTimeout(() => {
+  router.push("/my-profile");
+}, 2000);
 
     } catch (err: any) {
       setError(err.message || "Something went wrong");

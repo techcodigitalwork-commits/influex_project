@@ -37,6 +37,8 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
+     const signupName = localStorage.getItem("cb_signup_name") || "";
+
     if (!email || !password) {
       setError("Please enter email and password");
       return;
@@ -63,7 +65,12 @@ export default function LoginPage() {
       const profileData = await profileRes.json();
       const hasProfile = profileData.success && !!profileData.profile;
 
-      const profileName = profileData?.profile?.name 
+  //     const profileName = profileData?.profile?.name 
+  // || profileData?.profile?.companyName 
+  // || "";
+
+  const profileName = profileData?.profile?.name 
+  || profileData?.profile?.fullName
   || profileData?.profile?.companyName 
   || "";
 
@@ -88,6 +95,10 @@ const isSubscribed = data.user.isSubscribed === true;
       localStorage.removeItem("cb_plan_backup");
 
       const { coins: _removeCoins, ...userWithoutCoins } = data.user;
+      // ✅ Pehle oldUser read karo
+const oldStored = localStorage.getItem("cb_user");
+const oldUser = oldStored ? JSON.parse(oldStored) : null;
+
 
       const userData = {
         ...userWithoutCoins,
@@ -100,18 +111,38 @@ const isSubscribed = data.user.isSubscribed === true;
         activePlan: restoredPlan,
         // ✅ email explicitly save karo — backend data.user mein ho ya na ho
         email:      data.user.email || email,
-         name: profileName || data.user.name || data.user.username || "",
+        //  name: profileName || data.user.name || data.user.username || "",
+        //  companyName: profileData?.profile?.companyName || "",
+//         name: profileName || data.user.name || data.user.username || data.user.fullName ||  data.user.companyName || "",
+// companyName: profileData?.profile?.companyName || data.user.companyName || data.user.name || "",
+     name: profileName || data.user.name || data.user.fullName || data.user.username || signupName || "",
+companyName: profileData?.profile?.companyName || data.user.companyName || signupName || "",
         ...(restoredPlanActivatedAt ? { planActivatedAt: restoredPlanActivatedAt } : {}),
         
       };
 
+      // if (typeof window !== "undefined") {
+      //   localStorage.setItem("cb_user", JSON.stringify(userData));
+      //   localStorage.setItem("token",   token);
+      // }
+
       if (typeof window !== "undefined") {
-        localStorage.setItem("cb_user", JSON.stringify(userData));
-        localStorage.setItem("token",   token);
-      }
+  // ✅ Purana cb_user ka name preserve karo agar naya empty hai
+  const oldStored = localStorage.getItem("cb_user");
+  const oldUser = oldStored ? JSON.parse(oldStored) : null;
+  const finalUserData = {
+    ...userData,
+   name: profileName || data.user.name || data.user.fullName || data.user.username || oldUser?.name || "",
+  companyName: profileData?.profile?.companyName || data.user.companyName || oldUser?.companyName || "",
+  };
+  localStorage.setItem("cb_user", JSON.stringify(finalUserData));
+  localStorage.setItem("token", token);
+}
 
       const socket = io(SOCKET_URL, { auth: { token } });
       socket.on("connect", () => socket.emit("joinRoom", data.user._id));
+
+      
 
       if (userData.role === UserRole.BRAND || userData.role === UserRole.ADMIN) {
         router.push("/campaigns");

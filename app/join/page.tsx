@@ -61,7 +61,7 @@ export default function JoinPage() {
           }));
         }
       }
-
+    localStorage.setItem("cb_signup_name", formData.name);
       router.push(`/verify-otp?email=${encodeURIComponent(formData.email)}`);
 
     } catch (err: any) {
