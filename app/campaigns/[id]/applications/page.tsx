@@ -71,6 +71,7 @@ export default function CampaignApplications() {
                 location:     p?.location     || p?.city || "",
                 followers:    p?.followers    || null,
                 categories:   p?.categories   || [],
+                subCategories: p?.subCategories || [],
                 phone:        p?.phone        || "",
                 platform:     p?.platform     || p?.instagram || "",
                 bio:          p?.bio          || "",
@@ -186,7 +187,17 @@ export default function CampaignApplications() {
   const getName       = (a: any) => a?.influencer?.name || a?.influencerId?.email?.split("@")[0] || "Creator";
   const getImage      = (a: any) => a?.influencer?.profileImage || null;
   const getLocation   = (a: any) => a?.influencer?.location || "";
-  const getCategories = (a: any) => { const c = a?.influencer?.categories || []; return Array.isArray(c) ? c.join(", ") : c || ""; };
+  // const getCategories = (a: any) => { const c = a?.influencer?.categories || []; return Array.isArray(c) ? c.join(", ") : c || ""; };
+  const getCategories = (a: any) => {
+  const main = a?.influencer?.categories || [];
+  const sub  = a?.influencer?.subCategories || [];
+
+  const mainStr = Array.isArray(main) ? main.join(", ") : main || "";
+  const subStr  = Array.isArray(sub) ? sub.join(", ") : sub || "";
+
+  if (mainStr && subStr) return `${mainStr} • ${subStr}`;
+  return mainStr || subStr || "";
+};
   const getFollowers  = (a: any) => {
     const f = a?.influencer?.followers;
     if (!f && f !== 0) return null;
@@ -323,10 +334,10 @@ export default function CampaignApplications() {
                     <div className="mo-item-label">Followers</div>
                     <div className="mo-item-val">{getFollowers(app) || "N/A"}</div>
                   </div>
-                  <div className="mo-item">
+                  {/* <div className="mo-item">
                     <div className="mo-item-label">Category</div>
                     <div className="mo-item-val" style={{ fontSize: 12 }}>{getCategories(app) || "N/A"}</div>
-                  </div>
+                  </div> */}
                 </div>
                 <div style={{ marginBottom: 16 }}>
                   <div className="mo-item" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
@@ -402,6 +413,14 @@ export default function CampaignApplications() {
               const decision   = decidedApps[app._id];
               const initials   = name.slice(0, 2).toUpperCase();
 
+                const mainCategories = Array.isArray(app?.influencer?.categories)
+    ? app.influencer.categories.join(", ")
+    : app?.influencer?.categories || "";
+
+  const subCategories = Array.isArray(app?.influencer?.subCategories)
+    ? app.influencer.subCategories.join(", ")
+    : app?.influencer?.subCategories || "";
+
               return (
                 <div key={app._id} className={`ap-card ${decision || ""}`}>
                   <div className={`ap-ribbon ${decision || "pending"}`}>
@@ -428,10 +447,19 @@ export default function CampaignApplications() {
                       <div className="ap-info-label">Followers</div>
                       <div className="ap-info-val">{followers || "N/A"}</div>
                     </div>
-                    <div className="ap-info-item">
+                    {/* <div className="ap-info-item">
                       <div className="ap-info-label">Category</div>
                       <div className="ap-info-val" style={{ fontSize: 12 }}>{categories || "N/A"}</div>
-                    </div>
+                    </div> */}
+                    <div className="ap-info-item">
+  <div className="ap-info-label">Category</div>
+  <div className="ap-info-val">{mainCategories || "N/A"}</div>
+</div>
+
+<div className="ap-info-item">
+  <div className="ap-info-label">Sub Category</div>
+  <div className="ap-info-val">{subCategories || "N/A"}</div>
+</div>
                   </div>
 
                   {/* Contact — always masked (unlock via deals feature later) */}

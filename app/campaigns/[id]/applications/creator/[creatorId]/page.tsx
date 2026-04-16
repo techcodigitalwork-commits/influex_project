@@ -219,7 +219,9 @@ export default function CreatorProfilePage() {
 
   const bidAmount  = app?.bidAmount || app?.bid || campaign?.budget || 0;
   const proposal   = app?.proposal || app?.note || app?.message || app?.coverLetter || "";
-  const categories = Array.isArray(profile?.categories) ? profile.categories.join(", ") : profile?.categories || "N/A";
+  // const categories = Array.isArray(profile?.categories) ? profile.categories.join(", ") : profile?.categories || "N/A";
+const categories = profile?.categories?.join(", ") || "N/A";
+const subCategories = profile?.subCategories?.join(", ") || "N/A";
   const phone      = profile?.phone || "";
   const platform   = profile?.instagram || profile?.platform || "";
   const fullName   = profile?.name || "Creator";
@@ -341,6 +343,7 @@ export default function CreatorProfilePage() {
           <div className="cp-grid">
             <div className="cp-item"><div className="cp-item-label">Followers</div><div className="cp-item-val">{followers()}</div></div>
             <div className="cp-item"><div className="cp-item-label">Category</div><div className="cp-item-val" style={{ fontSize: 13 }}>{categories}</div></div>
+             <div className="cp-item"><div className="cp-item-label">SubCategory</div><div className="cp-item-val" style={{ fontSize: 13 }}>{subCategories}</div></div>
           </div>
         </div>
 
