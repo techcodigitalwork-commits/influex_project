@@ -117,7 +117,15 @@ function MessagesInner() {
   /* ── Mobile back ── */
   useEffect(() => {
     if (!activeConv) return;
+    // if (typeof window === 'undefined' || !window.history) return;
+    // window.history.pushState({ chatOpen: true }, "");
+      try {
     window.history.pushState({ chatOpen: true }, "");
+  } catch (e) {
+    // Turbopack HMR patches History.pushState and can throw during
+    // chunk evaluation — safe to ignore, state is non-critical
+    console.warn("pushState skipped:", e);
+  }
     const handle = () => {
       setShowSidebar(true); setActiveConv(null); activeConvRef.current = null;
       setMessagesSync([]); setBannedWord(null); setShowWarning(false);
