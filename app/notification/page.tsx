@@ -717,6 +717,24 @@ setCreatorNames(names);
                 {(Array.isArray(selectedProfile.categories) ? selectedProfile.categories : [selectedProfile.categories])
                   .filter(Boolean).map((cat: string, i: number) => <span key={i} className="pm-tag">{cat}</span>)}
               </div>
+
+                {selectedProfile.subCategories &&
+  (Array.isArray(selectedProfile.subCategories) 
+    ? selectedProfile.subCategories 
+    : [selectedProfile.subCategories]
+  ).filter(Boolean).length > 0 && (
+  <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:6 }}>
+    {(Array.isArray(selectedProfile.subCategories) 
+      ? selectedProfile.subCategories 
+      : [selectedProfile.subCategories]
+    ).filter(Boolean).map((sub: string, i: number) => (
+      <span key={i} className="pm-tag" style={{ background:"rgba(187,247,208,0.25)", color:"#86efac", border:"1px solid rgba(187,247,208,0.4)" }}>
+        {sub}
+      </span>
+    ))}
+  </div>
+)}
+
             </div>
             <div className="pm-body">
               <div className="pm-stats">

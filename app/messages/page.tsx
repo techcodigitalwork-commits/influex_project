@@ -924,8 +924,11 @@ function MessagesInner() {
                     )}
                     <div className="prof-stat">
                       <div className="prof-stat-num">{Array.isArray(selectedProfile?.categories) ? selectedProfile.categories.length : selectedProfile?.categories ? 1 : 0}</div>
-                      <div className="prof-stat-lbl">Niches</div>
+                      <div className="prof-stat-lbl">CATEGORIES</div>
                     </div>
+                      
+                      
+
                     <div className="prof-stat">
                       <div className="prof-stat-num">{selectedProfile?.platform ? "✓" : "—"}</div>
                       <div className="prof-stat-lbl">Platform</div>
@@ -956,13 +959,38 @@ function MessagesInner() {
             {selectedProfile?.categories &&
               (Array.isArray(selectedProfile.categories) ? selectedProfile.categories : [selectedProfile.categories]).filter(Boolean).length > 0 && (
               <div className="prof-section">
-                <div className="prof-sec-label">Niches</div>
+                <div className="prof-sec-label">Categories</div>
                 <div className="prof-tag-wrap">
                   {(Array.isArray(selectedProfile.categories) ? selectedProfile.categories : [selectedProfile.categories])
                     .filter(Boolean).map((cat: string, i: number) => <span key={i} className="prof-tag">{cat}</span>)}
                 </div>
               </div>
             )}
+
+{selectedProfile?.subCategories &&
+  (Array.isArray(selectedProfile.subCategories) 
+    ? selectedProfile.subCategories 
+    : [selectedProfile.subCategories]
+  ).filter(Boolean).length > 0 && (
+  <div className="prof-section" style={{ background: "#fff" }}>
+    <div className="prof-sec-label">SubCategories</div>
+    <div className="prof-tag-wrap">
+      {(Array.isArray(selectedProfile.subCategories) 
+        ? selectedProfile.subCategories 
+        : [selectedProfile.subCategories]
+      ).filter(Boolean).map((sub: string, i: number) => (
+        <span 
+          key={i} 
+          className="prof-tag" 
+          style={{ background:"#f0fdf4", color:"#166634", border:"1px solid #bbf7d0" }}
+        >
+          {sub}
+        </span>
+      ))}
+    </div>
+  </div>
+)}
+
           </div>
         </div>
       )}
