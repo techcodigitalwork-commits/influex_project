@@ -104,11 +104,31 @@ const [subCategories, setSubCategories] = useState<string[]>([]);
   //   return () => clearInterval(iv);
   // }, [token]);
     
-   useEffect(() => {
+//    useEffect(() => {
+//   if (!token) return;
+//   fetchCampaignId();
+//   fetchCreators();
+// }, [token]);
+
+useEffect(() => {
   if (!token) return;
   fetchCampaignId();
   fetchCreators();
 }, [token]);
+
+// useEffect(() => {
+//   if (!token) return;
+//   fetchCampaignId();
+//   fetchCreators();
+  
+//   // Sirf poll karo agar koi pending invite hai
+//   const iv = setInterval(() => {
+//     const hasPending = Object.values(connectStatus).some(s => s === "pending");
+//     if (hasPending) pollAcceptedInvites();
+//   }, 8000);
+  
+//   return () => clearInterval(iv);
+// }, [token]);
 
 useEffect(() => {
   if (!filterCategory) {
@@ -189,11 +209,21 @@ useEffect(() => {
 
       // Normalize: backend returns "id" not "_id"
       // userId = the actual user ID backend needs for unlock/invite
-      const list: Creator[] = rawList.map(({ phone, id, _id, user, ...rest }: any) => ({
-        ...rest,
-        _id: _id || id,        // for React keys & local state
-        user: user || _id || id, // actual userId backend needs
-      }));
+  //     const list: Creator[] = rawList.map(({ phone, id, _id, user, ...rest }: any) => ({
+  //       ...rest,
+  //       _id: _id || id,        // for React keys & local state
+  //       // user: user || _id || id, // actual userId backend needs
+  //       user: typeof user === "object" && user !== null
+  // ? (user._id || user.id || null)
+  // : (typeof user === "string" && user ? user : null),
+  //     }));
+  const list: Creator[] = rawList.map(({ phone, id, _id, user, ...rest }: any) => ({
+  ...rest,
+  _id: _id || id,
+  // // Backend sirf "id" return karta hai — ye hi actual user ID hai invite ke liye
+  // user: user || id || _id || null,
+  user: (rest as any).userId || user || id || _id || null,
+}));
       setCreators(list);
       creatorsRef.current = list;
       
@@ -241,34 +271,34 @@ setCategories([...catSet]);
     setConnectStatus({ ...status });
   };
 
-  const pollAcceptedInvites = async () => {
-    try {
-      const res  = await fetch(`${API}/notification?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
-      const text = await res.text();
-      if (text.startsWith("<!") || !res.ok) return;
-      const notifs: any[] = JSON.parse(text).data || JSON.parse(text).notifications || [];
-      const responses = notifs.filter((n: any) => n.type === "invite_response");
-      if (!responses.length) return;
-      const saved: Record<string, ConnectStatus> = JSON.parse(localStorage.getItem(`connectStatus_${myId}`) || "{}");
-      let changed = false;
-      const currentCreators = creatorsRef.current;
-      responses.forEach((n: any) => {
-        const influencerUserId: string = n.data?.influencerId || (typeof n.sender === "string" ? n.sender : n.sender?._id) || "";
-        if (!influencerUserId) return;
-        const isAccepted = n.message?.toLowerCase().includes("accepted");
-        const newStatus: ConnectStatus = isAccepted ? "accepted" : "pending";
-        const matchedCreator = currentCreators.find(c => {
-          const u = (c as any).user;
-          const uid = typeof u === "object" ? (u?._id || u?.id || "") : (u || "");
-          return uid === influencerUserId;
-        });
-        const profileId = matchedCreator?._id;
-        if (!profileId) return;
-        if (saved[profileId] !== newStatus) { saved[profileId] = newStatus; changed = true; }
-      });
-      if (changed) saveStatus(saved);
-    } catch { /* silent */ }
-  };
+  // const pollAcceptedInvites = async () => {
+  //   try {
+  //     const res  = await fetch(`${API}/notification?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+  //     const text = await res.text();
+  //     if (text.startsWith("<!") || !res.ok) return;
+  //     const notifs: any[] = JSON.parse(text).data || JSON.parse(text).notifications || [];
+  //     const responses = notifs.filter((n: any) => n.type === "invite_response");
+  //     if (!responses.length) return;
+  //     const saved: Record<string, ConnectStatus> = JSON.parse(localStorage.getItem(`connectStatus_${myId}`) || "{}");
+  //     let changed = false;
+  //     const currentCreators = creatorsRef.current;
+  //     responses.forEach((n: any) => {
+  //       const influencerUserId: string = n.data?.influencerId || (typeof n.sender === "string" ? n.sender : n.sender?._id) || "";
+  //       if (!influencerUserId) return;
+  //       const isAccepted = n.message?.toLowerCase().includes("accepted");
+  //       const newStatus: ConnectStatus = isAccepted ? "accepted" : "pending";
+  //       const matchedCreator = currentCreators.find(c => {
+  //         const u = (c as any).user;
+  //         const uid = typeof u === "object" ? (u?._id || u?.id || "") : (u || "");
+  //         return uid === influencerUserId;
+  //       });
+  //       const profileId = matchedCreator?._id;
+  //       if (!profileId) return;
+  //       if (saved[profileId] !== newStatus) { saved[profileId] = newStatus; changed = true; }
+  //     });
+  //     if (changed) saveStatus(saved);
+  //   } catch { /* silent */ }
+  // };
 
   const handleConnect = async (profileId: string) => {
     const status = connectStatus[profileId] || "none";
@@ -278,12 +308,22 @@ setCategories([...catSet]);
     if (!creator) return;
 
     const rawUser = (creator as any).user;
-    const creatorUserId: string =
-      typeof rawUser === "string" ? rawUser :
-      typeof rawUser === "object" && rawUser?._id ? rawUser._id :
-      profileId;
+    // const creatorUserId: string =
+    //   typeof rawUser === "string" ? rawUser :
+    //   typeof rawUser === "object" && rawUser?._id ? rawUser._id :
+    //   profileId;
 
-    if (!campaignIdRef.current) await fetchCampaignId();
+    // if (!campaignIdRef.current) await fetchCampaignId();
+
+    const creatorUserId: string =
+  typeof rawUser === "string" && rawUser ? rawUser :
+  typeof rawUser === "object" && rawUser?._id ? rawUser._id :
+  "";
+
+// if (!creatorUserId) {
+//   alert("Creator user ID not found. Please refresh and try again.");
+//   return;
+// }
 
     // 🔥 No campaign? Show modal instead of alert
     if (!campaignIdRef.current) {

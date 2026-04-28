@@ -114,7 +114,10 @@ export default function NotificationsPage() {
       const filtered = list.filter((n: any) => n.type !== "new_message");
       const seen     = new Map<string, any>();
       for (const n of filtered) {
-        const key      = n.applicationId || n._id;
+        // const key      = n.applicationId || n._id;
+        const key = (n.applicationId && n.applicationId !== "null")
+  ? n.applicationId
+  : n._id;
         const existing = seen.get(key);
         if (!existing || new Date(n.createdAt) > new Date(existing.createdAt)) seen.set(key, n);
       }
